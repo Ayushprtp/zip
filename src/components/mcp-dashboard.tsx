@@ -116,46 +116,49 @@ export default function MCPDashboard({ message }: { message?: string }) {
             <div className="flex-1" />
 
             <div className="flex gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    className="gap-1 data-[state=open]:bg-muted data-[state=open]:text-foreground text-muted-foreground"
-                  >
-                    <div className="flex -space-x-2">
-                      {displayIcons.map((mcp, index) => {
-                        const Icon = mcp.icon;
-                        return (
-                          <div
-                            key={mcp.name}
-                            className="relative rounded-full bg-background border-[1px] p-1"
-                            style={{
-                              zIndex: displayIcons.length - index,
-                            }}
-                          >
-                            <Icon className="size-3" />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-56">
-                  {RECOMMENDED_MCPS.map((mcp) => {
-                    const Icon = mcp.icon;
-                    return (
-                      <DropdownMenuItem
-                        key={mcp.name}
-                        onClick={() => handleRecommendedSelect(mcp)}
-                        className="cursor-pointer"
-                      >
-                        <Icon className="size-4 mr-2" />
-                        <span>{mcp.label}</span>
-                      </DropdownMenuItem>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {mcpList?.length ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      className="gap-1 data-[state=open]:bg-muted data-[state=open]:text-foreground text-muted-foreground"
+                    >
+                      <div className="flex -space-x-2">
+                        {displayIcons.map((mcp, index) => {
+                          const Icon = mcp.icon;
+                          return (
+                            <div
+                              key={mcp.name}
+                              className="relative rounded-full bg-background border-[1px] p-1"
+                              style={{
+                                zIndex: displayIcons.length - index,
+                              }}
+                            >
+                              <Icon className="size-3" />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    {RECOMMENDED_MCPS.map((mcp) => {
+                      const Icon = mcp.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={mcp.name}
+                          onClick={() => handleRecommendedSelect(mcp)}
+                          className="cursor-pointer"
+                        >
+                          <Icon className="size-4 mr-2" />
+                          <span>{mcp.label}</span>
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+
               <Link href="/mcp/create">
                 <Button className="font-semibold" variant="outline">
                   <MCPIcon className="fill-foreground size-3.5" />
