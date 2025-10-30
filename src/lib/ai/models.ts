@@ -35,8 +35,10 @@ const staticModels = {
     "gpt-4.1-mini": openai("gpt-4.1-mini"),
     "o4-mini": openai("o4-mini"),
     o3: openai("o3"),
+    "gpt-5-chat": openai("gpt-5-chat-latest"),
     "gpt-5": openai("gpt-5"),
     "gpt-5-mini": openai("gpt-5-mini"),
+    "gpt-5-codex": openai("gpt-5-codex"),
     "gpt-5-nano": openai("gpt-5-nano"),
   },
   google: {
@@ -46,6 +48,7 @@ const staticModels = {
   },
   anthropic: {
     "sonnet-4.5": anthropic("claude-sonnet-4-5"),
+    "haiku-4.5": anthropic("claude-haiku-4-5"),
     "opus-4.1": anthropic("claude-opus-4-1"),
   },
   xai: {
