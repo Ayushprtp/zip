@@ -49,12 +49,11 @@ const staticModels = {
   anthropic: {
     "sonnet-4.5": anthropic("claude-sonnet-4-5"),
     "haiku-4.5": anthropic("claude-haiku-4-5"),
-    "opus-4.1": anthropic("claude-opus-4-1"),
+    "opus-4.5": anthropic("claude-opus-4-5"),
   },
   xai: {
-    "grok-4-fast": xai("grok-4-fast-non-reasoning"),
-    "grok-4": xai("grok-4"),
-    "grok-3": xai("grok-3"),
+    "grok-4-1-fast": xai("grok-4-1-fast-non-reasoning"),
+    "grok-4-1": xai("grok-4-1"),
     "grok-3-mini": xai("grok-3-mini"),
   },
   ollama: {
