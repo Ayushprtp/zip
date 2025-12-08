@@ -160,7 +160,18 @@ export default function MentionInput({
           ?.flatMap(({ content }) => {
             return content
               ?.filter((v) => v.type == "mention")
-              .map((v) => v.attrs);
+              .map(
+                (v) =>
+                  (
+                    v as {
+                      type: "mention";
+                      attrs: {
+                        id: string;
+                        label: string;
+                      };
+                    }
+                  ).attrs,
+              );
           })
           .filter(Boolean) as { label: string; id: string }[];
         latestContent.current = {
@@ -169,7 +180,7 @@ export default function MentionInput({
         };
         onChange?.({
           json,
-          text,
+          text: text.trim(),
           mentions,
         });
       },
