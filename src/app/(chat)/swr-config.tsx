@@ -24,8 +24,8 @@ export function SWRConfigProvider({
 
   useEffect(() => {
     console.log(
-      "%c█▄▄ █▀▀ ▀█▀ ▀█▀ █▀▀ █▀█\n█▄█ █▄▄  █   █  █▄▄ █▀▄\n\n%c⛓️ Just a Better Chatbot\nhttps://github.com/cgoinglove/better-chatbot",
-      "color: #00d4ff; font-weight: bold; font-family: monospace; font-size: 16px; text-shadow: 0 0 10px #00d4ff;",
+      "%c█▀▀ █   █▀▀ █▀█ █▀▀\n█▀▀ █▄▄ █▀▀ █▀▄ █▄▄\n\n%c⛓️ Just Flare.sh\nhttps://github.com/CyberZephrus/flare.sh",
+      "color: #9333ea; font-weight: bold; font-family: monospace; font-size: 16px; text-shadow: 0 0 10px #9333ea;",
       "color: #888; font-size: 12px;",
     );
   }, []);

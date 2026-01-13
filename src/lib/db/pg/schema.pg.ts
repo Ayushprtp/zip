@@ -106,10 +106,36 @@ export const UserTable = pgTable("user", {
   preferences: json("preferences").default({}).$type<UserPreferences>(),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+
+  // Ban/moderation fields
   banned: boolean("banned"),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
-  role: text("role").notNull().default("user"),
+
+  // RBAC System - Three Independent Dimensions
+  // 1. Role → WHO the user is (authority)
+  role: varchar("role", {
+    enum: ["super_admin", "admin", "moderator", "user"],
+  })
+    .notNull()
+    .default("user"),
+
+  // 2. Account Type → WHY they have special access (business relationship)
+  accountType: varchar("account_type", {
+    enum: ["normal", "partner"],
+  })
+    .notNull()
+    .default("normal"),
+
+  // 3. Plan → HOW MUCH they can use (limits & pricing)
+  plan: varchar("plan", {
+    enum: ["free", "premium", "enterprise"],
+  })
+    .notNull()
+    .default("free"),
+
+  // Owner flag - IMMUTABLE, only one user can have this
+  isOwner: boolean("is_owner").default(false).notNull(),
 });
 
 // Role tables removed - using Better Auth's built-in role system

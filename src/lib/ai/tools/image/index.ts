@@ -111,7 +111,7 @@ export const nanoBananaTool = createTool({
       throw e;
     }
   },
-});
+} as any);
 
 export const openaiImageTool = createTool({
   name: ImageToolName,
@@ -138,7 +138,9 @@ export const openaiImageTool = createTool({
       .flatMap((m) => {
         if (m.role != "tool") return m;
         if (hasFoundImage) return m; // Skip if we already found an image)
-        const fileParts = m.content.flatMap(convertToImageToolPartToImagePart);
+        const fileParts = m.content.flatMap(
+          convertToImageToolPartToImagePart as any,
+        );
         if (fileParts.length === 0) return m;
         hasFoundImage = true; // Mark that we found the most recent image
         return [
@@ -152,7 +154,7 @@ export const openaiImageTool = createTool({
       .filter((v) => Boolean(v?.content?.length))
       .reverse() as ModelMessage[];
     const result = await generateText({
-      model: openai("gpt-4.1-mini"),
+      model: openai("gpt-4.1-mini") as any,
       abortSignal,
       messages: latestMessages,
       tools: {
@@ -160,13 +162,13 @@ export const openaiImageTool = createTool({
           outputFormat: "webp",
           model: "gpt-image-1-mini",
         }),
-      },
+      } as any,
       toolChoice: "required",
     });
 
     for (const toolResult of result.staticToolResults) {
       if (toolResult.toolName === "image_generation") {
-        const base64Image = toolResult.output.result;
+        const base64Image = (toolResult.output as any).result;
         const uploadedImage = await serverFileStorage
           .upload(Buffer.from(base64Image, "base64"), {
             contentType: "image/webp",
@@ -192,12 +194,12 @@ export const openaiImageTool = createTool({
       guide: "",
     };
   },
-});
+} as any);
 
 function convertToImageToolPartToImagePart(part: ToolResultPart): ImagePart[] {
   if (part.toolName !== ImageToolName) return [];
-  if (!toAny(part).output?.value?.images?.length) return [];
-  const result = part.output.value as ImageToolResult;
+  if (!toAny(part).result?.images?.length) return [];
+  const result = toAny(part).result as ImageToolResult;
   return result.images.map((image) => ({
     type: "image",
     image: image.url,
@@ -207,8 +209,8 @@ function convertToImageToolPartToImagePart(part: ToolResultPart): ImagePart[] {
 
 function convertToImageToolPartToFilePart(part: ToolResultPart): FilePart[] {
   if (part.toolName !== ImageToolName) return [];
-  if (!toAny(part).output?.value?.images?.length) return [];
-  const result = part.output.value as ImageToolResult;
+  if (!toAny(part).result?.images?.length) return [];
+  const result = toAny(part).result as ImageToolResult;
   return result.images.map((image) => ({
     type: "file",
     mediaType: image.mimeType!,

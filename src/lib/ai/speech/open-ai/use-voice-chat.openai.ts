@@ -47,7 +47,7 @@ type Content =
 const createUIPart = (content: Content): TextPart | ToolUIPart => {
   if (content.type == "tool-invocation") {
     const part: ToolUIPart = {
-      type: `tool-${content.name}`,
+      type: `tool-${content.name}` as any,
       input: content.arguments,
       state: "output-available",
       toolCallId: content.toolCallId,
@@ -241,7 +241,7 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
           output: toolResult,
           toolCallId: callId,
           input: toolArgs,
-          type: `tool-${toolName}`,
+          type: `tool-${toolName}` as any,
         };
         return {
           parts: [part],
@@ -252,7 +252,7 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
       dataChannel.current?.send(JSON.stringify({ type: "response.create" }));
       dataChannel.current?.send(JSON.stringify({ type: "response.create" }));
     },
-    [updateUIMessage],
+    [updateUIMessage, stopListening, startListening, setTheme],
   );
 
   const handleServerEvent = useCallback(
@@ -308,7 +308,8 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
                         {
                           type: "text",
                           text:
-                            (message.parts[0] as TextPart).text! + event.delta,
+                            ((message.parts[0] as TextPart).text || "") +
+                            event.delta,
                         },
                       ],
                     }
@@ -384,7 +385,6 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
     setMessages([]);
     try {
       const session = await createSession();
-      console.log({ session });
       const sessionToken = session.client_secret.value;
       const pc = new RTCPeerConnection();
       if (!audioElement.current) {
@@ -462,7 +462,7 @@ export function useOpenAIVoiceChat(props?: VoiceChatOptions): VoiceChatSession {
       setIsListening(false);
       setIsLoading(false);
     }
-  }, [isActive, isLoading, createSession, handleServerEvent, voice]);
+  }, [isActive, isLoading, createSession, handleServerEvent]);
 
   const stop = useCallback(async () => {
     try {

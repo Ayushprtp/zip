@@ -1,10 +1,46 @@
-export const OPENAI_REALTIME_URL =
-  "https://api.openai.com/v1/realtime/sessions";
+export interface OpenAIRealtimeServerEvent {
+  type:
+    | "error"
+    | "session.created"
+    | "session.updated"
+    | "conversation.item.created"
+    | "conversation.item.input_audio_transcription.completed"
+    | "conversation.item.input_audio_transcription.failed"
+    | "conversation.item.truncated"
+    | "conversation.item.deleted"
+    | "input_audio_buffer.committed"
+    | "input_audio_buffer.cleared"
+    | "input_audio_buffer.speech_started"
+    | "input_audio_buffer.speech_stopped"
+    | "response.created"
+    | "response.done"
+    | "response.output_item.added"
+    | "response.output_item.done"
+    | "response.content_part.added"
+    | "response.content_part.done"
+    | "response.text.delta"
+    | "response.text.done"
+    | "response.audio_transcript.delta"
+    | "response.audio_transcript.done"
+    | "response.audio.delta"
+    | "response.audio.done"
+    | "response.function_call_arguments.delta"
+    | "response.function_call_arguments.done"
+    | "output_audio_buffer.stopped"
+    | "rate_limits.updated";
+  event_id: string;
+  [key: string]: any;
+}
 
-export type OpenAIRealtimeSession = {
+export interface OpenAIRealtimeSession {
   id: string;
-  object: string;
+  object: "realtime.session";
   model: string;
+  expires_at: number;
+  client_secret: {
+    value: string;
+    expires_at: number;
+  };
   modalities: string[];
   instructions: string;
   voice: string;
@@ -12,96 +48,15 @@ export type OpenAIRealtimeSession = {
   output_audio_format: string;
   input_audio_transcription: {
     model: string;
-  };
+  } | null;
+  turn_detection: {
+    type: string;
+    threshold: number;
+    prefix_padding_ms: number;
+    silence_duration_ms: number;
+  } | null;
   tools: any[];
   tool_choice: string;
   temperature: number;
-  max_response_output_tokens: number;
-  client_secret: {
-    value: string;
-    expires_at: number;
-  };
-  [key: string]: any;
-};
-
-export type OpenAIRealtimeClientEvent =
-  | {
-      type: "session.update";
-      data: Partial<OpenAIRealtimeSession>;
-    }
-  | {
-      type: "conversation.item.create";
-      previous_item_id?: string;
-      item: {
-        id: string;
-        type: string;
-        role: string;
-        content: [
-          {
-            type: string;
-            text: string;
-          },
-        ];
-      };
-    };
-
-export type OpenAIRealtimeServerEvent =
-  | {
-      type:
-        | "input_audio_buffer.speech_started"
-        | "input_audio_buffer.speech_stopped"
-        | "input_audio_buffer.committed"
-        | "output_audio_buffer.stopped";
-      event_id: string;
-      item_id: string;
-    }
-  | {
-      type: "conversation.item.input_audio_transcription.completed";
-      event_id: string;
-      item_id: string;
-      content_index: number;
-      transcript?: string;
-    }
-  | {
-      type: "conversation.item.input_audio_transcription.delta";
-      event_id: string;
-      item_id: string;
-      content_index: number;
-      delta: string;
-    }
-  | {
-      type: "response.audio_transcript.delta";
-      event_id: string;
-      response_id: string;
-      item_id: string;
-      output_index: number;
-      content_index: number;
-      delta: string;
-    }
-  | {
-      type: "response.audio_transcript.done";
-      event_id: string;
-      response_id: string;
-      item_id: string;
-      output_index: number;
-      content_index: number;
-      transcript: string;
-    }
-  | {
-      type: "response.audio.done";
-      event_id: string;
-      response_id: string;
-      item_id: string;
-      output_index: number;
-      content_index: number;
-    }
-  | {
-      type: "response.function_call_arguments.done";
-      event_id: string;
-      response_id: string;
-      item_id: string;
-      output_index: number;
-      name: string;
-      call_id: string;
-      arguments: string;
-    };
+  max_response_output_tokens: string | number;
+}

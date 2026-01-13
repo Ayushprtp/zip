@@ -51,7 +51,7 @@ const PurePreviewMessage = ({
   const isUserMessage = useMemo(() => message.role === "user", [message.role]);
   const partsForDisplay = useMemo(
     () =>
-      message.parts.filter(
+      (message.parts || []).filter(
         (part) => !(part.type === "text" && (part as any).ingestionPreview),
       ),
     [message.parts],
@@ -80,7 +80,7 @@ const PurePreviewMessage = ({
                 <ReasoningPart
                   key={key}
                   readonly={readonly}
-                  reasoningText={part.text}
+                  reasoningText={(part as any).reasoning || (part as any).text}
                   isThinking={isLastPart && isLastMessage && isLoading}
                 />
               );
@@ -142,7 +142,7 @@ const PurePreviewMessage = ({
                   }
                   addToolResult={addToolResult}
                   key={key}
-                  part={part}
+                  part={part as any}
                   setMessages={setMessages}
                 />
               );
@@ -190,7 +190,10 @@ export const PreviewMessage = memo(
     if (!equal(prevProps.message.metadata, nextProps.message.metadata))
       return false;
 
-    if (prevProps.message.parts.length !== nextProps.message.parts.length) {
+    if (
+      (prevProps.message.parts?.length ?? 0) !==
+      (nextProps.message.parts?.length ?? 0)
+    ) {
       return false;
     }
     if (!equal(prevProps.message.parts, nextProps.message.parts)) {

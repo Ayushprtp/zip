@@ -126,11 +126,11 @@ export const UserMessagePart = memo(
     const ref = useRef<HTMLDivElement>(null);
     const scrolledRef = useRef(false);
 
-    const isLongText = part.text.length > MAX_TEXT_LENGTH;
+    const isLongText = (part.text || "").length > MAX_TEXT_LENGTH;
     const displayText =
       expanded || !isLongText
         ? part.text
-        : truncateString(part.text, MAX_TEXT_LENGTH);
+        : truncateString(part.text || "", MAX_TEXT_LENGTH);
 
     const deleteMessage = useCallback(async () => {
       if (!setMessages) return;
@@ -221,7 +221,7 @@ export const UserMessagePart = memo(
                   variant="ghost"
                   size="icon"
                   className={cn("size-3! p-4!")}
-                  onClick={() => copy(part.text)}
+                  onClick={() => copy(part.text || "")}
                 >
                   {copied ? <Check /> : <Copy />}
                 </Button>
@@ -372,7 +372,7 @@ export const AssistMessagePart = memo(function AssistMessagePart({
           "opacity-50 border border-destructive bg-card rounded-lg": isError,
         })}
       >
-        <Markdown>{part.text}</Markdown>
+        <Markdown>{part.text || ""}</Markdown>
       </div>
       {showActions && (
         <div className="flex w-full">
@@ -383,7 +383,7 @@ export const AssistMessagePart = memo(function AssistMessagePart({
                 variant="ghost"
                 size="icon"
                 className="size-3! p-4!"
-                onClick={() => copy(part.text)}
+                onClick={() => copy(part.text || "")}
               >
                 {copied ? <Check /> : <Copy />}
               </Button>
@@ -516,7 +516,7 @@ export const AssistMessagePart = memo(function AssistMessagePart({
                           Token Usage
                           <span className="text-xs text-muted-foreground font-normal">
                             {
-                              message.parts.filter(
+                              (message.parts || []).filter(
                                 (v) => v.type != "step-start",
                               ).length
                             }{" "}
