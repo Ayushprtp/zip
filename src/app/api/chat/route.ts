@@ -327,22 +327,8 @@ export async function POST(request: Request) {
       },
     });
 
-    // Use baseStream if available (internal SDK stream)
-    if ((result as any).baseStream) {
-      return new Response((result as any).baseStream, {
-        headers: {
-          "Content-Type": "text/plain; charset=utf-8",
-          "X-Vercel-AI-Data-Stream": "v1",
-        },
-      });
-    }
-
-    // Fallback debug
-    const keys = Object.keys(result);
-    console.log("StreamResult Keys:", keys);
-    throw new Error(
-      `Stream result missing baseStream. Keys: ${keys.join(", ")}`,
-    );
+    // Return the text stream response
+    return result.toTextStreamResponse();
   } catch (error: any) {
     logger.error(error);
     return Response.json({ message: error.message }, { status: 500 });
