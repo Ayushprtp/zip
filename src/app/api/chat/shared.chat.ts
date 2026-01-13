@@ -163,13 +163,13 @@ export function handleError(error: any) {
   }
   logger.error(error);
   logger.error(`Route Error: ${error.name}`);
-  return errorToString(error.message);
+  return `${errorToString(error)} \n ${error?.stack || ""}`;
 }
 
 export function extractInProgressToolPart(message: UIMessage): ToolUIPart[] {
   if (message.role != "assistant") return [];
   if ((message.metadata as ChatMetadata)?.toolChoice != "manual") return [];
-  return message.parts.filter(
+  return (message.parts || []).filter(
     (part) =>
       isToolUIPart(part) &&
       part.state == "output-available" &&

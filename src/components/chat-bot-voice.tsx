@@ -597,7 +597,7 @@ function ConversationView({
                   return (
                     <ToolMessagePart
                       key={index}
-                      part={part}
+                      part={part as any}
                       showActions={false}
                       messageId={message.id}
                       isLast={part.state.startsWith("input")}

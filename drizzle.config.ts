@@ -5,7 +5,12 @@ const dialect = "postgresql";
 
 const url = process.env.POSTGRES_URL!;
 
-const schema = "./src/lib/db/pg/schema.pg.ts";
+// Include all schema files
+const schema = [
+  "./src/lib/db/pg/schema.pg.ts",
+  "./src/lib/db/pg/schema-rbac.pg.ts",
+  "./src/lib/db/pg/schema-billing.pg.ts",
+];
 
 const out = "./src/lib/db/migrations/pg";
 

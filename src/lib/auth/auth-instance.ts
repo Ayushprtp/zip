@@ -101,7 +101,12 @@ const options = {
     database: {
       generateId: false,
     },
-  },
+    trustedOrigins: [
+      process.env.BETTER_AUTH_URL!,
+      process.env.NEXT_PUBLIC_BASE_URL!,
+      "http://localhost:3000",
+    ].filter(Boolean),
+  } as any,
   account: {
     accountLinking: {
       trustedProviders: (

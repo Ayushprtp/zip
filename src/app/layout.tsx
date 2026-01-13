@@ -19,9 +19,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "better-chatbot",
-  description:
-    "Better Chatbot is a chatbot that uses the Tools to answer questions.",
+  title: "Flare.sh",
+  description: "Flare.sh is a chatbot that uses the Tools to answer questions.",
 };
 
 export default async function RootLayout({
@@ -38,7 +37,7 @@ export default async function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="system"
+          defaultTheme="dark"
           themes={["light", "dark"]}
           storageKey="app-theme-v2"
           disableTransitionOnChange

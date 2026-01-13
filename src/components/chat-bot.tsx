@@ -128,7 +128,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       const part = messages
         .slice(0, 2)
         .flatMap((m) =>
-          m.parts
+          (m.parts || [])
             .filter((v) => v.type === "text")
             .map(
               (p) =>
@@ -164,7 +164,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
         }
         const lastMessage = messages.at(-1)!;
         // Filter out UI-only parts (e.g., source-url) so the model doesn't receive unknown parts
-        const attachments: ChatAttachment[] = lastMessage.parts.reduce(
+        const attachments: ChatAttachment[] = (lastMessage.parts || []).reduce(
           (acc: ChatAttachment[], part: any) => {
             if (part?.type === "file") {
               acc.push({
@@ -188,7 +188,9 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
 
         const sanitizedLastMessage = {
           ...lastMessage,
-          parts: lastMessage.parts.filter((p: any) => p?.type !== "source-url"),
+          parts: (lastMessage.parts || []).filter(
+            (p: any) => p?.type !== "source-url",
+          ),
         } as typeof lastMessage;
         const hasFilePart = lastMessage.parts?.some(
           (p) => (p as any)?.type === "file",
@@ -267,7 +269,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     if (status != "ready") return false;
     const lastMessage = messages.at(-1);
     if (lastMessage?.role != "assistant") return false;
-    const lastPart = lastMessage.parts.at(-1);
+    const lastPart = lastMessage?.parts?.at(-1);
     if (!lastPart) return false;
     if (!isToolUIPart(lastPart)) return false;
     if (lastPart.state.startsWith("output")) return false;
@@ -278,13 +280,13 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     if (!isLoading || error) return false;
     const lastMessage = messages.at(-1);
     if (lastMessage?.role == "user") return "think";
-    const lastPart = lastMessage?.parts.at(-1);
+    const lastPart = lastMessage?.parts?.at(-1);
     if (!lastPart) return "think";
-    const secondPart = lastMessage?.parts[1];
-    if (secondPart?.type == "text" && secondPart.text.length == 0)
+    const secondPart = lastMessage?.parts?.[1];
+    if (secondPart?.type == "text" && (secondPart.text?.length ?? 0) == 0)
       return "think";
     if (lastPart?.type == "step-start") {
-      return lastMessage?.parts.length == 1 ? "think" : "space";
+      return (lastMessage?.parts?.length ?? 0) == 1 ? "think" : "space";
     }
     return false;
   }, [isLoading, messages.at(-1)]);
@@ -382,7 +384,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       e.stopPropagation();
       if (isLastMessageCopy) {
         const lastMessage = messages.at(-1);
-        const lastMessageText = lastMessage!.parts
+        const lastMessageText = (lastMessage!.parts || [])
           .filter((part): part is TextUIPart => part.type == "text")
           ?.at(-1)?.text;
         if (!lastMessageText) return;
@@ -452,7 +454,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
                       isLastMessage &&
                       message.role != "user" &&
                       !space &&
-                      message.parts.length > 1
+                      (message.parts?.length ?? 0) > 1
                         ? "min-h-[calc(55dvh-40px)]"
                         : ""
                     }

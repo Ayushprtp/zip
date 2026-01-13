@@ -32,6 +32,7 @@ export const BASE_URL = (() => {
 })().replace(/\/+$/, "");
 
 export const BASE_THEMES = [
+  "purple-night",
   "default",
   "zinc",
   "slate",

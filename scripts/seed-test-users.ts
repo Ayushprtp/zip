@@ -191,7 +191,13 @@ async function createUserWithBetterAuth(userData: {
           );
           await db
             .update(UserTable)
-            .set({ role: userData.role })
+            .set({
+              role: userData.role as
+                | "super_admin"
+                | "admin"
+                | "moderator"
+                | "user",
+            })
             .where(sql`id = ${user.id}`);
         } catch (error) {
           console.warn(`Could not set role for ${userData.email}:`, error);
@@ -262,21 +268,21 @@ async function seedTestUsers() {
     });
     console.log("✅ Created admin user:", adminUser?.id);
 
-    // 2. Editor User
+    // 2. Editor User (now uses USER role since editor was removed)
     const editorUser = await createUserWithBetterAuth({
       email: TEST_USERS.editor.email,
       password: TEST_USERS.editor.password,
       name: TEST_USERS.editor.name,
-      role: USER_ROLES.EDITOR,
+      role: USER_ROLES.USER,
     });
     console.log("✅ Created editor user:", editorUser?.id);
 
-    // 3. Editor2 User
+    // 3. Editor2 User (now uses USER role since editor was removed)
     const editor2User = await createUserWithBetterAuth({
       email: TEST_USERS.editor2.email,
       password: TEST_USERS.editor2.password,
       name: TEST_USERS.editor2.name,
-      role: USER_ROLES.EDITOR,
+      role: USER_ROLES.USER,
     });
     console.log("✅ Created editor2 user:", editor2User?.id);
 
@@ -303,7 +309,7 @@ async function seedTestUsers() {
           email,
           password: `TestPass${i}!`,
           name: `Test User ${i}`,
-          role: isEditor ? USER_ROLES.EDITOR : USER_ROLES.USER,
+          role: isEditor ? USER_ROLES.USER : USER_ROLES.USER,
           banned: isBanned,
           banReason: isBanned ? "Test ban for E2E testing" : undefined,
         });
@@ -387,13 +393,13 @@ async function seedSampleUsageData(userIds: string[]) {
             id: `${userId}-msg-1-${timestamp}`,
             threadId: thread[0].id,
             role: "user" as const,
-            parts: [{ type: "text", text: "Test user message" }],
+            parts: [{ type: "text", text: "Test user message" }] as any,
           },
           {
             id: `${userId}-msg-2-${timestamp}`,
             threadId: thread[0].id,
             role: "assistant" as const,
-            parts: [{ type: "text", text: "Test assistant response" }],
+            parts: [{ type: "text", text: "Test assistant response" }] as any,
             metadata: {
               chatModel: { provider: "openai", model: "gpt-4o" },
               usage: {
@@ -401,13 +407,13 @@ async function seedSampleUsageData(userIds: string[]) {
                 inputTokens: Math.floor(Math.random() * 100) + 50,
                 outputTokens: Math.floor(Math.random() * 100) + 50,
               },
-            },
+            } as any,
           },
           {
             id: `${userId}-msg-3-${timestamp}`,
             threadId: thread[0].id,
             role: "assistant" as const,
-            parts: [{ type: "text", text: "Another test response" }],
+            parts: [{ type: "text", text: "Another test response" }] as any,
             metadata: {
               chatModel: {
                 provider: "anthropic",
@@ -418,7 +424,7 @@ async function seedSampleUsageData(userIds: string[]) {
                 inputTokens: Math.floor(Math.random() * 100) + 50,
                 outputTokens: Math.floor(Math.random() * 100) + 50,
               },
-            },
+            } as any,
           },
         ]);
       }

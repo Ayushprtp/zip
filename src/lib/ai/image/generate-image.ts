@@ -39,7 +39,7 @@ export async function generateImageWithOpenAI(
   options: GenerateImageOptions,
 ): Promise<GeneratedImageResult> {
   return experimental_generateImage({
-    model: openai.image("gpt-image-1-mini"),
+    model: openai.image("dall-e-3"),
     abortSignal: options.abortSignal,
     prompt: options.prompt,
   }).then((res) => {
