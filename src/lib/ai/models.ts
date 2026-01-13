@@ -18,6 +18,132 @@ const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
+// --- Custom Gemini Proxy Setup ---
+function createCustomGeminiModel(modelId: string): any {
+  const baseURL = process.env.CUSTOM_GEMINI_BASE_URL;
+  const apiKey = process.env.CUSTOM_GEMINI_API_KEY;
+
+  return {
+    specificationVersion: "v2",
+    provider: "customGemini",
+    modelId: modelId,
+    defaultObjectGenerationMode: "json",
+    doGenerate: async (options: any) => {
+      const modelMessages = (options.prompt.messages || []).map((m: any) => ({
+        role: m.role,
+        content:
+          typeof m.content === "string"
+            ? m.content
+            : Array.isArray(m.content)
+              ? m.content
+                  .filter((c: any) => c && c.type === "text")
+                  .map((c: any) => c.text || "")
+                  .join("")
+              : "",
+      }));
+
+      const resp = await fetch(`${baseURL}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: modelId,
+          messages: modelMessages,
+          stream: false,
+        }),
+      });
+      const data = await resp.json();
+      return {
+        text: data.choices?.[0]?.message?.content || "",
+        finishReason: "stop",
+        usage: {
+          promptTokens: data.usage?.prompt_tokens || 0,
+          completionTokens: data.usage?.completion_tokens || 0,
+        },
+        rawCall: { rawPrompt: modelMessages, rawSettings: {} },
+      };
+    },
+    doStream: async (options: any) => {
+      const modelMessages = (options.prompt.messages || []).map((m: any) => ({
+        role: m.role,
+        content:
+          typeof m.content === "string"
+            ? m.content
+            : Array.isArray(m.content)
+              ? m.content
+                  .filter((c: any) => c && c.type === "text")
+                  .map((c: any) => c.text || "")
+                  .join("")
+              : "",
+      }));
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          const resp = await fetch(`${baseURL}/chat/completions`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+              Accept: "text/event-stream",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: modelMessages,
+              stream: true,
+            }),
+          });
+
+          if (!resp.body) {
+            controller.close();
+            return;
+          }
+
+          const reader = resp.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+              if (!line.startsWith("data: ")) continue;
+              const dataStr = line.slice(6).trim();
+              if (dataStr === "[DONE]") continue;
+              try {
+                const json = JSON.parse(dataStr);
+                const delta = json.choices?.[0]?.delta?.content;
+                if (delta) {
+                  controller.enqueue({
+                    type: "text-delta",
+                    textDelta: delta,
+                  });
+                }
+              } catch (_e) {}
+            }
+          }
+          controller.enqueue({
+            type: "finish",
+            finishReason: "stop",
+            usage: { promptTokens: 0, completionTokens: 0 },
+          });
+          controller.close();
+        },
+      });
+
+      return {
+        stream,
+        rawCall: { rawPrompt: modelMessages, rawSettings: {} },
+      };
+    },
+  };
+}
+
 // --- GLM Proxy (chat.z.ai) Setup ---
 const GLM_MODEL_ALIASES: Record<string, string> = {
   "glm-4.7": "glm-4.7",
@@ -387,6 +513,9 @@ const staticModels = {
     "gpt-oss-120b": groq("openai/gpt-oss-120b"),
     "qwen3-32b": groq("qwen/qwen3-32b"),
   },
+  customGemini: {
+    "gemini-3": createCustomGeminiModel("gemini-3"),
+  },
   glm: {
     "glm-4.5": createCustomModel("glm", "glm-4.5"),
     "glm-4.5v": createCustomModel("glm", "glm-4.5v"),
@@ -432,6 +561,8 @@ Object.values(staticModels.google).forEach((m) =>
 
 // Exports required by other files
 export const isToolCallUnsupportedModel = (model: any) => {
+  // customGemini provider supports tool calls
+  if (model?.provider === "customGemini") return false;
   return (
     model?.modelId?.startsWith("glm") ||
     model?.modelId?.startsWith("z1") ||
