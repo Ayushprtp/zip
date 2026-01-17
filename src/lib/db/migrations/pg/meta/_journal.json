@@ -120,6 +120,20 @@
       "when": 1768233566966,
       "tag": "0016_rich_giant_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1737138000000,
+      "tag": "0017_rbac_role_migration",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1737139200000,
+      "tag": "0018_builder_threads",
+      "breakpoints": true
     }
   ]
 }

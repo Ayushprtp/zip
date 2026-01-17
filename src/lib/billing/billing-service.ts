@@ -1,6 +1,6 @@
 import "server-only";
 
-import { USER_PLANS, UserPlan, userPlanInfo } from "@/types/roles";
+import type { UserPlan } from "@/types/roles";
 
 /**
  * FLARE.SH BILLING SERVICE

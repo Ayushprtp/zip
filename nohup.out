@@ -1,0 +1,32 @@
+
+> flare.sh@1.26.0 start /home/dead/zip
+> next start
+
+   ▲ Next.js 16.0.7
+   - Local:         http://localhost:3005
+   - Network:       http://168.231.103.22:3005
+
+ ✓ Starting...
+ ✓ Ready in 619ms
+⏳ Running PostgreSQL migrations...
+✅ PostgreSQL migrations completed in 57 ms
+[Flare.sh] ℹ [719a] MCP Manager:  Initializing MCP clients manager
+[Flare.sh] ℹ Creating file storage: vercel-blob
+[2m2026-01-17T13:47:56.427Z[0m [31mERROR[0m [1m[Better Auth]:[0m Invalid origin: http://localhost:3006
+[2m2026-01-17T13:48:04.433Z[0m [31mERROR[0m [1m[Better Auth]:[0m Invalid origin: http://localhost:3006
+[2m2026-01-17T13:48:05.491Z[0m [31mERROR[0m [1m[Better Auth]:[0m Invalid origin: http://localhost:3006
+[2m2026-01-17T13:48:05.733Z[0m [31mERROR[0m [1m[Better Auth]:[0m Invalid origin: http://localhost:3006
+[Flare.sh] ℹ User creation hook: casual4694@gmail.com will get role: user (isFirstUser: false)
+[Flare.sh] ℹ Creating file storage: vercel-blob
+[Flare.sh] ℹ Chat API:  create chat thread: 8f5a94d7-aa2b-430c-b4c1-acb25f46b034
+[Flare.sh] ℹ Chat API:  mcp-server count: 0, mcp-tools count :0
+AI SDK Warning System: To turn off warning logging, set the AI_SDK_LOG_WARNINGS global to false.
+AI SDK Warning (customGemini / gemini-3-pro): The feature "specificationVersion" is used in a compatibility mode. Using v2 specification compatibility mode. Some features may not be available.
+[Flare.sh] ℹ Title API:  chatModel: customGemini/gemini-3-pro, threadId: 8f5a94d7-aa2b-430c-b4c1-acb25f46b034
+AI SDK Warning (customGemini / gemini-3-pro): The feature "specificationVersion" is used in a compatibility mode. Using v2 specification compatibility mode. Some features may not be available.
+[Flare.sh] ℹ Chat API:  mcp-server count: 0, mcp-tools count :0
+AI SDK Warning (customGemini / gemini-advanced): The feature "specificationVersion" is used in a compatibility mode. Using v2 specification compatibility mode. Some features may not be available.
+[Flare.sh] ℹ Title API:  chatModel: customGemini/gemini-advanced, threadId: 8f5a94d7-aa2b-430c-b4c1-acb25f46b034
+AI SDK Warning (customGemini / gemini-advanced): The feature "specificationVersion" is used in a compatibility mode. Using v2 specification compatibility mode. Some features may not be available.
+(node:1404904) Warning: `--localstorage-file` was provided without a valid path
+(Use `node --trace-warnings ...` to show where the warning was created)

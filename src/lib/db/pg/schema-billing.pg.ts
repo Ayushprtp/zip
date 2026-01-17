@@ -10,7 +10,6 @@ import {
   bigint,
   decimal,
   index,
-  json,
 } from "drizzle-orm/pg-core";
 import { UserTable } from "./schema.pg";
 
