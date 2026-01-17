@@ -280,7 +280,7 @@ export function validateRoleChange(
   if (
     (newRole === USER_ROLES.MODERATOR || newRole === USER_ROLES.USER) &&
     ![USER_ROLES.SUPER_ADMIN, USER_ROLES.ADMIN].includes(
-      actorUser.role as UserRole,
+      actorUser.role as typeof USER_ROLES.SUPER_ADMIN | typeof USER_ROLES.ADMIN,
     )
   ) {
     throw new Error("Insufficient permissions to assign this role.");

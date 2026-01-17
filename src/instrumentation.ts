@@ -1,5 +1,8 @@
 import { IS_VERCEL_ENV } from "lib/const";
 
+// Disable AI SDK warnings globally
+process.env.AI_SDK_LOG_WARNINGS = "false";
+
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     if (!IS_VERCEL_ENV) {

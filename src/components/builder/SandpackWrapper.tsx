@@ -2,24 +2,36 @@
 
 import {
   SandpackProvider,
-  SandpackLayout,
   SandpackCodeEditor,
   SandpackPreview,
   SandpackConsole,
   useSandpack,
 } from "@codesandbox/sandpack-react";
-import { atomDark } from "@codesandbox/sandpack-themes";
-import { useState } from "react";
-import { Play, Square, RotateCcw, Code, Terminal } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import {
+  Play,
+  Square,
+  RotateCcw,
+  Terminal,
+  ChevronRight,
+  ChevronLeft,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BuilderErrorBoundary } from "./BuilderErrorBoundary";
+import { getAssetGenerator } from "@/lib/builder/asset-generator";
+import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
+import { createSandpackTheme } from "@/lib/builder/sandpack-theme";
+import { useTheme } from "next-themes";
+import type { RuntimeError } from "@/types/builder";
 
 type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
+
+type ViewMode = "code" | "preview" | "split";
 
 interface SandpackWrapperProps {
   files: Record<string, string>;
   template: Template;
-  onTemplateChange?: (template: Template) => void;
+  onAssetGenerated?: (path: string, content: string) => void;
 }
 
 const DEFAULT_FILES: Record<Template, Record<string, string>> = {
@@ -56,7 +68,9 @@ const DEFAULT_FILES: Record<Template, Record<string, string>> = {
 
 function ServerControls() {
   const { sandpack } = useSandpack();
-  const [status, setStatus] = useState<"idle" | "running" | "booting">("running");
+  const [status, setStatus] = useState<"idle" | "running" | "booting">(
+    "running",
+  );
 
   const handleRestart = () => {
     setStatus("booting");
@@ -76,32 +90,112 @@ function ServerControls() {
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground capitalize">{status}</span>
-      <div className="flex gap-1">
-        <Button size="icon" variant="ghost" onClick={handleStart} disabled={status === "running"}>
-          <Play className="h-4 w-4" />
-        </Button>
-        <Button size="icon" variant="ghost" onClick={handleStop} disabled={status === "idle"}>
-          <Square className="h-4 w-4" />
-        </Button>
-        <Button size="icon" variant="ghost" onClick={handleRestart}>
-          <RotateCcw className="h-4 w-4" />
-        </Button>
-      </div>
+    <div className="flex items-center gap-1">
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={handleStart}
+        disabled={status === "running"}
+        className="h-7 w-7"
+        title="Run"
+      >
+        <Play className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={handleStop}
+        disabled={status === "idle"}
+        className="h-7 w-7"
+        title="Stop"
+      >
+        <Square className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        size="icon"
+        variant="ghost"
+        onClick={handleRestart}
+        className="h-7 w-7"
+        title="Restart"
+      >
+        <RotateCcw className="h-3.5 w-3.5" />
+      </Button>
     </div>
   );
 }
 
-export function SandpackWrapper({ files, template, onTemplateChange }: SandpackWrapperProps) {
-  const [showEditor, setShowEditor] = useState(true);
-  const [showConsole, setShowConsole] = useState(true);
+// Internal component to handle asset generation with Sandpack context
+function AssetGenerationHandler({
+  onAssetGenerated,
+}: { onAssetGenerated?: (path: string, content: string) => void }) {
+  const { listen } = useSandpack();
+  const listenerUnsubscribeRef = useRef<(() => void) | null>(null);
+
+  // Get asset generator instance
+  const assetGenerator = getAssetGenerator({
+    onAssetGenerated: (result) => {
+      console.log("Asset generated:", result.path);
+      onAssetGenerated?.(result.path, result.content);
+    },
+  });
+
+  useEffect(() => {
+    // Clean up previous listener
+    if (listenerUnsubscribeRef.current) {
+      listenerUnsubscribeRef.current();
+    }
+
+    // Set up new listener for errors
+    const unsubscribe = listen((message: any) => {
+      // Handle errors - Sandpack uses 'action' type with 'show-error' action
+      if (message.type === "action" && message.action === "show-error") {
+        const error: RuntimeError = {
+          type: "fatal",
+          message: message.title || "Unknown error",
+          stack: message.message,
+          file: message.path,
+          line: message.line,
+          column: message.column,
+        };
+
+        // Check if this is a missing asset error and generate placeholder
+        assetGenerator.processError(error).catch((err) => {
+          console.error("Failed to generate asset:", err);
+        });
+      }
+    });
+
+    listenerUnsubscribeRef.current = unsubscribe;
+
+    return () => {
+      if (listenerUnsubscribeRef.current) {
+        listenerUnsubscribeRef.current();
+      }
+    };
+  }, [listen, assetGenerator, onAssetGenerated]);
+
+  return null; // This component doesn't render anything
+}
+
+export function SandpackWrapper({
+  files,
+  template,
+  onAssetGenerated,
+}: SandpackWrapperProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>("split");
+  const [showConsole, setShowConsole] = useState(false);
+  const [showFileExplorer, setShowFileExplorer] = useState(true);
+  const { theme, systemTheme } = useTheme();
   const mergedFiles = { ...DEFAULT_FILES[template], ...files };
+
+  const currentTheme = theme === "system" ? systemTheme : theme;
+  const isDark = currentTheme === "dark";
+  const sandpackTheme = createSandpackTheme(isDark);
 
   return (
     <SandpackProvider
       template={template === "vite-react" ? "vite-react" : template}
-      theme={atomDark}
+      theme={sandpackTheme}
       files={mergedFiles}
       options={{
         externalResources: ["https://cdn.tailwindcss.com"],
@@ -109,46 +203,149 @@ export function SandpackWrapper({ files, template, onTemplateChange }: SandpackW
         recompileDelay: 500,
       }}
     >
-      <div className="flex flex-col h-full border rounded-lg overflow-hidden bg-background">
-        {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50">
-          <div className="flex items-center gap-2">
-            <select
-              value={template}
-              onChange={(e) => onTemplateChange?.(e.target.value as Template)}
-              className="text-sm bg-background border rounded px-2 py-1"
-            >
-              <option value="react">React</option>
-              <option value="nextjs">Next.js</option>
-              <option value="vite-react">Vite + React</option>
-              <option value="vanilla">Vanilla JS</option>
-              <option value="static">Static HTML</option>
-            </select>
-            <ServerControls />
+      {/* Asset Generation Handler */}
+      <AssetGenerationHandler onAssetGenerated={onAssetGenerated} />
+
+      <div className="absolute inset-0 flex flex-col bg-background">
+        {/* Top Header with Tabs */}
+        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50 shrink-0 z-10">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* View Mode Tabs */}
+            <div className="flex gap-1 bg-background border rounded-md p-1">
+              <Button
+                size="sm"
+                variant={viewMode === "code" ? "secondary" : "ghost"}
+                onClick={() => setViewMode("code")}
+                className="h-7 px-2 text-xs"
+              >
+                Code
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === "preview" ? "secondary" : "ghost"}
+                onClick={() => setViewMode("preview")}
+                className="h-7 px-2 text-xs"
+              >
+                Preview
+              </Button>
+              <Button
+                size="sm"
+                variant={viewMode === "split" ? "secondary" : "ghost"}
+                onClick={() => setViewMode("split")}
+                className="h-7 px-2 text-xs"
+              >
+                Split
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-1">
-            <Button size="icon" variant={showEditor ? "secondary" : "ghost"} onClick={() => setShowEditor(!showEditor)}>
-              <Code className="h-4 w-4" />
-            </Button>
-            <Button size="icon" variant={showConsole ? "secondary" : "ghost"} onClick={() => setShowConsole(!showConsole)}>
+
+          <div className="flex items-center gap-1">
+            <ServerControls />
+            <div className="w-px h-4 bg-border mx-1" />
+            <Button
+              size="icon"
+              variant={showConsole ? "secondary" : "ghost"}
+              onClick={() => setShowConsole(!showConsole)}
+              className="h-7 w-7"
+              title="Toggle Terminal"
+            >
               <Terminal className="h-4 w-4" />
             </Button>
           </div>
         </div>
 
-        {/* Main Layout */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Main Workspace - Fully Responsive */}
+        <div className="flex-1 flex overflow-hidden min-h-0">
           <BuilderErrorBoundary onError={() => setShowConsole(true)}>
-            <SandpackLayout className="flex-1 !rounded-none !border-0">
-              {showEditor && <SandpackCodeEditor showTabs showLineNumbers className="min-w-[300px]" />}
-              <SandpackPreview showNavigator showRefreshButton className="flex-1" />
-            </SandpackLayout>
-          </BuilderErrorBoundary>
-          {showConsole && (
-            <div className="h-40 border-t">
-              <SandpackConsole className="h-full" />
+            {/* File Explorer Sidebar - Collapsible */}
+            {showFileExplorer &&
+              (viewMode === "code" || viewMode === "split") && (
+                <div className="w-48 lg:w-56 xl:w-64 border-r flex flex-col bg-muted/20 shrink-0">
+                  <div className="flex items-center justify-between px-2 py-1.5 border-b bg-muted/50 shrink-0">
+                    <span className="text-xs font-semibold uppercase text-muted-foreground">
+                      Files
+                    </span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setShowFileExplorer(false)}
+                      className="h-5 w-5"
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="flex-1 overflow-auto min-h-0">
+                    <VSCodeFileExplorer />
+                  </div>
+                </div>
+              )}
+
+            {/* Toggle File Explorer Button (when collapsed) */}
+            {!showFileExplorer &&
+              (viewMode === "code" || viewMode === "split") && (
+                <div className="border-r shrink-0">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setShowFileExplorer(true)}
+                    className="h-8 w-8 m-1"
+                    title="Show File Explorer"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+
+            {/* Editor and Preview Area - Takes all remaining space */}
+            <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
+              <div className="flex-1 flex overflow-hidden min-h-0">
+                {/* Code Editor - Responsive width */}
+                {(viewMode === "code" || viewMode === "split") && (
+                  <div
+                    className={`${viewMode === "split" ? "w-1/2 border-r" : "w-full"} flex flex-col overflow-hidden min-w-0 relative`}
+                  >
+                    <SandpackCodeEditor
+                      showTabs
+                      closableTabs
+                      showLineNumbers
+                      wrapContent
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        height: "100%",
+                        width: "100%",
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Preview - Responsive width */}
+                {(viewMode === "preview" || viewMode === "split") && (
+                  <div
+                    className={`${viewMode === "split" ? "w-1/2" : "w-full"} flex flex-col overflow-hidden min-w-0 relative`}
+                  >
+                    <SandpackPreview
+                      showNavigator
+                      showRefreshButton
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        height: "100%",
+                        width: "100%",
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Console - Collapsible bottom panel */}
+              {showConsole && (
+                <div className="h-32 md:h-40 lg:h-48 border-t shrink-0">
+                  <SandpackConsole style={{ height: "100%", width: "100%" }} />
+                </div>
+              )}
             </div>
-          )}
+          </BuilderErrorBoundary>
         </div>
       </div>
     </SandpackProvider>

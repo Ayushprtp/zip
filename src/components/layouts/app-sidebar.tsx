@@ -6,6 +6,7 @@ import { useEffect } from "react";
 import { AppSidebarMenus } from "./app-sidebar-menus";
 import { AppSidebarAgents } from "./app-sidebar-agents";
 import { AppSidebarThreads } from "./app-sidebar-threads";
+import { AppSidebarBuilderThreads } from "./app-sidebar-builder-threads";
 import { SidebarHeaderShared } from "./sidebar-header";
 
 import { isShortcutEvent, Shortcuts } from "lib/keyboard-shortcuts";
@@ -52,6 +53,7 @@ export function AppSidebar({
         <div className="flex flex-col overflow-y-auto">
           <AppSidebarMenus user={user} />
           <AppSidebarAgents userRole={userRole} />
+          <AppSidebarBuilderThreads user={user} />
           <AppSidebarThreads />
         </div>
       </SidebarContent>
