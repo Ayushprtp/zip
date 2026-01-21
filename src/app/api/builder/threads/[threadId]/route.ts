@@ -11,7 +11,7 @@ import { eq, and, desc } from "drizzle-orm";
 // GET /api/builder/threads/[threadId] - Get thread with messages and files
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { threadId: string } },
+  { params }: { params: Promise<{ threadId: string }> },
 ) {
   try {
     const session = await getSession();
@@ -19,7 +19,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { threadId } = params;
+    const { threadId } = await params;
 
     // Get thread
     const [thread] = await pgDb
@@ -63,7 +63,7 @@ export async function GET(
 // PATCH /api/builder/threads/[threadId] - Update thread
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { threadId: string } },
+  { params }: { params: Promise<{ threadId: string }> },
 ) {
   try {
     const session = await getSession();
@@ -71,7 +71,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { threadId } = params;
+    const { threadId } = await params;
     const body = await request.json();
     const { title, template } = body;
 
@@ -107,7 +107,7 @@ export async function PATCH(
 // DELETE /api/builder/threads/[threadId] - Delete thread
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { threadId: string } },
+  { params }: { params: Promise<{ threadId: string }> },
 ) {
   try {
     const session = await getSession();
@@ -115,7 +115,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { threadId } = params;
+    const { threadId } = await params;
 
     await pgDb
       .delete(builderThreads)

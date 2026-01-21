@@ -11,10 +11,10 @@ import {
   Monitor,
   Rocket,
   QrCode,
+  History,
 } from "lucide-react";
 import { Button } from "ui/button";
 import { Separator } from "ui/separator";
-import { useMemo } from "react";
 import { appStore } from "@/app/store";
 import { useShallow } from "zustand/shallow";
 import { getShortcutKeyList, Shortcuts } from "lib/keyboard-shortcuts";
@@ -28,6 +28,7 @@ interface BuilderHeaderProps {
   onDeploy: () => void;
   onShowQR: () => void;
   onToggleMobilePreview: () => void;
+  onCreateCheckpoint?: () => void;
   mobilePreview: boolean;
   deploying: boolean;
   onProjectNameClick?: () => void;
@@ -40,6 +41,7 @@ export function BuilderHeader({
   onDeploy,
   onShowQR,
   onToggleMobilePreview,
+  onCreateCheckpoint,
   mobilePreview,
   deploying,
   onProjectNameClick,
@@ -152,6 +154,23 @@ export function BuilderHeader({
             {mobilePreview ? "Desktop View" : "Mobile View"}
           </TooltipContent>
         </Tooltip>
+
+        {/* Create Checkpoint */}
+        {onCreateCheckpoint && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={onCreateCheckpoint}
+                className="h-8 w-8"
+              >
+                <History className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Save Checkpoint</TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Download Zip */}
         <Tooltip>

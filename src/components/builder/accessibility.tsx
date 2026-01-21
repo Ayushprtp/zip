@@ -5,7 +5,6 @@
  */
 
 import React, { useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 // ============================================================================
 // Skip Links
@@ -262,15 +261,18 @@ export function AccessibleFormField({
         </p>
       )}
       <div>
-        {React.cloneElement(children as React.ReactElement, {
-          id,
-          "aria-invalid": !!error,
-          "aria-describedby":
-            [description ? descriptionId : null, error ? errorId : null]
-              .filter(Boolean)
-              .join(" ") || undefined,
-          "aria-required": required,
-        })}
+        {React.cloneElement(
+          children as React.ReactElement,
+          {
+            id,
+            "aria-invalid": !!error,
+            "aria-describedby":
+              [description ? descriptionId : null, error ? errorId : null]
+                .filter(Boolean)
+                .join(" ") || undefined,
+            "aria-required": required,
+          } as any,
+        )}
       </div>
       {error && (
         <p id={errorId} className="text-xs text-destructive" role="alert">
@@ -363,9 +365,9 @@ export function AccessibleDialog({
   description,
   children,
 }: AccessibleDialogProps) {
-  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const dialogRef = React.useRef<HTMLDivElement | null>(null);
 
-  useFocusTrap(dialogRef, open);
+  useFocusTrap(dialogRef as React.RefObject<HTMLElement>, open);
   useFocusRestore();
 
   useEffect(() => {

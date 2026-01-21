@@ -136,8 +136,34 @@ function createCustomGeminiModel(modelId: string): any {
   };
 }
 
+// --- Groq Model Setup ---
+import { createGroq } from "@ai-sdk/groq";
+
+const groq = createGroq({
+  apiKey: process.env.GROQ_API_KEY,
+  baseURL: process.env.GROQ_BASE_URL,
+});
+
 // --- Model Registration ---
 const staticModels = {
+  groq: {
+    // Production Models
+    "llama-3.1-8b-instant": groq("llama-3.1-8b-instant"),
+    "llama-3.3-70b-versatile": groq("llama-3.3-70b-versatile"),
+    "llama-guard-4-12b": groq("meta-llama/llama-guard-4-12b"),
+    "gpt-oss-120b": groq("openai/gpt-oss-120b"),
+    "gpt-oss-20b": groq("openai/gpt-oss-20b"),
+
+    // Preview Models (Latest Llama 4)
+    "llama-4-maverick": groq("meta-llama/llama-4-maverick-17b-128e-instruct"),
+    "llama-4-scout": groq("meta-llama/llama-4-scout-17b-16e-instruct"),
+    "kimi-k2": groq("moonshotai/kimi-k2-instruct-0905"),
+    "qwen3-32b": groq("qwen/qwen3-32b"),
+
+    // Systems
+    compound: groq("groq/compound"),
+    "compound-mini": groq("groq/compound-mini"),
+  },
   google: {
     "gemini-pro": createCustomGeminiModel("gemini-pro"),
     "gemini-3-pro": createCustomGeminiModel("gemini-3-pro"),
@@ -252,8 +278,8 @@ export const getFilePartSupportedMimeTypes = (model: any) => {
 
 // --- Default Model ---
 export const DEFAULT_CHAT_MODEL: ChatModel = {
-  provider: "google",
-  model: "gemini-3-pro",
+  provider: "groq",
+  model: "llama-3.3-70b-versatile",
 };
 
 // --- Custom Model Provider ---

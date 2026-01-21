@@ -5,7 +5,6 @@
 
 "use client";
 
-import React from "react";
 import type { FileDiff } from "@/types/builder";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";

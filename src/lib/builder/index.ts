@@ -37,6 +37,6 @@ export type {
 // Services
 export { exportService } from "./export-service";
 export { deploymentService } from "./deployment-service";
-export { assetGenerator } from "./asset-generator";
-export { errorDetector } from "./error-detector";
+export { getAssetGenerator, AssetGenerator } from "./asset-generator";
+export { getErrorDetector, ErrorDetector } from "./error-detector";
 export { autoFixService } from "./auto-fix-service";

@@ -1,7 +1,8 @@
 import { BuilderThreadPage } from "@/components/builder/BuilderThreadPage";
 
-export default function BuilderThread({
+export default async function BuilderThread({
   params,
-}: { params: { threadId: string } }) {
-  return <BuilderThreadPage threadId={params.threadId} />;
+}: { params: Promise<{ threadId: string }> }) {
+  const { threadId } = await params;
+  return <BuilderThreadPage threadId={threadId} />;
 }

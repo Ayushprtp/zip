@@ -5,7 +5,7 @@
 
 "use client";
 
-import React, { useCallback, useRef } from "react";
+import { useCallback, useRef } from "react";
 import Editor, { OnMount, OnChange } from "@monaco-editor/react";
 import type { editor } from "monaco-editor";
 import { useProject } from "@/lib/builder/project-context";

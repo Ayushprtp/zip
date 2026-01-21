@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/server";
 import { pgDb } from "@/lib/db/pg/db.pg";
-import {
-  builderThreads,
-  builderMessages,
-  builderFiles,
-} from "@/db/schema/builder";
+import { builderThreads } from "@/db/schema/builder";
 import { eq, desc } from "drizzle-orm";
 
 // GET /api/builder/threads - List all builder threads for user

@@ -1,14 +1,13 @@
 import { ContextMention, LibraryType } from "@/types/builder";
 import { getLibraryConfig } from "./library-configs";
-import {
-  autoConfigureShadcn,
-  mergeDependenciesIntoPackageJson,
-} from "./shadcn-auto-config";
+import { autoConfigureShadcn } from "./shadcn-auto-config";
 
 export interface AIServiceConfig {
-  apiKey: string;
-  model: "claude" | "gemini";
+  apiKey?: string;
+  model?: "claude" | "gemini" | "groq";
   baseUrl?: string;
+  provider?: string;
+  modelName?: string;
 }
 
 export interface GenerateCodeOptions {
@@ -29,13 +28,13 @@ export interface GenerateCodeOptions {
 
 /**
  * AI Service for generating code with streaming support
- * Integrates with Claude/Gemini APIs
+ * Integrates with Groq/Claude/Gemini APIs via AI SDK
  */
 export class AIService {
-  private config: AIServiceConfig;
   private abortController: AbortController | null = null;
+  private config: AIServiceConfig;
 
-  constructor(config: AIServiceConfig) {
+  constructor(config: AIServiceConfig = {}) {
     this.config = config;
   }
 
@@ -200,39 +199,73 @@ export class AIService {
   }
 
   /**
-   * Stream completion from AI API
+   * Stream completion from AI API using AI SDK with Groq
    */
   private async streamCompletion(
-    _prompt: string,
+    prompt: string,
     onToken?: (token: string) => void,
   ): Promise<string> {
     this.abortController = new AbortController();
 
-    // This is a placeholder implementation
-    // In a real implementation, this would call the actual AI API
-    // For now, we'll simulate streaming
+    try {
+      // Import dynamically to avoid server-side issues
+      const { customModelProvider, DEFAULT_CHAT_MODEL } = await import(
+        "@/lib/ai/models"
+      );
+      const { streamText } = await import("ai");
 
-    return new Promise((resolve, reject) => {
-      const simulatedResponse = "Generated code response";
-      let index = 0;
+      // Get the model from config or use default (Groq)
+      const chatModel =
+        this.config.provider && this.config.modelName
+          ? { provider: this.config.provider, model: this.config.modelName }
+          : DEFAULT_CHAT_MODEL;
 
-      const interval = setInterval(() => {
-        if (this.abortController?.signal.aborted) {
-          clearInterval(interval);
-          reject(new Error("Request aborted"));
-          return;
-        }
+      const model = customModelProvider.getModel(chatModel);
 
-        if (index < simulatedResponse.length) {
-          const token = simulatedResponse[index];
-          onToken?.(token);
-          index++;
-        } else {
-          clearInterval(interval);
-          resolve(simulatedResponse);
-        }
-      }, 50);
-    });
+      // Build system prompt for code generation
+      const systemPrompt = `You are an expert code generator for a web development IDE. 
+When generating or modifying code:
+1. Wrap each file in a code block with the file path
+2. Use format: \`\`\`filepath:/path/to/file.ext
+3. Include complete, working code
+4. Follow best practices and modern standards
+5. Add helpful comments
+6. Ensure code is production-ready
+
+Example response format:
+\`\`\`filepath:/src/App.jsx
+import React from 'react';
+
+export default function App() {
+  return <div>Hello World</div>;
+}
+\`\`\`
+
+Always provide complete file contents, not just snippets.`;
+
+      // Stream the response
+      const result = await streamText({
+        model,
+        system: systemPrompt,
+        prompt,
+        abortSignal: this.abortController.signal,
+      });
+
+      let fullText = "";
+
+      // Process the stream
+      for await (const textPart of result.textStream) {
+        fullText += textPart;
+        onToken?.(textPart);
+      }
+
+      return fullText;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        throw new Error("Request aborted");
+      }
+      throw error;
+    }
   }
 
   /**
@@ -244,42 +277,44 @@ export class AIService {
 
   /**
    * Retry with exponential backoff
+   * Reserved for future use
    */
-  private async retryWithBackoff<T>(
-    fn: () => Promise<T>,
-    maxRetries: number = 3,
-  ): Promise<T> {
-    for (let i = 0; i < maxRetries; i++) {
-      try {
-        return await fn();
-      } catch (error) {
-        if (i === maxRetries - 1) throw error;
+  // private async retryWithBackoff<T>(
+  //   fn: () => Promise<T>,
+  //   maxRetries: number = 3,
+  // ): Promise<T> {
+  //   for (let i = 0; i < maxRetries; i++) {
+  //     try {
+  //       return await fn();
+  //     } catch (error) {
+  //       if (i === maxRetries - 1) throw error;
 
-        // Exponential backoff: 1s, 2s, 4s
-        const delay = Math.pow(2, i) * 1000;
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
+  //       // Exponential backoff: 1s, 2s, 4s
+  //       const delay = Math.pow(2, i) * 1000;
+  //       await new Promise((resolve) => setTimeout(resolve, delay));
+  //     }
+  //   }
 
-    throw new Error("Max retries exceeded");
-  }
+  //   throw new Error("Max retries exceeded");
+  // }
 
   /**
    * Handle API errors
+   * Reserved for future use
    */
-  private handleAPIError(error: any): Error {
-    if (error.status === 429) {
-      return new Error("Rate limit exceeded. Please try again later.");
-    } else if (error.status >= 500) {
-      return new Error(
-        "AI service is temporarily unavailable. Please try again.",
-      );
-    } else if (error.status === 401) {
-      return new Error("Invalid API key. Please check your configuration.");
-    } else {
-      return new Error(`AI service error: ${error.message || "Unknown error"}`);
-    }
-  }
+  // private handleAPIError(error: any): Error {
+  //   if (error.status === 429) {
+  //     return new Error("Rate limit exceeded. Please try again later.");
+  //   } else if (error.status >= 500) {
+  //     return new Error(
+  //       "AI service is temporarily unavailable. Please try again.",
+  //     );
+  //   } else if (error.status === 401) {
+  //     return new Error("Invalid API key. Please check your configuration.");
+  //   } else {
+  //     return new Error(`AI service error: ${error.message || "Unknown error"}`);
+  //   }
+  // }
 }
 
 /**
