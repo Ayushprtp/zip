@@ -22,6 +22,7 @@ import { getAssetGenerator } from "@/lib/builder/asset-generator";
 import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
 import { createSandpackTheme } from "@/lib/builder/sandpack-theme";
 import { useTheme } from "next-themes";
+import { useProject } from "@/lib/builder/project-context";
 import type { RuntimeError } from "@/types/builder";
 
 type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
@@ -124,6 +125,84 @@ function ServerControls() {
   );
 }
 
+// Internal component to handle file changes and sync with ProjectContext
+function FileChangeListener() {
+  const { sandpack } = useSandpack();
+  const { files, updateFile } = sandpack;
+  const { state, actions } = useProject();
+  const previousSandpackFilesRef = useRef<Record<string, string>>({});
+  const previousContextFilesRef = useRef<Record<string, string>>({});
+  const isSyncingToSandpackRef = useRef(false);
+  const isSyncingToContextRef = useRef(false);
+
+  // Sync ProjectContext → Sandpack (for hot reload when AI or external changes occur)
+  useEffect(() => {
+    if (isSyncingToSandpackRef.current) return;
+
+    let hasChanges = false;
+    Object.entries(state.files).forEach(([path, content]) => {
+      const sandpackFile = files[path];
+      const previousContent = previousContextFilesRef.current[path];
+
+      // Update Sandpack if content changed in context and differs from Sandpack
+      if (
+        content !== previousContent &&
+        sandpackFile &&
+        sandpackFile.code !== content
+      ) {
+        isSyncingToSandpackRef.current = true;
+        hasChanges = true;
+        updateFile(path, content);
+      }
+    });
+
+    // Update reference
+    previousContextFilesRef.current = { ...state.files };
+
+    if (hasChanges) {
+      setTimeout(() => {
+        isSyncingToSandpackRef.current = false;
+      }, 150);
+    }
+  }, [state.files, files, updateFile]);
+
+  // Sync Sandpack → ProjectContext (when user edits in Sandpack editor)
+  useEffect(() => {
+    if (isSyncingToContextRef.current) return;
+
+    let hasChanges = false;
+    Object.entries(files).forEach(([path, file]) => {
+      if (file.code !== undefined) {
+        const previousContent = previousSandpackFilesRef.current[path];
+        const currentContextContent = state.files[path];
+
+        // Only update if content changed in Sandpack and differs from context
+        if (
+          file.code !== previousContent &&
+          file.code !== currentContextContent
+        ) {
+          isSyncingToContextRef.current = true;
+          hasChanges = true;
+          actions.updateFile(path, file.code);
+        }
+      }
+    });
+
+    // Update reference
+    previousSandpackFilesRef.current = Object.fromEntries(
+      Object.entries(files).map(([path, file]) => [path, file.code || ""]),
+    );
+
+    if (hasChanges) {
+      setTimeout(() => {
+        isSyncingToContextRef.current = false;
+      }, 150);
+    }
+  }, [files, actions, state.files]);
+
+  return null;
+}
+
 // Internal component to handle asset generation with Sandpack context
 function AssetGenerationHandler({
   onAssetGenerated,
@@ -205,6 +284,9 @@ export function SandpackWrapper({
     >
       {/* Asset Generation Handler */}
       <AssetGenerationHandler onAssetGenerated={onAssetGenerated} />
+
+      {/* File Change Listener - Syncs to ProjectContext */}
+      <FileChangeListener />
 
       <div className="absolute inset-0 flex flex-col bg-background">
         {/* Top Header with Tabs */}

@@ -7,7 +7,7 @@ import { eq, and } from "drizzle-orm";
 // POST /api/builder/threads/[threadId]/files - Save/update file
 export async function POST(
   request: NextRequest,
-  { params }: { params: { threadId: string } },
+  { params }: { params: Promise<{ threadId: string }> },
 ) {
   try {
     const session = await getSession();
@@ -15,7 +15,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { threadId } = params;
+    const { threadId } = await params;
     const body = await request.json();
     const { filePath, fileContent } = body;
 
@@ -74,7 +74,7 @@ export async function POST(
 // DELETE /api/builder/threads/[threadId]/files - Delete file
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { threadId: string } },
+  { params }: { params: Promise<{ threadId: string }> },
 ) {
   try {
     const session = await getSession();
@@ -82,7 +82,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { threadId } = params;
+    const { threadId } = await params;
     const { searchParams } = new URL(request.url);
     const filePath = searchParams.get("filePath");
 

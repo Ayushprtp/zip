@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -97,7 +97,6 @@ interface FileItemProps {
 }
 
 function FileItem({ path, selected, onToggle }: FileItemProps) {
-  const _fileName = path.split("/").pop() || path;
   const isDirectory = path.endsWith("/");
 
   return (

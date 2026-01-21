@@ -5,7 +5,7 @@
 
 "use client";
 
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { RuntimeError } from "@/types/builder";
 import { getErrorDetector } from "@/lib/builder/error-detector";
 import { Button } from "@/components/ui/button";

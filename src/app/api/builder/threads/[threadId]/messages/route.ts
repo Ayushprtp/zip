@@ -7,7 +7,7 @@ import { eq, and } from "drizzle-orm";
 // POST /api/builder/threads/[threadId]/messages - Add message
 export async function POST(
   request: NextRequest,
-  { params }: { params: { threadId: string } },
+  { params }: { params: Promise<{ threadId: string }> },
 ) {
   try {
     const session = await getSession();
@@ -15,7 +15,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { threadId } = params;
+    const { threadId } = await params;
     const body = await request.json();
     const { role, content, mentions = [] } = body;
 

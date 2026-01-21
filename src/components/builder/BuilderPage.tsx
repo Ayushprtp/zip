@@ -23,7 +23,6 @@ import type { TemplateType, DeploymentConfig } from "app-types/builder";
 import {
   ErrorBoundary,
   ChatErrorBoundary,
-  EditorErrorBoundary,
   PreviewErrorBoundary,
 } from "./error-boundary";
 

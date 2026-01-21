@@ -274,7 +274,6 @@ export function DeploymentProgressSteps({
       {steps.map((step, index) => {
         const isComplete = index < currentStep;
         const isCurrent = index === currentStep;
-        const _isPending = index > currentStep;
 
         return (
           <div key={index} className="flex items-center gap-3">
