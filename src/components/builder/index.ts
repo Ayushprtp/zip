@@ -15,6 +15,14 @@ export { TabBar } from "./tab-bar";
 export { TimelineSidebar } from "./timeline-sidebar";
 export { DiffViewer } from "./diff-viewer";
 
+// GitHub & Vercel Integration
+export { GitHubConnectionPanel } from "./github-connection-panel";
+export { VercelConnectionPanel } from "./vercel-connection-panel";
+export { GitHistorySidebar } from "./git-history-sidebar";
+export { DeploymentDashboard } from "./deployment-dashboard";
+export { GitHubVercelIntegration } from "./github-vercel-integration";
+export { GitHubVercelButton } from "./github-vercel-button";
+
 // Error Handling
 export {
   ErrorBoundary,
