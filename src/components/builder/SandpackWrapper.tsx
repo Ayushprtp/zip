@@ -9,10 +9,6 @@ import {
 } from "@codesandbox/sandpack-react";
 import { useState, useEffect, useRef } from "react";
 import {
-  Play,
-  Square,
-  RotateCcw,
-  Terminal,
   ChevronRight,
   ChevronLeft,
 } from "lucide-react";
@@ -23,6 +19,7 @@ import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
 import { createSandpackTheme } from "@/lib/builder/sandpack-theme";
 import { useTheme } from "next-themes";
 import { useProject } from "@/lib/builder/project-context";
+import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import type { RuntimeError } from "@/types/builder";
 
 type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
@@ -69,62 +66,43 @@ const DEFAULT_FILES: Record<Template, Record<string, string>> = {
   },
 };
 
-function ServerControls() {
+// Component to register server controls with the store
+function ServerControlRegistrar() {
   const { sandpack } = useSandpack();
-  const [status, setStatus] = useState<"idle" | "running" | "booting">(
-    "running",
-  );
+  const setServerControl = useBuilderUIStore((state) => state.setServerControl);
+  const setServerStatus = useBuilderUIStore((state) => state.setServerStatus);
 
-  const handleRestart = () => {
-    setStatus("booting");
-    sandpack.runSandpack();
-    setTimeout(() => setStatus("running"), 1000);
-  };
+  useEffect(() => {
+    const control = {
+      start: () => {
+        setServerStatus("booting");
+        sandpack.runSandpack();
+        setTimeout(() => {
+          setServerStatus("running");
+        }, 1000);
+      },
+      stop: () => {
+        sandpack.resetAllFiles();
+        setServerStatus("idle");
+      },
+      restart: () => {
+        setServerStatus("booting");
+        sandpack.runSandpack();
+        setTimeout(() => {
+          setServerStatus("running");
+        }, 1000);
+      },
+    };
 
-  const handleStop = () => {
-    sandpack.resetAllFiles();
-    setStatus("idle");
-  };
+    setServerControl(control);
+    setServerStatus("running");
 
-  const handleStart = () => {
-    setStatus("booting");
-    sandpack.runSandpack();
-    setTimeout(() => setStatus("running"), 1000);
-  };
+    return () => {
+      setServerControl(null);
+    };
+  }, [sandpack, setServerControl, setServerStatus]);
 
-  return (
-    <div className="flex items-center gap-1">
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={handleStart}
-        disabled={status === "running"}
-        className="h-7 w-7"
-        title="Run"
-      >
-        <Play className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={handleStop}
-        disabled={status === "idle"}
-        className="h-7 w-7"
-        title="Stop"
-      >
-        <Square className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={handleRestart}
-        className="h-7 w-7"
-        title="Restart"
-      >
-        <RotateCcw className="h-3.5 w-3.5" />
-      </Button>
-    </div>
-  );
+  return null;
 }
 
 // Internal component to handle file changes and sync with ProjectContext
@@ -265,28 +243,16 @@ export function SandpackWrapper({
   viewMode: externalViewMode,
   showConsole: externalShowConsole,
 }: SandpackWrapperProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>(
-    externalViewMode || "split",
-  );
-  const [showConsole, setShowConsole] = useState(
-    externalShowConsole || false,
-  );
+  // Use external props if provided, otherwise use local state
+  const [localViewMode, _setLocalViewMode] = useState<ViewMode>("split");
+  const [localShowConsole, _setLocalShowConsole] = useState(false);
+  
+  const viewMode = externalViewMode !== undefined ? externalViewMode : localViewMode;
+  const showConsole = externalShowConsole !== undefined ? externalShowConsole : localShowConsole;
+  
   const [showFileExplorer, setShowFileExplorer] = useState(true);
   const { theme, systemTheme } = useTheme();
   const mergedFiles = { ...DEFAULT_FILES[template], ...files };
-
-  // Sync with external props
-  useEffect(() => {
-    if (externalViewMode !== undefined) {
-      setViewMode(externalViewMode);
-    }
-  }, [externalViewMode]);
-
-  useEffect(() => {
-    if (externalShowConsole !== undefined) {
-      setShowConsole(externalShowConsole);
-    }
-  }, [externalShowConsole]);
 
   const currentTheme = theme === "system" ? systemTheme : theme;
   const isDark = currentTheme === "dark";
@@ -303,6 +269,9 @@ export function SandpackWrapper({
         recompileDelay: 500,
       }}
     >
+      {/* Server Control Registrar - Connects header buttons to Sandpack */}
+      <ServerControlRegistrar />
+
       {/* Asset Generation Handler */}
       <AssetGenerationHandler onAssetGenerated={onAssetGenerated} />
 
@@ -312,22 +281,26 @@ export function SandpackWrapper({
       <div className="absolute inset-0 flex flex-col bg-background">
         {/* Main Workspace - No separate header, controlled by BuilderHeader */}
         <div className="flex-1 flex overflow-hidden min-h-0">
-          <BuilderErrorBoundary onError={() => setShowConsole(true)}>
+          <BuilderErrorBoundary onError={() => {
+            // On error, toggle console via store
+            const toggleConsole = useBuilderUIStore.getState().toggleConsole;
+            toggleConsole();
+          }}>
             {/* File Explorer Sidebar - Collapsible */}
             {showFileExplorer &&
               (viewMode === "code" || viewMode === "split") && (
-                <div className="w-48 lg:w-56 xl:w-64 border-r flex flex-col bg-muted/20 shrink-0">
-                  <div className="flex items-center justify-between px-2 py-1.5 border-b bg-muted/50 shrink-0">
-                    <span className="text-xs font-semibold uppercase text-muted-foreground">
+                <div className="w-40 lg:w-48 xl:w-56 border-r flex flex-col bg-muted/20 shrink-0">
+                  <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/50 shrink-0">
+                    <span className="text-[10px] font-semibold uppercase text-muted-foreground">
                       Files
                     </span>
                     <Button
                       size="icon"
                       variant="ghost"
                       onClick={() => setShowFileExplorer(false)}
-                      className="h-5 w-5"
+                      className="h-4 w-4"
                     >
-                      <ChevronLeft className="h-3 w-3" />
+                      <ChevronLeft className="h-2.5 w-2.5" />
                     </Button>
                   </div>
                   <div className="flex-1 overflow-auto min-h-0">
@@ -344,10 +317,10 @@ export function SandpackWrapper({
                     size="icon"
                     variant="ghost"
                     onClick={() => setShowFileExplorer(true)}
-                    className="h-8 w-8 m-1"
+                    className="h-7 w-7 m-0.5"
                     title="Show File Explorer"
                   >
-                    <ChevronRight className="h-4 w-4" />
+                    <ChevronRight className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               )}
@@ -396,7 +369,7 @@ export function SandpackWrapper({
 
               {/* Console - Collapsible bottom panel */}
               {showConsole && (
-                <div className="h-32 md:h-40 lg:h-48 border-t shrink-0">
+                <div className="h-28 md:h-32 lg:h-40 border-t shrink-0">
                   <SandpackConsole style={{ height: "100%", width: "100%" }} />
                 </div>
               )}
@@ -405,68 +378,5 @@ export function SandpackWrapper({
         </div>
       </div>
     </SandpackProvider>
-  );
-}
-
-// Export the header component for use in BuilderPage
-interface SandpackHeaderProps {
-  viewMode: ViewMode;
-  setViewMode: (mode: ViewMode) => void;
-  showConsole: boolean;
-  setShowConsole: (show: boolean) => void;
-}
-
-function SandpackHeader({
-  viewMode,
-  setViewMode,
-  showConsole,
-  setShowConsole,
-}: SandpackHeaderProps) {
-  return (
-    <div className="flex items-center gap-2 px-2 py-1.5 border-b bg-muted/30 shrink-0 z-10">
-      {/* View Mode Tabs */}
-      <div className="flex gap-0.5 bg-background border rounded-md p-0.5">
-        <Button
-          size="sm"
-          variant={viewMode === "code" ? "secondary" : "ghost"}
-          onClick={() => setViewMode("code")}
-          className="h-6 px-2 text-[11px]"
-        >
-          Code
-        </Button>
-        <Button
-          size="sm"
-          variant={viewMode === "preview" ? "secondary" : "ghost"}
-          onClick={() => setViewMode("preview")}
-          className="h-6 px-2 text-[11px]"
-        >
-          Preview
-        </Button>
-        <Button
-          size="sm"
-          variant={viewMode === "split" ? "secondary" : "ghost"}
-          onClick={() => setViewMode("split")}
-          className="h-6 px-2 text-[11px]"
-        >
-          Split
-        </Button>
-      </div>
-
-      <div className="flex-1" />
-
-      <div className="flex items-center gap-0.5">
-        <ServerControls />
-        <div className="w-px h-4 bg-border mx-0.5" />
-        <Button
-          size="icon"
-          variant={showConsole ? "secondary" : "ghost"}
-          onClick={() => setShowConsole(!showConsole)}
-          className="h-7 w-7"
-          title="Toggle Terminal"
-        >
-          <Terminal className="h-3 w-3" />
-        </Button>
-      </div>
-    </div>
   );
 }
