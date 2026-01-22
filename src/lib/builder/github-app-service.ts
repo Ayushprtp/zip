@@ -28,10 +28,8 @@ export interface InstallationInfo {
 
 export class GitHubAppService {
   private app: App;
-  private config: GitHubAppConfig;
 
   constructor(config: GitHubAppConfig) {
-    this.config = config;
     this.app = new App({
       appId: config.appId,
       privateKey: config.privateKey,
@@ -65,12 +63,12 @@ export class GitHubAppService {
    * Get installation access token
    */
   async getInstallationToken(installationId: number): Promise<string> {
-    const { token } = await this.app.octokit.auth({
+    const auth = (await this.app.octokit.auth({
       type: "installation",
       installationId,
-    });
+    })) as { token: string };
 
-    return token as string;
+    return auth.token;
   }
 
   /**
@@ -83,8 +81,8 @@ export class GitHubAppService {
     return data.installations.map((installation) => ({
       id: installation.id,
       account: {
-        login: installation.account?.login || "",
-        type: installation.account?.type || "",
+        login: (installation.account as any)?.login || "",
+        type: (installation.account as any)?.type || "",
       },
     }));
   }
@@ -145,10 +143,7 @@ export class GitHubAppService {
     const crypto = require("crypto");
     const hmac = crypto.createHmac("sha256", secret);
     const digest = "sha256=" + hmac.update(payload).digest("hex");
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(digest),
-    );
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
   }
 
   /**

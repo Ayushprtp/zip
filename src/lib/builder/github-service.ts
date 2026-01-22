@@ -27,7 +27,7 @@ export interface CreateRepoOptions {
 export class GitHubService {
   private octokit: Octokit;
 
-  constructor(private token: string) {
+  constructor(token: string) {
     this.octokit = new Octokit({ auth: token });
   }
 

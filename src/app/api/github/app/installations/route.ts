@@ -2,7 +2,7 @@
  * GitHub App Installations API
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { GitHubAppService } from "@/lib/builder/github-app-service";
 
@@ -21,10 +21,7 @@ export async function GET() {
     const token = await getGitHubToken();
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const githubApp = new GitHubAppService({

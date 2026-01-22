@@ -39,4 +39,4 @@ export { exportService } from "./export-service";
 export { deploymentService } from "./deployment-service";
 export { getAssetGenerator, AssetGenerator } from "./asset-generator";
 export { getErrorDetector, ErrorDetector } from "./error-detector";
-export { autoFixService } from "./auto-fix-service";
+export { createAutoFixService, AutoFixService } from "./auto-fix-service";

@@ -23,12 +23,11 @@ export function GitHubVercelIntegration() {
   const github = useGitHubIntegration();
   const vercel = useVercelIntegration();
   const [syncing, setSyncing] = useState(false);
-  const [selectedRepo, setSelectedRepo] = useState<string>("");
   const [selectedProject, setSelectedProject] = useState<string>("");
 
   const handleInitializeAndSync = async () => {
-    if (!github.isConnected || !selectedRepo) {
-      toast.error("Please connect GitHub and select a repository");
+    if (!github.isConnected || !github.repos.length) {
+      toast.error("Please connect GitHub and ensure you have repositories");
       return;
     }
 
@@ -37,11 +36,8 @@ export function GitHubVercelIntegration() {
       // Get token from cookie (in real app, handle this securely)
       const token = ""; // This should come from your auth system
 
-      // Initialize repo with current files
-      const repo = github.repos.find((r) => r.full_name === selectedRepo);
-      if (!repo) {
-        throw new Error("Repository not found");
-      }
+      // Use the first available repo
+      const repo = github.repos[0];
 
       await github.initializeRepo(state.files, repo.clone_url, token);
 
@@ -70,24 +66,6 @@ export function GitHubVercelIntegration() {
     }
   };
 
-  const handleManualSync = async (message: string) => {
-    if (!github.isConnected) {
-      toast.error("GitHub not connected");
-      return;
-    }
-
-    setSyncing(true);
-    try {
-      const token = ""; // Get from auth system
-      await github.syncToGitHub(state.files, message, token);
-      toast.success("Changes pushed to GitHub!");
-    } catch (err: any) {
-      toast.error(err.message || "Sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   return (
     <div className="flex h-full flex-col">
       <div className="border-b p-4">
@@ -95,7 +73,7 @@ export function GitHubVercelIntegration() {
           <h2 className="text-lg font-semibold">Pro Features</h2>
           <Button
             onClick={handleInitializeAndSync}
-            disabled={syncing || !github.isConnected || !selectedRepo}
+            disabled={syncing || !github.isConnected || !github.repos.length}
           >
             {syncing ? (
               <>
@@ -141,7 +119,7 @@ export function GitHubVercelIntegration() {
             onLoadHistory={github.getCommitHistory}
             onCheckout={async (hash) => {
               await github.git.checkout(hash);
-              const files = await github.vfs.exportToProjectFiles();
+              await github.vfs.exportToProjectFiles();
               // Update project context with checked out files
               toast.success("Checked out commit");
             }}

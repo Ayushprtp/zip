@@ -59,6 +59,7 @@
     "@isomorphic-git/lightning-fs": "^4.6.2",
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@monaco-editor/react": "^4.7.0",
+    "@octokit/app": "^16.1.2",
     "@octokit/rest": "^22.0.1",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -115,6 +116,7 @@
     "next-themes": "^0.4.6",
     "ogl": "^1.0.11",
     "pg": "^8.16.3",
+    "pnpm": "^10.28.1",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
@@ -166,10 +168,7 @@
     "vitest": "^3.2.4"
   },
   "lint-staged": {
-    "*.{js,json,mjs,ts,yaml,tsx,css}": [
-      "pnpm format",
-      "pnpm lint:fix"
-    ]
+    "*.{js,json,mjs,ts,yaml,tsx,css}": ["pnpm format", "pnpm lint:fix"]
   },
   "packageManager": "pnpm@10.2.1",
   "engines": {

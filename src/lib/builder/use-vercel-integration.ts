@@ -18,6 +18,12 @@ export interface VercelDeployment {
   state: "BUILDING" | "READY" | "ERROR" | "CANCELED";
   created: number;
   readyState: string;
+  meta?: {
+    githubCommitMessage?: string;
+    githubCommitSha?: string;
+    githubCommitRef?: string;
+    githubCommitAuthorName?: string;
+  };
 }
 
 export function useVercelIntegration() {
@@ -129,9 +135,7 @@ export function useVercelIntegration() {
     setError(null);
 
     try {
-      const res = await fetch(
-        `/api/vercel/deployments?projectId=${projectId}`,
-      );
+      const res = await fetch(`/api/vercel/deployments?projectId=${projectId}`);
       const data = await res.json();
 
       if (data.error) {
@@ -139,8 +143,10 @@ export function useVercelIntegration() {
       }
 
       setDeployments(data.deployments);
+      return data.deployments;
     } catch (err: any) {
       setError(err.message);
+      throw err;
     } finally {
       setLoading(false);
     }

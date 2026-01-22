@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { AIService, GenerateCodeOptions } from "./ai-service";
+import { AIService } from "./ai-service";
 import { ContextMention, LibraryType } from "@/types/builder";
 import { useChatHistory } from "./use-chat-history";
 import { useStreamingResponse } from "./use-streaming-response";
