@@ -24,10 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Github, Loader2, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
+import { Github, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
-const GITHUB_APP_NAME = process.env.NEXT_PUBLIC_GITHUB_APP_NAME || "ai-builder-ide";
+const GITHUB_APP_NAME =
+  process.env.NEXT_PUBLIC_GITHUB_APP_NAME || "ai-builder-ide";
 const GITHUB_APP_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_APP_CLIENT_ID;
 
 export function GitHubAppConnectionPanel() {
@@ -73,12 +74,14 @@ export function GitHubAppConnectionPanel() {
   const loadRepos = async (installationId: string) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/github/repos?installation_id=${installationId}`);
+      const res = await fetch(
+        `/api/github/repos?installation_id=${installationId}`,
+      );
       if (res.ok) {
         const data = await res.json();
         setRepos(data.repos);
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error("Failed to load repositories");
     } finally {
       setLoading(false);
@@ -93,7 +96,7 @@ export function GitHubAppConnectionPanel() {
 
     const redirectUri = `${window.location.origin}/api/github/app/callback`;
     const authUrl = `https://github.com/login/oauth/authorize?client_id=${GITHUB_APP_CLIENT_ID}&redirect_uri=${redirectUri}`;
-    
+
     window.location.href = authUrl;
   };
 
@@ -121,7 +124,7 @@ export function GitHubAppConnectionPanel() {
         const data = await res.json();
         toast.error(data.error || "Connection failed");
       }
-    } catch (err) {
+    } catch (_err) {
       toast.error("Connection failed");
     } finally {
       setLoading(false);
@@ -137,7 +140,7 @@ export function GitHubAppConnectionPanel() {
       setInstallations([]);
       setRepos([]);
       toast.success("Disconnected from GitHub");
-    } catch (err) {
+    } catch (_err) {
       toast.error("Disconnect failed");
     } finally {
       setLoading(false);
@@ -157,7 +160,10 @@ export function GitHubAppConnectionPanel() {
       </CardHeader>
       <CardContent className="space-y-4">
         {!isConnected ? (
-          <Tabs value={authMethod} onValueChange={(v) => setAuthMethod(v as any)}>
+          <Tabs
+            value={authMethod}
+            onValueChange={(v) => setAuthMethod(v as any)}
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="app">GitHub App (Recommended)</TabsTrigger>
               <TabsTrigger value="token">Personal Token</TabsTrigger>
@@ -166,7 +172,8 @@ export function GitHubAppConnectionPanel() {
             <TabsContent value="app" className="space-y-4">
               <div className="space-y-2">
                 <p className="text-sm text-muted-foreground">
-                  Use our GitHub App for secure, fine-grained access to your repositories.
+                  Use our GitHub App for secure, fine-grained access to your
+                  repositories.
                 </p>
                 <div className="flex gap-2">
                   <Button onClick={connectWithGitHubApp} disabled={loading}>
@@ -232,10 +239,17 @@ export function GitHubAppConnectionPanel() {
                 <CheckCircle2 className="h-5 w-5 text-green-500" />
                 <div>
                   <p className="font-medium">{user?.name || user?.login}</p>
-                  <p className="text-sm text-muted-foreground">@{user?.login}</p>
+                  <p className="text-sm text-muted-foreground">
+                    @{user?.login}
+                  </p>
                 </div>
               </div>
-              <Button variant="outline" size="sm" onClick={disconnect} disabled={loading}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={disconnect}
+                disabled={loading}
+              >
                 Disconnect
               </Button>
             </div>
@@ -255,8 +269,12 @@ export function GitHubAppConnectionPanel() {
                   </SelectTrigger>
                   <SelectContent>
                     {installations.map((installation) => (
-                      <SelectItem key={installation.id} value={installation.id.toString()}>
-                        {installation.account.login} ({installation.account.type})
+                      <SelectItem
+                        key={installation.id}
+                        value={installation.id.toString()}
+                      >
+                        {installation.account.login} (
+                        {installation.account.type})
                       </SelectItem>
                     ))}
                   </SelectContent>

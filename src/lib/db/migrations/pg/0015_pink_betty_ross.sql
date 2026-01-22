@@ -1,7 +1,7 @@
 ALTER TABLE "user" ALTER COLUMN "role" SET DATA TYPE varchar;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "account_type" varchar DEFAULT 'normal' NOT NULL;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "plan" varchar DEFAULT 'free' NOT NULL;--> statement-breakpoint
-ALTER TABLE "user" ADD COLUMN "is_owner" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "account_type" varchar DEFAULT 'normal' NOT NULL;--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "plan" varchar DEFAULT 'free' NOT NULL;--> statement-breakpoint
+ALTER TABLE "user" ADD COLUMN IF NOT EXISTS "is_owner" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 
 -- Data migration: Convert old roles to new RBAC system
 -- 'editor' -> 'user'

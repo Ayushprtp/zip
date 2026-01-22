@@ -33,12 +33,10 @@ export function VercelConnectionPanel() {
     error,
     connectVercel,
     disconnectVercel,
-    createProject,
     loadProjects,
   } = useVercelIntegration();
 
   const [token, setToken] = useState("");
-  const [newProjectName, setNewProjectName] = useState("");
   const [selectedProject, setSelectedProject] = useState<string>("");
 
   const handleConnect = async () => {
@@ -116,7 +114,10 @@ export function VercelConnectionPanel() {
 
             <div className="space-y-2">
               <Label>Select Project</Label>
-              <Select value={selectedProject} onValueChange={setSelectedProject}>
+              <Select
+                value={selectedProject}
+                onValueChange={setSelectedProject}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Choose a project" />
                 </SelectTrigger>

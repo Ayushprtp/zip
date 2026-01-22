@@ -10,7 +10,7 @@ export class VirtualFileSystemService {
   private pfs: any;
   private initialized = false;
 
-  constructor(private fsName = "builder-fs") {
+  constructor(fsName = "builder-fs") {
     this.fs = new FS(fsName);
     this.pfs = this.fs.promises;
   }

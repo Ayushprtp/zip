@@ -3,7 +3,6 @@
  * Automatically configures Shadcn UI when components are generated
  */
 
-import { getLibraryConfig } from "./library-configs";
 import type { LibraryType } from "@/types/builder";
 
 /**

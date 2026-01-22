@@ -33,8 +33,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Exchange code for token
-    const { token, refreshToken, expiresAt } =
-      await githubApp.exchangeCodeForToken(code);
+    const { token, refreshToken } = await githubApp.exchangeCodeForToken(code);
 
     // Store tokens in httpOnly cookies
     const cookieStore = await cookies();
@@ -77,7 +76,10 @@ export async function GET(request: NextRequest) {
 
     const errorUrl = new URL("/builder", process.env.NEXT_PUBLIC_APP_URL!);
     errorUrl.searchParams.set("error", "github_auth_failed");
-    errorUrl.searchParams.set("message", error.message || "Authentication failed");
+    errorUrl.searchParams.set(
+      "message",
+      error.message || "Authentication failed",
+    );
 
     return NextResponse.redirect(errorUrl);
   }
