@@ -156,6 +156,27 @@ function BuilderContent() {
   const [projectName, setProjectName] = useState("Untitled Project");
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [serverStatus, setServerStatus] = useState<
+    "idle" | "running" | "booting"
+  >("running");
+  const [isSynced, _setIsSynced] = useState(true);
+
+  // Calculate file count
+  const fileCount = Object.keys(files).length;
+
+  const handleServerStart = () => {
+    setServerStatus("booting");
+    setTimeout(() => setServerStatus("running"), 1000);
+  };
+
+  const handleServerStop = () => {
+    setServerStatus("idle");
+  };
+
+  const handleServerRestart = () => {
+    setServerStatus("booting");
+    setTimeout(() => setServerStatus("running"), 1000);
+  };
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -434,6 +455,12 @@ function BuilderContent() {
               const newName = prompt("Enter project name:", projectName);
               if (newName) setProjectName(newName);
             }}
+            fileCount={fileCount}
+            isSynced={isSynced}
+            onServerStart={handleServerStart}
+            onServerStop={handleServerStop}
+            onServerRestart={handleServerRestart}
+            serverStatus={serverStatus}
           />
         )}
 
@@ -446,15 +473,18 @@ function BuilderContent() {
             recommendedTemplate={recommendedTemplate}
           />
 
-          {/* Left Sidebar - Chat Interface (Responsive width) */}
+          {/* Left Sidebar - Chat Interface */}
           <div
             id="chat-interface"
-            className="w-64 md:w-80 lg:w-96 border-r flex flex-col bg-muted/20 shrink-0"
+            className="w-80 lg:w-96 border-r flex flex-col bg-muted/20 shrink-0"
             role="complementary"
             aria-label="AI Assistant Chat"
           >
-            <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50 shrink-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-background/50 shrink-0">
               <h2 className="font-semibold text-sm">AI Assistant</h2>
+              <span className="text-xs text-muted-foreground">
+                {messages.length} messages
+              </span>
             </div>
             <div className="flex-1 overflow-hidden min-h-0">
               <ChatErrorBoundary>
