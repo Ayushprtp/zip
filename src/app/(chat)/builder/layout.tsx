@@ -32,7 +32,6 @@ export default async function BuilderLayout({
           }
         />
         <AppSidebar user={session.user} />
-        {/* No AppHeader for builder - BuilderHeader is included in the page */}
         <main className="relative bg-background w-full flex flex-col h-screen">
           {children}
         </main>

@@ -33,6 +33,8 @@ interface SandpackWrapperProps {
   files: Record<string, string>;
   template: Template;
   onAssetGenerated?: (path: string, content: string) => void;
+  viewMode?: ViewMode;
+  showConsole?: boolean;
 }
 
 const DEFAULT_FILES: Record<Template, Record<string, string>> = {
@@ -260,12 +262,31 @@ export function SandpackWrapper({
   files,
   template,
   onAssetGenerated,
+  viewMode: externalViewMode,
+  showConsole: externalShowConsole,
 }: SandpackWrapperProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>("split");
-  const [showConsole, setShowConsole] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    externalViewMode || "split",
+  );
+  const [showConsole, setShowConsole] = useState(
+    externalShowConsole || false,
+  );
   const [showFileExplorer, setShowFileExplorer] = useState(true);
   const { theme, systemTheme } = useTheme();
   const mergedFiles = { ...DEFAULT_FILES[template], ...files };
+
+  // Sync with external props
+  useEffect(() => {
+    if (externalViewMode !== undefined) {
+      setViewMode(externalViewMode);
+    }
+  }, [externalViewMode]);
+
+  useEffect(() => {
+    if (externalShowConsole !== undefined) {
+      setShowConsole(externalShowConsole);
+    }
+  }, [externalShowConsole]);
 
   const currentTheme = theme === "system" ? systemTheme : theme;
   const isDark = currentTheme === "dark";
@@ -289,54 +310,7 @@ export function SandpackWrapper({
       <FileChangeListener />
 
       <div className="absolute inset-0 flex flex-col bg-background">
-        {/* Top Header with Tabs */}
-        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50 shrink-0 z-10">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* View Mode Tabs */}
-            <div className="flex gap-1 bg-background border rounded-md p-1">
-              <Button
-                size="sm"
-                variant={viewMode === "code" ? "secondary" : "ghost"}
-                onClick={() => setViewMode("code")}
-                className="h-7 px-2 text-xs"
-              >
-                Code
-              </Button>
-              <Button
-                size="sm"
-                variant={viewMode === "preview" ? "secondary" : "ghost"}
-                onClick={() => setViewMode("preview")}
-                className="h-7 px-2 text-xs"
-              >
-                Preview
-              </Button>
-              <Button
-                size="sm"
-                variant={viewMode === "split" ? "secondary" : "ghost"}
-                onClick={() => setViewMode("split")}
-                className="h-7 px-2 text-xs"
-              >
-                Split
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <ServerControls />
-            <div className="w-px h-4 bg-border mx-1" />
-            <Button
-              size="icon"
-              variant={showConsole ? "secondary" : "ghost"}
-              onClick={() => setShowConsole(!showConsole)}
-              className="h-7 w-7"
-              title="Toggle Terminal"
-            >
-              <Terminal className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Main Workspace - Fully Responsive */}
+        {/* Main Workspace - No separate header, controlled by BuilderHeader */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           <BuilderErrorBoundary onError={() => setShowConsole(true)}>
             {/* File Explorer Sidebar - Collapsible */}
@@ -431,5 +405,68 @@ export function SandpackWrapper({
         </div>
       </div>
     </SandpackProvider>
+  );
+}
+
+// Export the header component for use in BuilderPage
+interface SandpackHeaderProps {
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
+  showConsole: boolean;
+  setShowConsole: (show: boolean) => void;
+}
+
+function SandpackHeader({
+  viewMode,
+  setViewMode,
+  showConsole,
+  setShowConsole,
+}: SandpackHeaderProps) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 border-b bg-muted/30 shrink-0 z-10">
+      {/* View Mode Tabs */}
+      <div className="flex gap-0.5 bg-background border rounded-md p-0.5">
+        <Button
+          size="sm"
+          variant={viewMode === "code" ? "secondary" : "ghost"}
+          onClick={() => setViewMode("code")}
+          className="h-6 px-2 text-[11px]"
+        >
+          Code
+        </Button>
+        <Button
+          size="sm"
+          variant={viewMode === "preview" ? "secondary" : "ghost"}
+          onClick={() => setViewMode("preview")}
+          className="h-6 px-2 text-[11px]"
+        >
+          Preview
+        </Button>
+        <Button
+          size="sm"
+          variant={viewMode === "split" ? "secondary" : "ghost"}
+          onClick={() => setViewMode("split")}
+          className="h-6 px-2 text-[11px]"
+        >
+          Split
+        </Button>
+      </div>
+
+      <div className="flex-1" />
+
+      <div className="flex items-center gap-0.5">
+        <ServerControls />
+        <div className="w-px h-4 bg-border mx-0.5" />
+        <Button
+          size="icon"
+          variant={showConsole ? "secondary" : "ghost"}
+          onClick={() => setShowConsole(!showConsole)}
+          className="h-7 w-7"
+          title="Toggle Terminal"
+        >
+          <Terminal className="h-3 w-3" />
+        </Button>
+      </div>
+    </div>
   );
 }

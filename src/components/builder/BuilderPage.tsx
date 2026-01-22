@@ -6,7 +6,6 @@ import { useBuilderEngine, type Template } from "@/hooks/useBuilderEngine";
 import { ProjectProvider } from "./ProjectContext";
 import { ChatInterface } from "./chat-interface";
 import { TemplateSelectionDialog } from "./TemplateSelectionDialog";
-import { BuilderHeader } from "./BuilderHeader";
 import { X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
@@ -153,30 +152,10 @@ function BuilderContent() {
   >();
   const [templateSelected, setTemplateSelected] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string>("");
-  const [projectName, setProjectName] = useState("Untitled Project");
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [serverStatus, setServerStatus] = useState<
-    "idle" | "running" | "booting"
-  >("running");
-  const [isSynced, _setIsSynced] = useState(true);
-
-  // Calculate file count
-  const fileCount = Object.keys(files).length;
-
-  const handleServerStart = () => {
-    setServerStatus("booting");
-    setTimeout(() => setServerStatus("running"), 1000);
-  };
-
-  const handleServerStop = () => {
-    setServerStatus("idle");
-  };
-
-  const handleServerRestart = () => {
-    setServerStatus("booting");
-    setTimeout(() => setServerStatus("running"), 1000);
-  };
+  const [viewMode, setViewMode] = useState<"code" | "preview" | "split">("split");
+  const [showConsole, setShowConsole] = useState(false);
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -224,7 +203,7 @@ function BuilderContent() {
 
       // Use ExportService for enhanced export with README and proper structure
       await exportService.exportZip(files, templateType, {
-        projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
+        projectName: "project",
         includeReadme: true,
         includePackageJson: true,
       });
@@ -291,7 +270,7 @@ function BuilderContent() {
       // Create deployment configuration
       const config: DeploymentConfig = {
         platform: "netlify",
-        projectName: projectName.toLowerCase().replace(/\s+/g, "-"),
+        projectName: "project",
         buildCommand: getBuildCommand(templateType),
         outputDirectory: getOutputDirectory(templateType),
       };
@@ -441,29 +420,6 @@ function BuilderContent() {
     <ErrorBoundary>
       <SkipLinks />
       <div className="flex flex-col w-full h-screen bg-background overflow-hidden">
-        {/* Builder Header */}
-        {templateSelected && (
-          <BuilderHeader
-            projectName={projectName}
-            onDownloadZip={handleExportZip}
-            onDeploy={handleNetlifyDeploy}
-            onShowQR={() => setShowQR(true)}
-            onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
-            mobilePreview={mobilePreview}
-            deploying={deploying}
-            onProjectNameClick={() => {
-              const newName = prompt("Enter project name:", projectName);
-              if (newName) setProjectName(newName);
-            }}
-            fileCount={fileCount}
-            isSynced={isSynced}
-            onServerStart={handleServerStart}
-            onServerStop={handleServerStop}
-            onServerRestart={handleServerRestart}
-            serverStatus={serverStatus}
-          />
-        )}
-
         <div className="flex flex-1 w-full overflow-hidden">
           {/* Template Selection Dialog */}
           <TemplateSelectionDialog
@@ -521,11 +477,21 @@ function BuilderContent() {
                     >
                       {mobilePreview && (
                         <div className="w-[375px] h-full border-x">
-                          <SandpackWrapper files={files} template={template} />
+                          <SandpackWrapper
+                            files={files}
+                            template={template}
+                            viewMode={viewMode}
+                            showConsole={showConsole}
+                          />
                         </div>
                       )}
                       {!mobilePreview && (
-                        <SandpackWrapper files={files} template={template} />
+                        <SandpackWrapper
+                          files={files}
+                          template={template}
+                          viewMode={viewMode}
+                          showConsole={showConsole}
+                        />
                       )}
                     </TransitionWrapper>
                   </PreviewErrorBoundary>
