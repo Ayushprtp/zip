@@ -5,7 +5,11 @@ import { ChatMessage } from "@/types/builder";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Send } from "lucide-react";
+import { Send, ChevronDown } from "lucide-react";
+import { SelectModel } from "@/components/select-model";
+import { appStore } from "@/app/store";
+import { useShallow } from "zustand/shallow";
+import type { ChatModel } from "app-types/chat";
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -24,6 +28,15 @@ export function ChatInterface({
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [chatModel, setChatModel] = useState<ChatModel | undefined>();
+  const [globalModel] = appStore(useShallow((state) => [state.chatModel]));
+
+  // Use global model if no local model is set
+  useEffect(() => {
+    if (!chatModel && globalModel) {
+      setChatModel(globalModel);
+    }
+  }, [chatModel, globalModel]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -44,6 +57,11 @@ export function ChatInterface({
     }
   };
 
+  const handleModelChange = (model: ChatModel) => {
+    setChatModel(model);
+    appStore.setState({ chatModel: model });
+  };
+
   return (
     <div className={`flex flex-col h-full ${condensed ? "text-sm" : ""}`}>
       <MessageList
@@ -60,6 +78,8 @@ export function ChatInterface({
         onKeyDown={handleKeyDown}
         disabled={isStreaming}
         condensed={condensed}
+        chatModel={chatModel}
+        onModelChange={handleModelChange}
       />
     </div>
   );
@@ -155,6 +175,8 @@ interface ChatInputProps {
   onKeyDown: (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   disabled?: boolean;
   condensed?: boolean;
+  chatModel?: ChatModel;
+  onModelChange: (model: ChatModel) => void;
 }
 
 function ChatInput({
@@ -164,16 +186,36 @@ function ChatInput({
   onKeyDown,
   disabled = false,
   condensed = false,
+  chatModel,
+  onModelChange,
 }: ChatInputProps) {
   return (
-    <div className={`border-t ${condensed ? "p-2" : "p-4"}`}>
+    <div className={`border-t ${condensed ? "p-2" : "p-3"}`}>
+      {/* Model Selector */}
+      <div className="flex items-center justify-between mb-2 px-1">
+        <span className="text-xs text-muted-foreground">Model</span>
+        <SelectModel onSelect={onModelChange} currentModel={chatModel}>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs gap-1 hover:bg-accent"
+          >
+            <span className="truncate max-w-[120px]">
+              {chatModel?.model || "Select model"}
+            </span>
+            <ChevronDown className="h-3 w-3 opacity-50" />
+          </Button>
+        </SelectModel>
+      </div>
+
+      {/* Input Area */}
       <div className="flex gap-2">
         <Textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder="Type a message... (Shift+Enter for new line)"
-          className={`${condensed ? "min-h-[40px] max-h-[120px]" : "min-h-[60px] max-h-[200px]"} resize-none`}
+          className={`${condensed ? "min-h-[60px] max-h-[120px]" : "min-h-[80px] max-h-[200px]"} resize-none text-sm`}
           disabled={disabled}
           data-testid="chat-input"
         />
@@ -181,6 +223,7 @@ function ChatInput({
           onClick={onSend}
           disabled={disabled || !value.trim()}
           size={condensed ? "sm" : "icon"}
+          className="shrink-0"
           data-testid="send-button"
         >
           <Send className="h-4 w-4" />
