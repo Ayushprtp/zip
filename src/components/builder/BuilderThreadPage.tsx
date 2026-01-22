@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useBuilderStore } from "@/stores/builder-store";
 import { SandpackWrapper } from "./SandpackWrapper";
 import { ChatInterface } from "./chat-interface";
-import { BuilderHeader } from "./BuilderHeader";
 import { ProjectProvider, useProject } from "@/lib/builder/project-context";
 import { useProjectSync } from "@/lib/builder/use-project-sync";
 import { toast } from "sonner";
@@ -391,31 +390,6 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   return (
     <div className="flex flex-col w-full h-screen bg-background overflow-hidden">
-      {/* Builder Header */}
-      <BuilderHeader
-        projectName={currentThread.title}
-        onDownloadZip={handleExportZip}
-        onDeploy={handleNetlifyDeploy}
-        onShowQR={() => setShowQR(true)}
-        onToggleMobilePreview={() => setMobilePreview(!mobilePreview)}
-        onCreateCheckpoint={handleCreateCheckpoint}
-        mobilePreview={mobilePreview}
-        deploying={deploying}
-        onProjectNameClick={handleProjectNameClick}
-      />
-
-      {/* Auto-save status bar */}
-      <div className="px-4 py-1.5 border-b bg-muted/30 flex items-center justify-between">
-        <div className="text-xs text-muted-foreground">
-          {Object.keys(files).length} files in project
-        </div>
-        <AutoSaveStatus
-          isSaving={isSaving}
-          hasPendingSaves={hasPendingSaves}
-          isConnected={isConnected}
-        />
-      </div>
-
       <div className="flex flex-1 w-full overflow-hidden">
         {/* Left Sidebar - Chat Interface */}
         <div className="w-64 md:w-80 lg:w-96 border-r flex flex-col bg-muted/20 shrink-0">

@@ -7,6 +7,21 @@ import {
   ChevronDown,
   MessageCircleDashed,
   PanelLeft,
+  Download,
+  Smartphone,
+  Monitor,
+  Rocket,
+  QrCode,
+  History,
+  Play,
+  Square,
+  RotateCcw,
+  Check,
+  FileCode,
+  Terminal,
+  Code2,
+  Eye,
+  Columns2,
 } from "lucide-react";
 import { Button } from "ui/button";
 import { Separator } from "ui/separator";
@@ -21,6 +36,7 @@ import { useTranslations } from "next-intl";
 import { TextShimmer } from "ui/text-shimmer";
 import { buildReturnUrl } from "lib/admin/navigation-utils";
 import { BackButton } from "@/components/layouts/back-button";
+import { Badge } from "ui/badge";
 
 export function AppHeader() {
   const t = useTranslations();
@@ -36,7 +52,16 @@ export function AppHeader() {
     return true;
   }, [currentPaths]);
 
+  const isBuilderPage = useMemo(() => {
+    return currentPaths.startsWith("/builder");
+  }, [currentPaths]);
+
   const componentByPage = useMemo(() => {
+    // Don't show thread dropdown on builder pages
+    if (currentPaths.startsWith("/builder")) {
+      return null;
+    }
+    
     if (currentPaths.startsWith("/chat/")) {
       return <ThreadDropdownComponent />;
     }
@@ -93,15 +118,221 @@ export function AppHeader() {
       </Tooltip>
 
       {componentByPage}
+
+      {/* Project Name Dropdown - Only show on builder pages */}
+      {isBuilderPage && (
+        <div className="items-center gap-1 hidden md:flex">
+          <Separator orientation="vertical" className="h-4" />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                className="h-8 px-2 gap-1 hover:bg-accent shrink-0"
+              >
+                <span className="truncate max-w-[120px] text-xs font-medium">
+                  Project Name
+                </span>
+                <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Project Name</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+      
       <div className="flex-1" />
+      
       {showActionButtons && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Builder Page Buttons */}
+          {isBuilderPage && (
+            <>
+              {/* File Count & Sync Status */}
+              <Badge
+                variant="secondary"
+                className="h-7 px-2 text-[10px] gap-1 shrink-0 hidden sm:flex"
+              >
+                <FileCode className="h-3 w-3" />
+                <span>0</span>
+              </Badge>
+              
+              <Badge
+                variant="outline"
+                className="h-7 px-2 text-[10px] gap-1 shrink-0 hidden sm:flex"
+              >
+                <Check className="h-3 w-3 text-green-500" />
+              </Badge>
+
+              <Separator orientation="vertical" className="h-4 mx-1 hidden sm:block" />
+
+              {/* View Mode Tabs */}
+              <div className="gap-0.5 bg-muted/50 border rounded-md p-0.5 shrink-0 hidden lg:flex">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[10px]"
+                >
+                  <Code2 className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="h-6 px-2 text-[10px]"
+                >
+                  <Eye className="h-3 w-3" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-[10px]"
+                >
+                  <Columns2 className="h-3 w-3" />
+                </Button>
+              </div>
+
+              <Separator orientation="vertical" className="h-4 mx-1 hidden lg:block" />
+
+              {/* Server Controls */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 hidden md:flex"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Start Server</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 hidden md:flex"
+                  >
+                    <Square className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Stop Server</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 hidden md:flex"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Restart Server</TooltipContent>
+              </Tooltip>
+
+              <Separator orientation="vertical" className="h-4 mx-1 hidden md:block" />
+
+              {/* Console Toggle */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 hidden md:flex"
+                  >
+                    <Terminal className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Terminal</TooltipContent>
+              </Tooltip>
+
+              <Separator orientation="vertical" className="h-4 mx-1" />
+
+              {/* Mobile/Desktop Toggle */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0"
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Mobile View</TooltipContent>
+              </Tooltip>
+
+              {/* QR Code */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0"
+                  >
+                    <QrCode className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>QR Code</TooltipContent>
+              </Tooltip>
+
+              <Separator orientation="vertical" className="h-4 mx-1" />
+
+              {/* Checkpoint */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0 hidden sm:flex"
+                  >
+                    <History className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Checkpoint</TooltipContent>
+              </Tooltip>
+
+              {/* Download */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8 shrink-0"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Export</TooltipContent>
+              </Tooltip>
+
+              {/* Deploy */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="default"
+                    className="h-8 w-8 shrink-0"
+                  >
+                    <Rocket className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Deploy</TooltipContent>
+              </Tooltip>
+
+              <Separator orientation="vertical" className="h-4 mx-1" />
+            </>
+          )}
+
+          {/* Voice Chat - Always visible on non-admin pages */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size={"icon"}
                 variant={"ghost"}
-                className="bg-secondary/40"
+                className="bg-secondary/40 h-8 w-8 shrink-0"
                 onClick={() => {
                   appStoreMutate((state) => ({
                     voiceChat: {
@@ -132,12 +363,13 @@ export function AppHeader() {
             </TooltipContent>
           </Tooltip>
 
+          {/* Temporary Chat - Always visible on non-admin pages */}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 size={"icon"}
                 variant={"secondary"}
-                className="bg-secondary/40"
+                className="bg-secondary/40 h-8 w-8 shrink-0"
                 onClick={() => {
                   appStoreMutate((state) => ({
                     temporaryChat: {
