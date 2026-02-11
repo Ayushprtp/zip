@@ -44,6 +44,7 @@ import { ImageToolName } from "lib/ai/tools";
 import { buildCsvIngestionPreviewParts } from "@/lib/ai/ingest/csv-ingest";
 import { serverFileStorage } from "lib/file-storage";
 import { getUserApiKeys } from "lib/ai/user-api-keys";
+import { generateUUID } from "lib/utils";
 
 const logger = globalLogger.withDefaults({
   message: colorize("blackBright", `Chat API: `),
@@ -296,6 +297,13 @@ export async function POST(request: Request) {
           m.role === "system"),
     );
 
+    // Save user message immediately to ensure it's persisted even if stream is interrupted
+    await chatRepository.upsertMessage({
+      ...message,
+      metadata: message.metadata as ChatMetadata,
+      threadId: id,
+    });
+
     // Direct streamText integration
     const result = streamText({
       model,
@@ -307,13 +315,45 @@ export async function POST(request: Request) {
       toolChoice: "auto",
       abortSignal: request.signal,
       onFinish: async (event) => {
-        // Basic placeholder to allow compilation
         try {
+          // Save assistant message(s)
           if (event.response?.messages?.length) {
-            // Logic would go here
+            const responseMessages = event.response.messages;
+            for (const m of responseMessages) {
+              const parts: any[] = [];
+              if (typeof m.content === "string") {
+                parts.push({ type: "text", text: m.content });
+              } else if (Array.isArray(m.content)) {
+                for (const part of m.content) {
+                  if (part.type === "text") {
+                    parts.push({ type: "text", text: part.text });
+                  } else if (part.type === "tool-call") {
+                    parts.push({
+                      type: "tool-invocation",
+                      toolInvocation: {
+                        toolCallId: part.toolCallId,
+                        toolName: part.toolName,
+                        args: (part as any).args,
+                        state: "call",
+                      },
+                    });
+                  }
+                }
+              }
+
+              if (m.role === "assistant") {
+                await chatRepository.upsertMessage({
+                  id: (m as any).id || generateUUID(),
+                  role: m.role,
+                  parts: parts,
+                  threadId: id,
+                  metadata: {},
+                });
+              }
+            }
           }
         } catch (e) {
-          console.error(e);
+          console.error("Failed to save chat history:", e);
         }
       },
     });
