@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useBuilderStore } from "@/stores/builder-store";
 import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { SandpackWrapper } from "./SandpackWrapper";
 import { HttpChainWrapper } from "./HttpChainWrapper";
 import { ChatInterface } from "./chat-interface";
-import { VOID_MODELS } from "@/lib/ai/void-models";
 import { ProjectProvider, useProject } from "@/lib/builder/project-context";
 import { useProjectSync } from "@/lib/builder/use-project-sync";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
+
 import { X, Copy, Check } from "lucide-react";
 import { BuilderHeader } from "./BuilderHeader";
 import { exportService } from "@/lib/builder/export-service";
@@ -90,8 +90,13 @@ interface BuilderThreadPageProps {
 // Inner component that uses ProjectContext
 function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const router = useRouter();
-  const { currentThread, messages, files, loadThread, addMessage } =
-    useBuilderStore();
+
+  // Use selective store subscriptions
+  const currentThread = useBuilderStore((s) => s.currentThread);
+  const messages = useBuilderStore((s) => s.messages);
+  const files = useBuilderStore((s) => s.files);
+  const loadThread = useBuilderStore((s) => s.loadThread);
+  const addMessage = useBuilderStore((s) => s.addMessage);
 
   const { state, actions } = useProject();
 
@@ -101,23 +106,32 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     debounceMs: 1000,
   });
 
-  // Use shared UI store for builder controls
-  const mobilePreview = useBuilderUIStore((state) => state.mobilePreview);
-  const viewMode = useBuilderUIStore((state) => state.viewMode);
-  const showConsole = useBuilderUIStore((state) => state.showConsole);
-  const setIsSynced = useBuilderUIStore((state) => state.setIsSynced);
+  // UI store selectors
+  const mobilePreview = useBuilderUIStore((s) => s.mobilePreview);
+  const viewMode = useBuilderUIStore((s) => s.viewMode);
+  const setViewMode = useBuilderUIStore((s) => s.setViewMode);
+  const showConsole = useBuilderUIStore((s) => s.showConsole);
+  const toggleConsole = useBuilderUIStore((s) => s.toggleConsole);
+  const setIsSynced = useBuilderUIStore((s) => s.setIsSynced);
+  const serverStatus = useBuilderUIStore((s) => s.serverStatus);
+  const startServer = useBuilderUIStore((s) => s.startServer);
+  const stopServer = useBuilderUIStore((s) => s.stopServer);
+  const restartServer = useBuilderUIStore((s) => s.restartServer);
 
-  // Sync save status to UI store
+  // Sync save status
+  const isSyncedRef = useRef(!isSaving && !hasPendingSaves);
   useEffect(() => {
     const syncStatus = !isSaving && !hasPendingSaves;
-    setIsSynced(syncStatus);
-  }, [isSaving, hasPendingSaves]); // setIsSynced is stable from zustand
+    if (isSyncedRef.current !== syncStatus) {
+      isSyncedRef.current = syncStatus;
+      setIsSynced(syncStatus);
+    }
+  }, [isSaving, hasPendingSaves, setIsSynced]);
 
   const [showQR, setShowQR] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [filesReady, setFilesReady] = useState(false);
-  // Header State
   const [builderMode, setBuilderMode] = useState<"default" | "httpchain">(
     "default",
   );
@@ -127,17 +141,19 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
   const [deploymentError, setDeploymentError] = useState<string | undefined>();
   const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
-  const { toggleMobilePreview } = useBuilderUIStore();
+  const toggleMobilePreview = useBuilderUIStore((s) => s.toggleMobilePreview);
 
-  const [selectedModel, setSelectedModel] = useState<{
-    provider: string;
-    model: string;
-  }>({
+  const [selectedModel] = useState<{ provider: string; model: string }>({
     provider: "openai",
     model: "gpt-4.1-mini",
   });
 
-  // Load thread data (only once on mount)
+  // --- Streaming state ---
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Load thread data
   useEffect(() => {
     const load = async () => {
       try {
@@ -153,45 +169,29 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       }
     };
     load();
-  }, [threadId]); // Only reload when threadId changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threadId]);
 
-  // Memoize the builder mode change handler
   const handleBuilderModeChange = useCallback(
-    (mode: "default" | "httpchain") => {
-      setBuilderMode(mode);
-    },
+    (mode: "default" | "httpchain") => setBuilderMode(mode),
     [],
   );
 
-  // Update builder mode when thread loads - use template value directly to avoid reference issues
   const currentTemplate = currentThread?.template;
   useEffect(() => {
-    if (currentTemplate === "httpchain") {
-      setBuilderMode("httpchain");
-    } else {
-      setBuilderMode("default");
-    }
+    setBuilderMode(currentTemplate === "httpchain" ? "httpchain" : "default");
   }, [currentTemplate]);
 
-  // Wait for files to be synced to ProjectContext before showing preview
   useEffect(() => {
     if (!isLoading && Object.keys(state.files).length > 0) {
-      console.log(
-        "[BuilderThreadPage] Files ready:",
-        Object.keys(state.files).length,
-      );
       setFilesReady(true);
     } else if (!isLoading && Object.keys(files).length === 0) {
-      // No files in project - ready to show empty state
       setFilesReady(true);
     }
   }, [isLoading, state.files, files]);
 
-  // Update preview URL
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      setPreviewUrl(window.location.href);
-    }
+    if (typeof window !== "undefined") setPreviewUrl(window.location.href);
   }, []);
 
   const handleExportZip = useCallback(async () => {
@@ -228,10 +228,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       const config: DeploymentConfig = {
         platform: "netlify",
         projectName: currentThread.title,
-        buildCommand: "npm run build", // TODO: Determine based on template
-        outputDirectory: "dist", // TODO: Determine based on template
+        buildCommand: "npm run build",
+        outputDirectory: "dist",
       };
-
       deploymentService.validateConfig(config);
 
       const result = await deploymentService.deploy(
@@ -252,11 +251,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     }
   }, [currentThread, state.files]);
 
-  const handleShowQR = useCallback(() => {
-    setShowQR(true);
-  }, []);
+  const handleShowQR = useCallback(() => setShowQR(true), []);
 
-  // Memoize messages transformation to prevent infinite re-renders
+  // Transform store messages to ChatMessage format
   const transformedMessages = useMemo(
     () =>
       messages.map((m) => ({
@@ -269,104 +266,39 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     [messages],
   );
 
-  const handleSendMessage = useCallback(
-    async (content: string, mentions: any[]) => {
-      if (!threadId) return;
-
-      try {
-        // Add user message
-        await addMessage(threadId, "user", content, mentions);
-
-        // Create AI service with Groq (client-safe version)
-        const { createBuilderAIService } = await import(
-          "@/lib/builder/ai-service-client"
-        );
-        const aiService = createBuilderAIService({
-          provider: selectedModel.provider,
-          modelName: selectedModel.model,
-        });
-
-        // Track streaming content
-        let _streamingContent = "";
-
-        // Generate AI response with file modifications
-        await aiService.generateCode({
-          prompt: content,
-          context: mentions,
-          existingFiles: state.files,
-          onToken: (token: string) => {
-            _streamingContent += token;
-            // Just accumulate, don't add message yet
-          },
-          onComplete: async (fullResponse: string) => {
-            console.log("[AI] Response complete:", fullResponse);
-
-            // Add the complete AI response as a message
-            await addMessage(threadId, "assistant", fullResponse, []);
-
-            // Parse AI response for file operations
-            const fileOperations = parseAIResponse(fullResponse);
-
-            if (fileOperations.length > 0) {
-              // Apply file operations
-              for (const op of fileOperations) {
-                if (op.type === "create" || op.type === "update") {
-                  console.log(
-                    `[AI] ${op.type === "create" ? "Creating" : "Updating"} file:`,
-                    op.path,
-                  );
-                  actions.updateFile(op.path, op.content);
-                } else if (op.type === "delete") {
-                  console.log("[AI] Deleting file:", op.path);
-                  actions.deleteFile(op.path);
-                }
-              }
-              toast.success("AI changes applied successfully!");
-            }
-          },
-          onError: (error: Error) => {
-            console.error("AI generation failed:", error);
-            toast.error(`AI error: ${error.message}`);
-            // Add error message
-            addMessage(threadId, "assistant", `Error: ${error.message}`, []);
-          },
-        });
-      } catch (error) {
-        console.error("Failed to send message:", error);
-        toast.error("Failed to send message");
-      }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    },
-    [threadId, selectedModel],
-  );
-
-  // Parse AI response for file operations
+  /**
+   * Smart code parser: extracts file operations from AI responses.
+   * Supports formats:
+   *   ```filepath:/path/to/file.ext     (direct filepath prefix)
+   *   ```language filepath:/path/to/file.ext  (language + filepath)
+   *   ```language /path/to/file.ext     (language + absolute path)
+   *   ```/path/to/file.ext              (just the path)
+   */
   const parseAIResponse = useCallback(
-    (
-      response: string,
-    ): Array<{
-      type: "create" | "update" | "delete";
-      path: string;
-      content: string;
-    }> => {
+    (response: string) => {
       const operations: Array<{
         type: "create" | "update" | "delete";
         path: string;
         content: string;
       }> = [];
 
-      // Look for code blocks with file paths
-      // Format: ```filepath:/path/to/file.js
-      const fileBlockRegex = /```(?:filepath:)?([^\n]+)\n([\s\S]*?)```/g;
+      // Match code blocks with various filepath patterns
+      const codeBlockRegex =
+        /```(?:[\w.*+-]*\s+)?(?:filepath:)?(\/[^\n`]+)\n([\s\S]*?)```/g;
       let match;
 
-      while ((match = fileBlockRegex.exec(response)) !== null) {
-        const path = match[1].trim();
-        const content = match[2].trim();
+      while ((match = codeBlockRegex.exec(response)) !== null) {
+        let path = match[1].trim();
+        const content = match[2].trimEnd();
 
-        // Determine if it's a new file or update
+        // Clean trailing whitespace and language suffixes
+        path = path.replace(/\s+$/, "");
+
+        // Must look like a file path
+        if (!path.includes(".")) continue;
+        if (!path.startsWith("/")) path = "/" + path;
+
         const type = state.files[path] ? "update" : "create";
-
         operations.push({ type, path, content });
       }
 
@@ -375,16 +307,138 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     [state.files],
   );
 
+  const handleStopStreaming = useCallback(() => {
+    abortControllerRef.current?.abort();
+    setIsStreaming(false);
+    setStreamingContent("");
+  }, []);
+
+  const handleSendMessage = useCallback(
+    async (content: string) => {
+      if (!threadId || isStreaming) return;
+
+      try {
+        // Add user message
+        await addMessage(threadId, "user", content, []);
+
+        setIsStreaming(true);
+        setStreamingContent("");
+
+        const abortController = new AbortController();
+        abortControllerRef.current = abortController;
+
+        // Build prompt with context
+        const systemPrompt = `You are an expert code generator for a web development IDE.
+
+When generating or modifying code:
+1. Wrap each file in a code block with the file path
+2. Use format: \`\`\`language filepath:/path/to/file.ext
+3. Include complete, working code
+4. Follow best practices and modern standards
+5. Add helpful comments
+6. Ensure code is production-ready
+
+Example response format:
+\`\`\`jsx filepath:/App.jsx
+import React from 'react';
+
+export default function App() {
+  return <div>Hello World</div>;
+}
+\`\`\`
+
+Current files in project:
+${Object.keys(state.files).join(", ") || "No files yet"}`;
+
+        const fullPrompt = `${systemPrompt}\n\nUser request: ${content}`;
+
+        // Call builder AI endpoint
+        const response = await fetch("/api/builder/ai/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: fullPrompt,
+            provider: selectedModel.provider,
+            model: selectedModel.model,
+          }),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`API request failed: ${response.statusText}`);
+        }
+
+        if (!response.body) {
+          throw new Error("No response body");
+        }
+
+        // Stream the response
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          fullText += chunk;
+          setStreamingContent(fullText);
+        }
+
+        setIsStreaming(false);
+        setStreamingContent("");
+
+        // Save the complete AI response
+        await addMessage(threadId, "assistant", fullText, []);
+
+        // Parse & apply file operations → triggers Sandpack hot reload via FileChangeListener
+        const fileOperations = parseAIResponse(fullText);
+
+        if (fileOperations.length > 0) {
+          for (const op of fileOperations) {
+            if (op.type === "create" || op.type === "update") {
+              console.log(
+                `[AI] ${op.type === "create" ? "Creating" : "Updating"} file:`,
+                op.path,
+              );
+              actions.updateFile(op.path, op.content);
+            } else if (op.type === "delete") {
+              console.log("[AI] Deleting file:", op.path);
+              actions.deleteFile(op.path);
+            }
+          }
+          toast.success(
+            `${fileOperations.length} file${fileOperations.length > 1 ? "s" : ""} updated!`,
+          );
+        }
+      } catch (error: any) {
+        if (error.name === "AbortError") {
+          setIsStreaming(false);
+          setStreamingContent("");
+          return;
+        }
+        console.error("Failed to send message:", error);
+        toast.error(`Error: ${error.message || "Failed to send message"}`);
+        await addMessage(threadId, "assistant", `Error: ${error.message}`, []);
+        setIsStreaming(false);
+        setStreamingContent("");
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [threadId, selectedModel, isStreaming, state.files],
+  );
+
   if (isLoading || !currentThread || !filesReady) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-screen bg-background">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground">
+          <div className="animate-spin rounded-full h-10 w-10 border-2 border-primary border-t-transparent mx-auto mb-4" />
+          <p className="text-sm text-muted-foreground">
             {isLoading ? "Loading project..." : "Preparing files..."}
           </p>
           {!isLoading && !filesReady && (
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-xs text-muted-foreground/60 mt-1">
               Syncing {Object.keys(files).length} files
             </p>
           )}
@@ -395,6 +449,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   return (
     <div className="flex flex-col w-full h-screen bg-background overflow-hidden">
+      {/* Single unified header — no secondary bars */}
       <BuilderHeader
         projectName={currentThread?.title || "Untitled Project"}
         onDownloadZip={handleExportZip}
@@ -408,91 +463,30 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         isSynced={!isSaving && !hasPendingSaves}
         builderMode={builderMode}
         onBuilderModeChange={handleBuilderModeChange}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        showConsole={showConsole}
+        onToggleConsole={toggleConsole}
+        serverStatus={serverStatus}
+        onServerStart={startServer}
+        onServerStop={stopServer}
+        onServerRestart={restartServer}
       />
+
       <div className="flex flex-1 w-full overflow-hidden min-h-0">
-        {/* Left Sidebar - Chat Interface */}
-        <div className="w-56 md:w-64 lg:w-80 border-r flex flex-col bg-muted/20 shrink-0">
-          <div className="flex items-center justify-between px-2 py-1.5 border-b bg-muted/50 shrink-0">
-            <h2 className="font-semibold text-xs">AI Assistant</h2>
-            <select
-              value={`${selectedModel.provider}/${selectedModel.model}`}
-              onChange={(e) => {
-                const [provider, ...modelParts] = e.target.value.split("/");
-                const model = modelParts.join("/");
-                setSelectedModel({ provider, model });
-                toast.success(`Switched to ${model}`);
-              }}
-              className="text-[10px] px-1.5 py-0.5 rounded border bg-background max-w-[150px]"
-            >
-              <optgroup label="Void Models">
-                {Object.keys(VOID_MODELS).map((modelKey) => (
-                  <option key={modelKey} value={`void/${modelKey}`}>
-                    {modelKey}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label="OpenAI">
-                <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
-                <option value="openai/gpt-5.2">GPT-5.2</option>
-              </optgroup>
-              <optgroup label="Anthropic">
-                <option value="anthropic/claude-sonnet-4.5">
-                  Claude Sonnet 4.5
-                </option>
-                <option value="anthropic/claude-haiku-4.5">
-                  Claude Haiku 4.5
-                </option>
-                <option value="anthropic/claude-opus-4.5">
-                  Claude Opus 4.5
-                </option>
-              </optgroup>
-              <optgroup label="Google">
-                <option value="google/gemini-2.5-flash-lite">
-                  Gemini 2.5 Flash Lite
-                </option>
-                <option value="google/gemini-3-pro">Gemini 3 Pro</option>
-              </optgroup>
-              <optgroup label="Reasoning">
-                <option value="reasoning/claude-3.7-sonnet">
-                  Claude 3.7 Sonnet (Reasoning)
-                </option>
-                <option value="reasoning/grok-code-fast">
-                  Grok Code Fast (Reasoning)
-                </option>
-              </optgroup>
-              <optgroup label="xAI">
-                <option value="xai/grok-4.1-fast">Grok 4.1 Fast</option>
-              </optgroup>
-              <optgroup label="GLM">
-                <option value="glm/glm-4.5">GLM 4.5</option>
-                <option value="glm/glm-4.5-air">GLM 4.5 Air</option>
-                <option value="glm/glm-4.5v">GLM 4.5v</option>
-                <option value="glm/glm-4.6">GLM 4.6</option>
-                <option value="glm/glm-4.6v">GLM 4.6v</option>
-                <option value="glm/glm-4.7">GLM 4.7</option>
-                <option value="glm/glm-4-32b">GLM 4 32B</option>
-                <option value="glm/glm-4.1v-9b-thinking">
-                  GLM 4.1 9B Thinking
-                </option>
-                <option value="glm/chatglm">ChatGLM</option>
-              </optgroup>
-              <optgroup label="Custom">
-                <option value="custom/z1-32b">Z1 32B</option>
-                <option value="custom/z1-rumination">Z1 Rumination</option>
-                <option value="custom/0808-360b-dr">0808 360B DR</option>
-              </optgroup>
-            </select>
-          </div>
-          <div className="flex-1 overflow-hidden min-h-0">
-            <ChatInterface
-              messages={transformedMessages}
-              onSendMessage={handleSendMessage}
-              condensed
-            />
-          </div>
+        {/* Left Sidebar — Chat (fills full height, no secondary header) */}
+        <div className="w-56 md:w-64 lg:w-80 border-r flex flex-col shrink-0">
+          <ChatInterface
+            messages={transformedMessages}
+            onSendMessage={handleSendMessage}
+            isStreaming={isStreaming}
+            streamingContent={streamingContent}
+            onStopStreaming={handleStopStreaming}
+            condensed
+          />
         </div>
 
-        {/* Main Area - Sandpack Workspace */}
+        {/* Main Area — Sandpack Workspace */}
         <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
           <main className="flex-1 overflow-hidden min-h-0 w-full relative">
             {filesReady ? (
@@ -533,7 +527,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">
                     Loading preview...
                   </p>
@@ -563,7 +557,6 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
 // Main component with ProjectProvider wrapper
 export function BuilderThreadPage({ threadId }: BuilderThreadPageProps) {
-  // Don't initialize with store files - let the sync handle it after load
   return (
     <ProjectProvider>
       <BuilderThreadPageContent threadId={threadId} />

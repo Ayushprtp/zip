@@ -76,22 +76,28 @@ function ServerControlRegistrar() {
   const setServerControl = useBuilderUIStore((state) => state.setServerControl);
   const setServerStatus = useBuilderUIStore((state) => state.setServerStatus);
 
+  // Use a ref for sandpack so the effect doesn't re-run on every render
+  // (useSandpack() returns a new object reference each render)
+  const sandpackRef = useRef(sandpack);
+  sandpackRef.current = sandpack;
+
+  // Register server controls only once on mount
   useEffect(() => {
     const control = {
       start: () => {
         setServerStatus("booting");
-        sandpack.runSandpack();
+        sandpackRef.current.runSandpack();
         setTimeout(() => {
           setServerStatus("running");
         }, 1000);
       },
       stop: () => {
-        sandpack.resetAllFiles();
+        sandpackRef.current.resetAllFiles();
         setServerStatus("idle");
       },
       restart: () => {
         setServerStatus("booting");
-        sandpack.runSandpack();
+        sandpackRef.current.runSandpack();
         setTimeout(() => {
           setServerStatus("running");
         }, 1000);
@@ -104,7 +110,8 @@ function ServerControlRegistrar() {
     return () => {
       setServerControl(null);
     };
-  }, [sandpack, setServerControl, setServerStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount/unmount - sandpack accessed via ref
 
   return null;
 }
@@ -119,16 +126,34 @@ function FileChangeListener() {
   const isSyncingToSandpackRef = useRef(false);
   const isSyncingToContextRef = useRef(false);
 
+  // Keep refs to the latest sandpack values (they're new refs every render)
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  const updateFileRef = useRef(updateFile);
+  updateFileRef.current = updateFile;
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  const stateFilesRef = useRef(state.files);
+  stateFilesRef.current = state.files;
+
   // Sync ProjectContext → Sandpack (for hot reload when AI or external changes occur)
+  // Use a stringified key of context file paths+content lengths to detect real changes
+  const contextFilesKey = Object.entries(state.files)
+    .map(([p, c]) => `${p}:${c.length}`)
+    .join("|");
+
   useEffect(() => {
     if (isSyncingToSandpackRef.current) return;
 
+    const currentFiles = filesRef.current;
+    const currentUpdateFile = updateFileRef.current;
+    const currentStateFiles = stateFilesRef.current;
+
     let hasChanges = false;
-    Object.entries(state.files).forEach(([path, content]) => {
-      const sandpackFile = files[path];
+    Object.entries(currentStateFiles).forEach(([path, content]) => {
+      const sandpackFile = currentFiles[path];
       const previousContent = previousContextFilesRef.current[path];
 
-      // Update Sandpack if content changed in context and differs from Sandpack
       if (
         content !== previousContent &&
         sandpackFile &&
@@ -136,45 +161,54 @@ function FileChangeListener() {
       ) {
         isSyncingToSandpackRef.current = true;
         hasChanges = true;
-        updateFile(path, content);
+        currentUpdateFile(path, content);
       }
     });
 
-    // Update reference
-    previousContextFilesRef.current = { ...state.files };
+    previousContextFilesRef.current = { ...currentStateFiles };
 
     if (hasChanges) {
       setTimeout(() => {
         isSyncingToSandpackRef.current = false;
       }, 150);
     }
-  }, [state.files, files, updateFile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextFilesKey]);
 
   // Sync Sandpack → ProjectContext (when user edits in Sandpack editor)
+  const sandpackFilesKey = Object.entries(files)
+    .map(([p, f]) => `${p}:${f.code?.length ?? 0}`)
+    .join("|");
+
   useEffect(() => {
     if (isSyncingToContextRef.current) return;
 
+    const currentFiles = filesRef.current;
+    const currentStateFiles = stateFilesRef.current;
+    const currentActions = actionsRef.current;
+
     let hasChanges = false;
-    Object.entries(files).forEach(([path, file]) => {
+    Object.entries(currentFiles).forEach(([path, file]) => {
       if (file.code !== undefined) {
         const previousContent = previousSandpackFilesRef.current[path];
-        const currentContextContent = state.files[path];
+        const currentContextContent = currentStateFiles[path];
 
-        // Only update if content changed in Sandpack and differs from context
         if (
           file.code !== previousContent &&
           file.code !== currentContextContent
         ) {
           isSyncingToContextRef.current = true;
           hasChanges = true;
-          actions.updateFile(path, file.code);
+          currentActions.updateFile(path, file.code);
         }
       }
     });
 
-    // Update reference
     previousSandpackFilesRef.current = Object.fromEntries(
-      Object.entries(files).map(([path, file]) => [path, file.code || ""]),
+      Object.entries(currentFiles).map(([path, file]) => [
+        path,
+        file.code || "",
+      ]),
     );
 
     if (hasChanges) {
@@ -182,7 +216,8 @@ function FileChangeListener() {
         isSyncingToContextRef.current = false;
       }, 150);
     }
-  }, [files, actions, state.files]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sandpackFilesKey]);
 
   return null;
 }
@@ -193,24 +228,24 @@ function AssetGenerationHandler({
 }: { onAssetGenerated?: (path: string, content: string) => void }) {
   const { listen } = useSandpack();
   const listenerUnsubscribeRef = useRef<(() => void) | null>(null);
+  const onAssetGeneratedRef = useRef(onAssetGenerated);
+  onAssetGeneratedRef.current = onAssetGenerated;
 
-  // Get asset generator instance
-  const assetGenerator = getAssetGenerator({
-    onAssetGenerated: (result) => {
-      console.log("Asset generated:", result.path);
-      onAssetGenerated?.(result.path, result.content);
-    },
-  });
+  // Use ref for listen since useSandpack() returns new refs every render
+  const listenRef = useRef(listen);
+  listenRef.current = listen;
 
   useEffect(() => {
-    // Clean up previous listener
-    if (listenerUnsubscribeRef.current) {
-      listenerUnsubscribeRef.current();
-    }
+    // Get asset generator instance
+    const assetGenerator = getAssetGenerator({
+      onAssetGenerated: (result) => {
+        console.log("Asset generated:", result.path);
+        onAssetGeneratedRef.current?.(result.path, result.content);
+      },
+    });
 
-    // Set up new listener for errors
-    const unsubscribe = listen((message: any) => {
-      // Handle errors - Sandpack uses 'action' type with 'show-error' action
+    // Set up listener for errors
+    const unsubscribe = listenRef.current((message: any) => {
       if (message.type === "action" && message.action === "show-error") {
         const error: RuntimeError = {
           type: "fatal",
@@ -221,7 +256,6 @@ function AssetGenerationHandler({
           column: message.column,
         };
 
-        // Check if this is a missing asset error and generate placeholder
         assetGenerator.processError(error).catch((err) => {
           console.error("Failed to generate asset:", err);
         });
@@ -235,7 +269,8 @@ function AssetGenerationHandler({
         listenerUnsubscribeRef.current();
       }
     };
-  }, [listen, assetGenerator, onAssetGenerated]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount - sandpack accessed via refs
 
   return null; // This component doesn't render anything
 }

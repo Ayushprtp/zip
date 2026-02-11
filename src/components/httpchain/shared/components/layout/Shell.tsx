@@ -19,53 +19,38 @@ export function Shell({ children }: PropsWithChildren) {
   return (
     <TooltipProvider>
       <div className="h-screen w-screen flex flex-col bg-background text-foreground overflow-hidden">
-        <header className="border-b border-border bg-card/80 backdrop-blur-sm supports-[backdrop-filter]:bg-card/60 shrink-0 shadow-sm">
-          <div className="flex items-center justify-between px-6 h-14">
-            <button
-              className="flex items-center gap-3 group transition-all hover:opacity-80"
-              onClick={() => window.location.reload()}
-              type="button"
-            >
-              <div className="flex items-center justify-center h-9 w-9 rounded-xl bg-primary text-primary-foreground shadow-sm">
-                <Link className="h-5 w-5" />
-              </div>
-              <div className="flex flex-col">
-                <h1 className="text-base font-bold tracking-tight">
-                  HTTPChain
-                </h1>
-                <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                  Builder
-                </p>
-              </div>
-            </button>
-            <div className="flex items-center gap-1">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setShowBackendDialog(true)}
-                    className={
-                      backendUrl
-                        ? "text-green-600 dark:text-green-400"
-                        : "text-muted-foreground"
-                    }
-                  >
-                    <Server className="h-[18px] w-[18px]" />
-                    <span className="sr-only">Backend connection</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {backendUrl
-                    ? `Connected: ${backendUrl}`
-                    : "No backend configured"}
-                </TooltipContent>
-              </Tooltip>
+        <main className="flex-1 overflow-hidden relative">
+          {children}
+          {/* Floating controls for backend URL and theme (replacing the header) */}
+          <div className="absolute top-2 right-2 flex items-center gap-1 p-1 bg-card/80 backdrop-blur-sm border rounded-lg shadow-sm z-50">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowBackendDialog(true)}
+                  className={
+                    backendUrl
+                      ? "text-green-600 dark:text-green-400 h-8 w-8"
+                      : "text-muted-foreground h-8 w-8"
+                  }
+                >
+                  <Server className="h-4 w-4" />
+                  <span className="sr-only">Backend connection</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {backendUrl
+                  ? `Connected: ${backendUrl}`
+                  : "No backend configured"}
+              </TooltipContent>
+            </Tooltip>
+            {/* ThemeToggle not really needed if global theme handles it, but keeping for completeness */}
+            <div className="scale-90">
               <ThemeToggle />
             </div>
           </div>
-        </header>
-        <main className="flex-1 overflow-hidden">{children}</main>
+        </main>
         <Toaster position="bottom-right" richColors />
 
         <BackendUrlDialog
