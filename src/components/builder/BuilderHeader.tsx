@@ -44,7 +44,7 @@ interface BuilderHeaderProps {
   onServerStart?: () => void;
   onServerStop?: () => void;
   onServerRestart?: () => void;
-  serverStatus?: "idle" | "running" | "booting";
+  serverStatus?: "idle" | "running" | "booting" | "error";
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
   showConsole?: boolean;

@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { getSession } from "lib/auth/server";
 import { COOKIE_KEY_SIDEBAR_STATE } from "lib/const";
 import { AppPopupProvider } from "@/components/layouts/app-popup-provider";
-import { SWRConfigProvider } from "../swr-config";
+import { SWRConfigProvider } from "@/app/(chat)/swr-config";
 import { UserDetailContent } from "@/components/user/user-detail/user-detail-content";
 import { UserDetailContentSkeleton } from "@/components/user/user-detail/user-detail-content-skeleton";
 import { Suspense } from "react";
