@@ -1,19 +1,28 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useBuilderStore } from "@/stores/builder-store";
 import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { SandpackWrapper } from "./SandpackWrapper";
+import { HttpChainWrapper } from "./HttpChainWrapper";
 import { ChatInterface } from "./chat-interface";
+import { VOID_MODELS } from "@/lib/ai/void-models";
 import { ProjectProvider, useProject } from "@/lib/builder/project-context";
 import { useProjectSync } from "@/lib/builder/use-project-sync";
 import { toast } from "sonner";
-import { exportService } from "@/lib/builder/export-service";
-import type { TemplateType } from "@/types/builder";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
-import { X, Copy, Check, Cloud, CloudOff } from "lucide-react";
+import { X, Copy, Check } from "lucide-react";
+import { BuilderHeader } from "./BuilderHeader";
+import { exportService } from "@/lib/builder/export-service";
+import {
+  deploymentService,
+  type DeploymentStatus,
+} from "@/lib/builder/deployment-service";
+import { DeploymentProgress } from "./deployment-progress";
+import { errorHandler } from "@/lib/builder/error-handlers";
+import type { TemplateType, DeploymentConfig } from "app-types/builder";
 
 function QRCodeModal({ url, onClose }: { url: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -78,67 +87,16 @@ interface BuilderThreadPageProps {
   threadId: string;
 }
 
-// Auto-save status indicator component
-function AutoSaveStatus({
-  isSaving,
-  hasPendingSaves,
-  isConnected,
-}: {
-  isSaving: boolean;
-  hasPendingSaves: boolean;
-  isConnected: boolean;
-}) {
-  if (!isConnected) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        <CloudOff className="h-3.5 w-3.5" />
-        <span>Offline</span>
-      </div>
-    );
-  }
-
-  if (isSaving) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-blue-600">
-        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-        <span>Saving...</span>
-      </div>
-    );
-  }
-
-  if (hasPendingSaves) {
-    return (
-      <div className="flex items-center gap-1.5 text-xs text-amber-600">
-        <Cloud className="h-3.5 w-3.5" />
-        <span>Pending...</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1.5 text-xs text-green-600">
-      <Check className="h-3.5 w-3.5" />
-      <span>Saved</span>
-    </div>
-  );
-}
-
 // Inner component that uses ProjectContext
 function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const router = useRouter();
-  const {
-    currentThread,
-    messages,
-    files,
-    loadThread,
-    addMessage,
-    updateThreadTitle,
-  } = useBuilderStore();
+  const { currentThread, messages, files, loadThread, addMessage } =
+    useBuilderStore();
 
   const { state, actions } = useProject();
 
   // Auto-save integration
-  const { isSaving, hasPendingSaves, saveNow, isConnected } = useProjectSync({
+  const { isSaving, hasPendingSaves } = useProjectSync({
     autoSaveEnabled: true,
     debounceMs: 1000,
   });
@@ -153,19 +111,30 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   useEffect(() => {
     const syncStatus = !isSaving && !hasPendingSaves;
     setIsSynced(syncStatus);
-  }, [isSaving, hasPendingSaves, setIsSynced]);
+  }, [isSaving, hasPendingSaves]); // setIsSynced is stable from zustand
 
   const [showQR, setShowQR] = useState(false);
-  const [deploying, setDeploying] = useState(false);
   const [previewUrl, setPreviewUrl] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [filesReady, setFilesReady] = useState(false);
+  // Header State
+  const [builderMode, setBuilderMode] = useState<"default" | "httpchain">(
+    "default",
+  );
+  const [isExporting, setIsExporting] = useState(false);
+  const [deploymentStatus, setDeploymentStatus] =
+    useState<DeploymentStatus | null>(null);
+  const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
+  const [deploymentError, setDeploymentError] = useState<string | undefined>();
+  const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
+  const { toggleMobilePreview } = useBuilderUIStore();
+
   const [selectedModel, setSelectedModel] = useState<{
     provider: string;
     model: string;
   }>({
-    provider: "groq",
-    model: "llama-3.3-70b-versatile",
+    provider: "openai",
+    model: "gpt-4.1-mini",
   });
 
   // Load thread data (only once on mount)
@@ -184,8 +153,25 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       }
     };
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]); // Only reload when threadId changes
+
+  // Memoize the builder mode change handler
+  const handleBuilderModeChange = useCallback(
+    (mode: "default" | "httpchain") => {
+      setBuilderMode(mode);
+    },
+    [],
+  );
+
+  // Update builder mode when thread loads - use template value directly to avoid reference issues
+  const currentTemplate = currentThread?.template;
+  useEffect(() => {
+    if (currentTemplate === "httpchain") {
+      setBuilderMode("httpchain");
+    } else {
+      setBuilderMode("default");
+    }
+  }, [currentTemplate]);
 
   // Wait for files to be synced to ProjectContext before showing preview
   useEffect(() => {
@@ -208,179 +194,186 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     }
   }, []);
 
-  // Force save before export or deploy
-  const handleExportZip = async () => {
+  const handleExportZip = useCallback(async () => {
     if (!currentThread) return;
-
+    setIsExporting(true);
     try {
-      // Save any pending changes first
-      await saveNow();
-
-      const templateType = currentThread.template as TemplateType;
-      await exportService.exportZip(files, templateType, {
-        projectName: currentThread.title,
-        includeReadme: true,
-        includePackageJson: true,
-      });
+      await exportService.exportZip(
+        state.files,
+        currentThread.template as TemplateType,
+        {
+          projectName: currentThread.title,
+          includeReadme: true,
+          includePackageJson: true,
+        },
+      );
       toast.success("Project exported successfully!");
     } catch (error) {
       console.error("Export failed:", error);
+      errorHandler.handleError(error);
       toast.error("Failed to export project");
-    }
-  };
-
-  const handleNetlifyDeploy = async () => {
-    setDeploying(true);
-    try {
-      // Save any pending changes first
-      await saveNow();
-
-      const payload = {
-        files,
-        template: currentThread?.template,
-        timestamp: Date.now(),
-      };
-      console.log("Deploy payload ready:", payload);
-      alert(
-        "Deploy payload exported to console. Connect Netlify API to complete.",
-      );
     } finally {
-      setDeploying(false);
+      setIsExporting(false);
     }
-  };
+  }, [currentThread, state.files]);
 
-  const handleSendMessage = async (content: string, mentions: any[]) => {
-    if (!threadId) return;
+  const handleDeploy = useCallback(async () => {
+    if (!currentThread) return;
+    setShowDeploymentProgress(true);
+    setDeploymentStatus(null);
+    setDeploymentUrl(undefined);
+    setDeploymentError(undefined);
 
     try {
-      // Add user message
-      await addMessage(threadId, "user", content, mentions);
+      const config: DeploymentConfig = {
+        platform: "netlify",
+        projectName: currentThread.title,
+        buildCommand: "npm run build", // TODO: Determine based on template
+        outputDirectory: "dist", // TODO: Determine based on template
+      };
 
-      // Create AI service with Groq (client-safe version)
-      const { createBuilderAIService } = await import(
-        "@/lib/builder/ai-service-client"
+      deploymentService.validateConfig(config);
+
+      const result = await deploymentService.deploy(
+        state.files,
+        config,
+        currentThread.template as TemplateType,
+        (status) => setDeploymentStatus(status),
       );
-      const aiService = createBuilderAIService({
-        provider: selectedModel.provider,
-        modelName: selectedModel.model,
-      });
 
-      // Track streaming content
-      let _streamingContent = "";
-
-      // Generate AI response with file modifications
-      await aiService.generateCode({
-        prompt: content,
-        context: mentions,
-        existingFiles: state.files,
-        onToken: (token: string) => {
-          _streamingContent += token;
-          // Just accumulate, don't add message yet
-        },
-        onComplete: async (fullResponse: string) => {
-          console.log("[AI] Response complete:", fullResponse);
-
-          // Add the complete AI response as a message
-          await addMessage(threadId, "assistant", fullResponse, []);
-
-          // Parse AI response for file operations
-          const fileOperations = parseAIResponse(fullResponse);
-
-          if (fileOperations.length > 0) {
-            // Apply file operations
-            for (const op of fileOperations) {
-              if (op.type === "create" || op.type === "update") {
-                console.log(
-                  `[AI] ${op.type === "create" ? "Creating" : "Updating"} file:`,
-                  op.path,
-                );
-                actions.updateFile(op.path, op.content);
-              } else if (op.type === "delete") {
-                console.log("[AI] Deleting file:", op.path);
-                actions.deleteFile(op.path);
-              }
-            }
-            toast.success("AI changes applied successfully!");
-          }
-        },
-        onError: (error: Error) => {
-          console.error("AI generation failed:", error);
-          toast.error(`AI error: ${error.message}`);
-          // Add error message
-          addMessage(threadId, "assistant", `Error: ${error.message}`, []);
-        },
-      });
+      setDeploymentUrl(result.url);
+      toast.success("Deployment successful!");
     } catch (error) {
-      console.error("Failed to send message:", error);
-      toast.error("Failed to send message");
+      console.error("Deployment failed:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Deployment failed";
+      setDeploymentError(errorMessage);
+      toast.error(errorMessage);
     }
-  };
+  }, [currentThread, state.files]);
+
+  const handleShowQR = useCallback(() => {
+    setShowQR(true);
+  }, []);
+
+  // Memoize messages transformation to prevent infinite re-renders
+  const transformedMessages = useMemo(
+    () =>
+      messages.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        mentions: (m.mentions as any[]) || [],
+        timestamp: new Date(m.createdAt).getTime(),
+      })),
+    [messages],
+  );
+
+  const handleSendMessage = useCallback(
+    async (content: string, mentions: any[]) => {
+      if (!threadId) return;
+
+      try {
+        // Add user message
+        await addMessage(threadId, "user", content, mentions);
+
+        // Create AI service with Groq (client-safe version)
+        const { createBuilderAIService } = await import(
+          "@/lib/builder/ai-service-client"
+        );
+        const aiService = createBuilderAIService({
+          provider: selectedModel.provider,
+          modelName: selectedModel.model,
+        });
+
+        // Track streaming content
+        let _streamingContent = "";
+
+        // Generate AI response with file modifications
+        await aiService.generateCode({
+          prompt: content,
+          context: mentions,
+          existingFiles: state.files,
+          onToken: (token: string) => {
+            _streamingContent += token;
+            // Just accumulate, don't add message yet
+          },
+          onComplete: async (fullResponse: string) => {
+            console.log("[AI] Response complete:", fullResponse);
+
+            // Add the complete AI response as a message
+            await addMessage(threadId, "assistant", fullResponse, []);
+
+            // Parse AI response for file operations
+            const fileOperations = parseAIResponse(fullResponse);
+
+            if (fileOperations.length > 0) {
+              // Apply file operations
+              for (const op of fileOperations) {
+                if (op.type === "create" || op.type === "update") {
+                  console.log(
+                    `[AI] ${op.type === "create" ? "Creating" : "Updating"} file:`,
+                    op.path,
+                  );
+                  actions.updateFile(op.path, op.content);
+                } else if (op.type === "delete") {
+                  console.log("[AI] Deleting file:", op.path);
+                  actions.deleteFile(op.path);
+                }
+              }
+              toast.success("AI changes applied successfully!");
+            }
+          },
+          onError: (error: Error) => {
+            console.error("AI generation failed:", error);
+            toast.error(`AI error: ${error.message}`);
+            // Add error message
+            addMessage(threadId, "assistant", `Error: ${error.message}`, []);
+          },
+        });
+      } catch (error) {
+        console.error("Failed to send message:", error);
+        toast.error("Failed to send message");
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [threadId, selectedModel],
+  );
 
   // Parse AI response for file operations
-  const parseAIResponse = (
-    response: string,
-  ): Array<{
-    type: "create" | "update" | "delete";
-    path: string;
-    content: string;
-  }> => {
-    const operations: Array<{
+  const parseAIResponse = useCallback(
+    (
+      response: string,
+    ): Array<{
       type: "create" | "update" | "delete";
       path: string;
       content: string;
-    }> = [];
+    }> => {
+      const operations: Array<{
+        type: "create" | "update" | "delete";
+        path: string;
+        content: string;
+      }> = [];
 
-    // Look for code blocks with file paths
-    // Format: ```filepath:/path/to/file.js
-    const fileBlockRegex = /```(?:filepath:)?([^\n]+)\n([\s\S]*?)```/g;
-    let match;
+      // Look for code blocks with file paths
+      // Format: ```filepath:/path/to/file.js
+      const fileBlockRegex = /```(?:filepath:)?([^\n]+)\n([\s\S]*?)```/g;
+      let match;
 
-    while ((match = fileBlockRegex.exec(response)) !== null) {
-      const path = match[1].trim();
-      const content = match[2].trim();
+      while ((match = fileBlockRegex.exec(response)) !== null) {
+        const path = match[1].trim();
+        const content = match[2].trim();
 
-      // Determine if it's a new file or update
-      const type = state.files[path] ? "update" : "create";
+        // Determine if it's a new file or update
+        const type = state.files[path] ? "update" : "create";
 
-      operations.push({ type, path, content });
-    }
-
-    return operations;
-  };
-
-  const handleProjectNameClick = async () => {
-    if (!currentThread) return;
-
-    const newName = prompt("Enter project name:", currentThread.title);
-    if (newName && newName !== currentThread.title) {
-      try {
-        await updateThreadTitle(threadId, newName);
-        toast.success("Project renamed");
-      } catch (_error) {
-        toast.error("Failed to rename project");
+        operations.push({ type, path, content });
       }
-    }
-  };
 
-  const handleCreateCheckpoint = async () => {
-    try {
-      // Save any pending changes first
-      await saveNow();
-
-      // Create checkpoint
-      const label = prompt(
-        "Enter checkpoint name:",
-        `Checkpoint ${new Date().toLocaleString()}`,
-      );
-      if (label) {
-        actions.createCheckpoint(label);
-        toast.success("Checkpoint created");
-      }
-    } catch (error) {
-      console.error("Failed to create checkpoint:", error);
-      toast.error("Failed to create checkpoint");
-    }
-  };
+      return operations;
+    },
+    [state.files],
+  );
 
   if (isLoading || !currentThread || !filesReady) {
     return (
@@ -402,6 +395,20 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   return (
     <div className="flex flex-col w-full h-screen bg-background overflow-hidden">
+      <BuilderHeader
+        projectName={currentThread?.title || "Untitled Project"}
+        onDownloadZip={handleExportZip}
+        onDeploy={handleDeploy}
+        onShowQR={handleShowQR}
+        onToggleMobilePreview={toggleMobilePreview}
+        mobilePreview={mobilePreview}
+        deploying={showDeploymentProgress}
+        isExporting={isExporting}
+        fileCount={Object.keys(state.files).length}
+        isSynced={!isSaving && !hasPendingSaves}
+        builderMode={builderMode}
+        onBuilderModeChange={handleBuilderModeChange}
+      />
       <div className="flex flex-1 w-full overflow-hidden min-h-0">
         {/* Left Sidebar - Chat Interface */}
         <div className="w-56 md:w-64 lg:w-80 border-r flex flex-col bg-muted/20 shrink-0">
@@ -415,38 +422,70 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                 setSelectedModel({ provider, model });
                 toast.success(`Switched to ${model}`);
               }}
-              className="text-[10px] px-1.5 py-0.5 rounded border bg-background"
+              className="text-[10px] px-1.5 py-0.5 rounded border bg-background max-w-[150px]"
             >
-              <optgroup label="Groq (Fast)">
-                <option value="groq/llama-3.3-70b-versatile">
-                  Llama 3.3 70B
-                </option>
-                <option value="groq/llama-4-scout">Llama 4 Scout (Code)</option>
-                <option value="groq/llama-4-maverick">Llama 4 Maverick</option>
-                <option value="groq/llama-3.1-8b-instant">
-                  Llama 3.1 8B (Fast)
-                </option>
-                <option value="groq/qwen3-32b">Qwen3 32B</option>
+              <optgroup label="Void Models">
+                {Object.keys(VOID_MODELS).map((modelKey) => (
+                  <option key={modelKey} value={`void/${modelKey}`}>
+                    {modelKey}
+                  </option>
+                ))}
               </optgroup>
-              <optgroup label="Google Gemini">
-                <option value="google/gemini-pro">Gemini Pro</option>
-                <option value="google/gemini-3-pro">Gemini 3 Pro</option>
-                <option value="google/gemini-advanced">Gemini Advanced</option>
-                <option value="google/gemini-2.5-flash-lite">
-                  Gemini 2.5 Flash
+              <optgroup label="OpenAI">
+                <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
+                <option value="openai/gpt-5.2">GPT-5.2</option>
+              </optgroup>
+              <optgroup label="Anthropic">
+                <option value="anthropic/claude-sonnet-4.5">
+                  Claude Sonnet 4.5
                 </option>
+                <option value="anthropic/claude-haiku-4.5">
+                  Claude Haiku 4.5
+                </option>
+                <option value="anthropic/claude-opus-4.5">
+                  Claude Opus 4.5
+                </option>
+              </optgroup>
+              <optgroup label="Google">
+                <option value="google/gemini-2.5-flash-lite">
+                  Gemini 2.5 Flash Lite
+                </option>
+                <option value="google/gemini-3-pro">Gemini 3 Pro</option>
+              </optgroup>
+              <optgroup label="Reasoning">
+                <option value="reasoning/claude-3.7-sonnet">
+                  Claude 3.7 Sonnet (Reasoning)
+                </option>
+                <option value="reasoning/grok-code-fast">
+                  Grok Code Fast (Reasoning)
+                </option>
+              </optgroup>
+              <optgroup label="xAI">
+                <option value="xai/grok-4.1-fast">Grok 4.1 Fast</option>
+              </optgroup>
+              <optgroup label="GLM">
+                <option value="glm/glm-4.5">GLM 4.5</option>
+                <option value="glm/glm-4.5-air">GLM 4.5 Air</option>
+                <option value="glm/glm-4.5v">GLM 4.5v</option>
+                <option value="glm/glm-4.6">GLM 4.6</option>
+                <option value="glm/glm-4.6v">GLM 4.6v</option>
+                <option value="glm/glm-4.7">GLM 4.7</option>
+                <option value="glm/glm-4-32b">GLM 4 32B</option>
+                <option value="glm/glm-4.1v-9b-thinking">
+                  GLM 4.1 9B Thinking
+                </option>
+                <option value="glm/chatglm">ChatGLM</option>
+              </optgroup>
+              <optgroup label="Custom">
+                <option value="custom/z1-32b">Z1 32B</option>
+                <option value="custom/z1-rumination">Z1 Rumination</option>
+                <option value="custom/0808-360b-dr">0808 360B DR</option>
               </optgroup>
             </select>
           </div>
           <div className="flex-1 overflow-hidden min-h-0">
             <ChatInterface
-              messages={messages.map((m) => ({
-                id: m.id,
-                role: m.role as "user" | "assistant",
-                content: m.content,
-                mentions: (m.mentions as any[]) || [],
-                timestamp: new Date(m.createdAt).getTime(),
-              }))}
+              messages={transformedMessages}
               onSendMessage={handleSendMessage}
               condensed
             />
@@ -464,23 +503,31 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                     : "absolute inset-0 overflow-hidden"
                 }
               >
-                {mobilePreview && (
-                  <div className="w-[375px] h-full border-x overflow-hidden">
-                    <SandpackWrapper
-                      files={state.files}
-                      template={currentThread.template}
-                      viewMode={viewMode}
-                      showConsole={showConsole}
-                    />
+                {builderMode === "httpchain" ? (
+                  <div className="w-full h-full relative">
+                    <HttpChainWrapper />
                   </div>
-                )}
-                {!mobilePreview && (
-                  <SandpackWrapper
-                    files={state.files}
-                    template={currentThread.template}
-                    viewMode={viewMode}
-                    showConsole={showConsole}
-                  />
+                ) : (
+                  <>
+                    {mobilePreview && (
+                      <div className="w-[375px] h-full border-x overflow-hidden">
+                        <SandpackWrapper
+                          files={state.files}
+                          template={currentThread.template}
+                          viewMode={viewMode}
+                          showConsole={showConsole}
+                        />
+                      </div>
+                    )}
+                    {!mobilePreview && (
+                      <SandpackWrapper
+                        files={state.files}
+                        template={currentThread.template}
+                        viewMode={viewMode}
+                        showConsole={showConsole}
+                      />
+                    )}
+                  </>
                 )}
               </div>
             ) : (
@@ -499,6 +546,16 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
       {showQR && (
         <QRCodeModal url={previewUrl} onClose={() => setShowQR(false)} />
+      )}
+
+      {showDeploymentProgress && (
+        <DeploymentProgress
+          open={true}
+          status={deploymentStatus}
+          onClose={() => setShowDeploymentProgress(false)}
+          deploymentUrl={deploymentUrl}
+          error={deploymentError}
+        />
       )}
     </div>
   );

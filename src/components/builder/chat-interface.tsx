@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { ChatMessage } from "@/types/builder";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -31,36 +31,40 @@ export function ChatInterface({
   const [chatModel, setChatModel] = useState<ChatModel | undefined>();
   const [globalModel] = appStore(useShallow((state) => [state.chatModel]));
 
-  // Use global model if no local model is set
+  // Use global model if no local model is set (only on mount)
   useEffect(() => {
     if (!chatModel && globalModel) {
       setChatModel(globalModel);
     }
-  }, [chatModel, globalModel]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     if (input.trim()) {
       onSendMessage(input, []);
       setInput("");
     }
-  };
+  }, [input, onSendMessage]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSend();
+      }
+    },
+    [handleSend],
+  );
 
-  const handleModelChange = (model: ChatModel) => {
+  const handleModelChange = useCallback((model: ChatModel) => {
     setChatModel(model);
     appStore.setState({ chatModel: model });
-  };
+  }, []);
 
   return (
     <div className={`flex flex-col h-full ${condensed ? "text-sm" : ""}`}>

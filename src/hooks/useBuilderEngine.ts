@@ -3,7 +3,13 @@
 import { useState, useCallback } from "react";
 import JSZip from "jszip";
 
-export type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
+export type Template =
+  | "react"
+  | "nextjs"
+  | "vite-react"
+  | "vanilla"
+  | "static"
+  | "httpchain";
 export type ServerStatus = "idle" | "booting" | "running" | "error";
 
 interface BuilderState {
@@ -25,7 +31,10 @@ export function useBuilderEngine(initialTemplate: Template = "react") {
     setState((prev) => ({
       ...prev,
       files,
-      history: [...prev.history, { files: prev.files, timestamp: Date.now() }].slice(-20),
+      history: [
+        ...prev.history,
+        { files: prev.files, timestamp: Date.now() },
+      ].slice(-20),
     }));
   }, []);
 
@@ -67,12 +76,20 @@ export function useBuilderEngine(initialTemplate: Template = "react") {
   }, [state.files]);
 
   // Auto-detect template from files
-  const detectTemplate = useCallback((files: Record<string, string>): Template => {
-    if (Object.keys(files).some((f) => f.includes("next.config"))) return "nextjs";
-    if (Object.keys(files).some((f) => f.includes("vite.config"))) return "vite-react";
-    if (Object.keys(files).some((f) => f.endsWith(".jsx") || f.endsWith(".tsx"))) return "react";
-    return "static";
-  }, []);
+  const detectTemplate = useCallback(
+    (files: Record<string, string>): Template => {
+      if (Object.keys(files).some((f) => f.includes("next.config")))
+        return "nextjs";
+      if (Object.keys(files).some((f) => f.includes("vite.config")))
+        return "vite-react";
+      if (
+        Object.keys(files).some((f) => f.endsWith(".jsx") || f.endsWith(".tsx"))
+      )
+        return "react";
+      return "static";
+    },
+    [],
+  );
 
   return {
     files: state.files,

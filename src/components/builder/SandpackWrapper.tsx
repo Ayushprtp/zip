@@ -8,10 +8,7 @@ import {
   useSandpack,
 } from "@codesandbox/sandpack-react";
 import { useState, useEffect, useRef } from "react";
-import {
-  ChevronRight,
-  ChevronLeft,
-} from "lucide-react";
+import { ChevronRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BuilderErrorBoundary } from "./BuilderErrorBoundary";
 import { getAssetGenerator } from "@/lib/builder/asset-generator";
@@ -22,7 +19,13 @@ import { useProject } from "@/lib/builder/project-context";
 import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import type { RuntimeError } from "@/types/builder";
 
-type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
+type Template =
+  | "react"
+  | "nextjs"
+  | "vite-react"
+  | "vanilla"
+  | "static"
+  | "httpchain";
 
 type ViewMode = "code" | "preview" | "split";
 
@@ -61,9 +64,10 @@ const DEFAULT_FILES: Record<Template, Record<string, string>> = {
     "/index.js": `document.getElementById("app").innerHTML = "<h1>Hello Vanilla</h1>";`,
   },
   static: {
-    "/index.html": `<!DOCTYPE html>
+    "index.html": `<!DOCTYPE html>
 <html><body><h1>Hello Static</h1></body></html>`,
   },
+  httpchain: {},
 };
 
 // Component to register server controls with the store
@@ -246,10 +250,12 @@ export function SandpackWrapper({
   // Use external props if provided, otherwise use local state
   const [localViewMode, _setLocalViewMode] = useState<ViewMode>("split");
   const [localShowConsole, _setLocalShowConsole] = useState(false);
-  
-  const viewMode = externalViewMode !== undefined ? externalViewMode : localViewMode;
-  const showConsole = externalShowConsole !== undefined ? externalShowConsole : localShowConsole;
-  
+
+  const viewMode =
+    externalViewMode !== undefined ? externalViewMode : localViewMode;
+  const showConsole =
+    externalShowConsole !== undefined ? externalShowConsole : localShowConsole;
+
   const [showFileExplorer, setShowFileExplorer] = useState(true);
   const { theme, systemTheme } = useTheme();
   const mergedFiles = { ...DEFAULT_FILES[template], ...files };
@@ -260,7 +266,13 @@ export function SandpackWrapper({
 
   return (
     <SandpackProvider
-      template={template === "vite-react" ? "vite-react" : template}
+      template={
+        template === "vite-react"
+          ? "vite-react"
+          : template === "httpchain"
+            ? "static"
+            : template
+      }
       theme={sandpackTheme}
       files={mergedFiles}
       options={{
@@ -281,11 +293,13 @@ export function SandpackWrapper({
       <div className="absolute inset-0 flex flex-col bg-background">
         {/* Main Workspace - No separate header, controlled by BuilderHeader */}
         <div className="flex-1 flex overflow-hidden min-h-0">
-          <BuilderErrorBoundary onError={() => {
-            // On error, toggle console via store
-            const toggleConsole = useBuilderUIStore.getState().toggleConsole;
-            toggleConsole();
-          }}>
+          <BuilderErrorBoundary
+            onError={() => {
+              // On error, toggle console via store
+              const toggleConsole = useBuilderUIStore.getState().toggleConsole;
+              toggleConsole();
+            }}
+          >
             {/* File Explorer Sidebar - Collapsible */}
             {showFileExplorer &&
               (viewMode === "code" || viewMode === "split") && (
