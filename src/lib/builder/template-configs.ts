@@ -66,6 +66,26 @@ export const TEMPLATE_CONFIGS: Record<TemplateType, TemplateConfig> = {
     runtime: "static",
     structure: ["/index.html", "/style.css", "/script.js"],
   },
+  httpchain: {
+    entry: "/src/main.tsx",
+    dependencies: {
+      react: "^18.3.1",
+      "react-dom": "^18.3.1",
+    },
+    devDependencies: {
+      vite: "^5.4.11",
+      "@vitejs/plugin-react": "^4.3.4",
+      "@types/react": "^18.3.12",
+      "@types/react-dom": "^18.3.1",
+    },
+    structure: [
+      "/index.html",
+      "/src/main.tsx",
+      "/src/App.tsx",
+      "/src/index.css",
+      "/package.json",
+    ],
+  },
 };
 
 /**
@@ -312,6 +332,64 @@ document.addEventListener('DOMContentLoaded', () => {
             description: "A static HTML site",
             dependencies: TEMPLATE_CONFIGS.static.dependencies,
             devDependencies: TEMPLATE_CONFIGS.static.devDependencies,
+          },
+          null,
+          2,
+        ),
+      };
+
+    case "httpchain":
+      return {
+        "/index.html": `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HTTP Chain Workflow</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>`,
+        "/src/main.tsx": `import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);`,
+        "/src/App.tsx": `import React from 'react';
+
+function App() {
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold mb-4">HTTP Chain Workflow</h1>
+      <p>This project is configured for the HTTP Chain Builder.</p>
+    </div>
+  );
+}
+
+export default App;`,
+        "/src/index.css": `@tailwind base;
+@tailwind components;
+@tailwind utilities;`,
+        "/package.json": JSON.stringify(
+          {
+            name: "httpchain-workflow",
+            private: true,
+            version: "0.0.0",
+            type: "module",
+            scripts: {
+              dev: "vite",
+              build: "vite build",
+              preview: "vite preview",
+            },
+            dependencies: TEMPLATE_CONFIGS.httpchain.dependencies,
+            devDependencies: TEMPLATE_CONFIGS.httpchain.devDependencies,
           },
           null,
           2,

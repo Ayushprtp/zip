@@ -29,7 +29,12 @@ export interface VirtualFileSystem {
 // Template Types
 // ============================================================================
 
-export type TemplateType = "vite-react" | "nextjs" | "node" | "static";
+export type TemplateType =
+  | "vite-react"
+  | "nextjs"
+  | "node"
+  | "static"
+  | "httpchain";
 
 export interface TemplateConfig {
   entry: string;

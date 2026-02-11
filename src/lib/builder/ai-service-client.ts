@@ -87,8 +87,8 @@ User request: ${prompt}`;
         },
         body: JSON.stringify({
           prompt: fullPrompt,
-          provider: this.config.provider || "groq",
-          model: this.config.modelName || "llama-3.3-70b-versatile",
+          provider: this.config.provider || "openai",
+          model: this.config.modelName || "gpt-4.1-mini",
         }),
         signal: this.abortController.signal,
       });
@@ -139,8 +139,8 @@ export function createBuilderAIService(
   config: AIServiceConfig = {},
 ): AIServiceClient {
   return new AIServiceClient({
-    provider: "groq",
-    modelName: "llama-3.3-70b-versatile",
+    provider: "openai",
+    modelName: "gpt-4.1-mini",
     ...config,
   });
 }

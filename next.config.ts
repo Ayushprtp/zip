@@ -19,6 +19,23 @@ export default () => {
       taint: true,
       authInterrupts: true,
     },
+    serverExternalPackages: [
+      "curlconverter",
+      "tree-sitter",
+      "tree-sitter-bash",
+      "web-tree-sitter",
+    ],
+    webpack: (config, { isServer }) => {
+      if (!isServer) {
+        config.resolve.fallback = {
+          ...config.resolve.fallback,
+          fs: false,
+          path: false,
+          crypto: false,
+        };
+      }
+      return config;
+    },
   };
   const withNextIntl = createNextIntlPlugin();
   return withNextIntl(nextConfig);

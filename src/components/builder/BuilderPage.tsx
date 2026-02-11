@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { SandpackWrapper } from "./SandpackWrapper";
+import { HttpChainWrapper } from "./HttpChainWrapper";
 import { useBuilderEngine, type Template } from "@/hooks/useBuilderEngine";
 import { ProjectProvider } from "./ProjectContext";
 import { ChatInterface } from "./chat-interface";
@@ -136,9 +137,7 @@ function QRCodeModal({ url, onClose }: { url: string; onClose: () => void }) {
 
 function BuilderContent() {
   const { files, template, setTemplate } = useBuilderEngine("react");
-  const [mobilePreview, setMobilePreview] = useState(false);
   const [showQR, setShowQR] = useState(false);
-  const [deploying, setDeploying] = useState(false);
   const [deploymentStatus, setDeploymentStatus] =
     useState<DeploymentStatus | null>(null);
   const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
@@ -154,8 +153,11 @@ function BuilderContent() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<"code" | "preview" | "split">("split");
-  const [showConsole, setShowConsole] = useState(false);
+  const [builderMode, setBuilderMode] = useState<"default" | "httpchain">(
+    "default",
+  );
+  const viewMode: "code" | "preview" | "split" = "split";
+  const showConsole = false;
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -244,6 +246,11 @@ function BuilderContent() {
 
       // Fallback to local state if API fails
       setTemplate(selectedTemplate);
+      if (selectedTemplate === "httpchain") {
+        setBuilderMode("httpchain");
+      } else {
+        setBuilderMode("default");
+      }
       setTemplateSelected(true);
       setShowTemplateDialog(false);
       setIsAskAIMode(false);
@@ -257,7 +264,6 @@ function BuilderContent() {
   };
 
   const handleNetlifyDeploy = async () => {
-    setDeploying(true);
     setShowDeploymentProgress(true);
     setDeploymentStatus(null);
     setDeploymentUrl(undefined);
@@ -298,8 +304,6 @@ function BuilderContent() {
         error instanceof Error ? error.message : "Deployment failed";
       setDeploymentError(errorMessage);
       toast.error(errorMessage);
-    } finally {
-      setDeploying(false);
     }
   };
 
@@ -461,42 +465,27 @@ function BuilderContent() {
               role="main"
               aria-label="Code Editor and Preview"
             >
-              {/* Sandpack Workspace - Fully responsive */}
-              <main className="flex-1 overflow-hidden min-h-0 w-full h-full relative">
-                <div
-                  className={
-                    mobilePreview
-                      ? "absolute inset-0 flex items-center justify-center"
-                      : "absolute inset-0"
-                  }
-                >
-                  <PreviewErrorBoundary>
-                    <TransitionWrapper
-                      loading={isExporting}
-                      fallback={<ExportProgress />}
-                    >
-                      {mobilePreview && (
-                        <div className="w-[375px] h-full border-x">
-                          <SandpackWrapper
-                            files={files}
-                            template={template}
-                            viewMode={viewMode}
-                            showConsole={showConsole}
-                          />
-                        </div>
-                      )}
-                      {!mobilePreview && (
+              {builderMode === "httpchain" ? (
+                <HttpChainWrapper />
+              ) : (
+                <main className="flex-1 overflow-hidden min-h-0 w-full h-full relative">
+                  <div className="absolute inset-0">
+                    <PreviewErrorBoundary>
+                      <TransitionWrapper
+                        loading={isExporting}
+                        fallback={<ExportProgress />}
+                      >
                         <SandpackWrapper
                           files={files}
                           template={template}
                           viewMode={viewMode}
                           showConsole={showConsole}
                         />
-                      )}
-                    </TransitionWrapper>
-                  </PreviewErrorBoundary>
-                </div>
-              </main>
+                      </TransitionWrapper>
+                    </PreviewErrorBoundary>
+                  </div>
+                </main>
+              )}
             </div>
           )}
         </div>

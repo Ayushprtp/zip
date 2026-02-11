@@ -23,7 +23,7 @@ import {
   ChatMetadata,
 } from "app-types/chat";
 
-import { errorIf, safe } from "ts-safe";
+import { safe } from "ts-safe";
 
 import {
   excludeToolExecution,
@@ -198,35 +198,26 @@ export async function POST(request: Request) {
     logger.info(
       `mcp-server count: ${mcpClients.length}, mcp-tools count :${Object.keys(mcpTools).length}`,
     );
-    const MCP_TOOLS = await safe()
-      .map(errorIf(() => !isToolCallAllowed && "Not allowed"))
-      .map(() =>
-        loadMcpTools({
+    const MCP_TOOLS = isToolCallAllowed
+      ? await loadMcpTools({
           mentions,
           allowedMcpServers,
-        }),
-      )
-      .unwrap();
+        })
+      : {};
 
-    const WORKFLOW_TOOLS = await safe()
-      .map(errorIf(() => !isToolCallAllowed && "Not allowed"))
-      .map(() =>
-        loadWorkFlowTools({
+    const WORKFLOW_TOOLS = isToolCallAllowed
+      ? await loadWorkFlowTools({
           mentions,
           dataStream: undefined as any,
-        }),
-      )
-      .unwrap();
+        })
+      : {};
 
-    const APP_DEFAULT_TOOLS = await safe()
-      .map(errorIf(() => !isToolCallAllowed && "Not allowed"))
-      .map(() =>
-        loadAppDefaultTools({
+    const APP_DEFAULT_TOOLS = isToolCallAllowed
+      ? await loadAppDefaultTools({
           mentions,
           allowedAppDefaultToolkit,
-        }),
-      )
-      .unwrap();
+        })
+      : {};
     // const inProgressToolParts = extractInProgressToolPart(message);
     // Commented out to avoid runtime error with undefined dataStream
     // if (inProgressToolParts.length) {
@@ -327,8 +318,8 @@ export async function POST(request: Request) {
       },
     });
 
-    // Return the text stream response
-    return result.toTextStreamResponse();
+    // Return the UI message stream response (expected by DefaultChatTransport on the client)
+    return result.toUIMessageStreamResponse();
   } catch (error: any) {
     logger.error(error);
     return Response.json({ message: error.message }, { status: 500 });
