@@ -380,7 +380,9 @@
     "showLessChats": "Show less",
     "reportAnIssue": "Report an issue",
     "joinCommunity": "Join Community",
-    "userSettings": "User Settings"
+    "userSettings": "User Settings",
+    "billing": "Billing",
+    "plan": "Plan"
   },
   "Archive": {
     "title": "Archive",

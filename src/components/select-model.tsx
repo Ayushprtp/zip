@@ -4,7 +4,7 @@ import { appStore } from "@/app/store";
 import { useChatModels } from "@/hooks/queries/use-chat-models";
 import { ChatModel } from "app-types/chat";
 import { cn } from "lib/utils";
-import { CheckIcon, ChevronDown } from "lucide-react";
+import { CheckIcon, ChevronDown, ImageIcon } from "lucide-react";
 import { Fragment, memo, PropsWithChildren, useEffect, useState } from "react";
 import { Button } from "ui/button";
 
@@ -25,7 +25,15 @@ interface SelectModelProps {
   align?: "start" | "end";
   currentModel?: ChatModel;
   showProvider?: boolean;
+  onGenerateImage?: (provider: "google" | "openai" | "flux") => void;
+  activeImageModel?: string | null;
 }
+
+const IMAGE_GEN_MODELS = [
+  { name: "Gemini (Nano Banana)", provider: "google" as const, icon: "google" },
+  { name: "OpenAI (GPT Image)", provider: "openai" as const, icon: "openai" },
+  { name: "Flux 1 Dev", provider: "flux" as const, icon: "flux" },
+];
 
 export const SelectModel = (props: PropsWithChildren<SelectModelProps>) => {
   const [open, setOpen] = useState(false);
@@ -137,6 +145,42 @@ export const SelectModel = (props: PropsWithChildren<SelectModelProps>) => {
                 {i < providers?.length - 1 && <CommandSeparator />}
               </Fragment>
             ))}
+            {props.onGenerateImage && (
+              <>
+                <CommandSeparator />
+                <CommandGroup
+                  heading={
+                    <div className="text-sm text-muted-foreground flex items-center gap-1.5">
+                      <ImageIcon className="size-3" />
+                      Image Generation
+                    </div>
+                  }
+                  className="pb-4"
+                >
+                  {IMAGE_GEN_MODELS.map((img) => (
+                    <CommandItem
+                      key={img.provider}
+                      className="cursor-pointer"
+                      onSelect={() => {
+                        props.onGenerateImage!(img.provider);
+                        setOpen(false);
+                      }}
+                      value={`image-${img.name}`}
+                    >
+                      {props.activeImageModel === img.provider ? (
+                        <CheckIcon className="size-3" />
+                      ) : (
+                        <div className="ml-3" />
+                      )}
+                      <span className="pr-2">{img.name}</span>
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        img
+                      </span>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

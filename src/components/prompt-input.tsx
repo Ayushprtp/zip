@@ -12,6 +12,8 @@ import {
   PlusIcon,
   Square,
   XIcon,
+  Sparkles,
+  Globe,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "ui/button";
@@ -56,6 +58,7 @@ import { FileUIPart, TextUIPart } from "ai";
 import { toast } from "sonner";
 import { isFilePartSupported, isIngestSupported } from "@/lib/ai/file-support";
 import { useChatModels } from "@/hooks/queries/use-chat-models";
+import type { IntentClassification } from "lib/ai/agent/intent-classifier";
 
 interface PromptInputProps {
   placeholder?: string;
@@ -71,6 +74,9 @@ interface PromptInputProps {
   threadId?: string;
   disabledMention?: boolean;
   onFocus?: () => void;
+  autonomousMode?: boolean;
+  webAgentMode?: boolean;
+  lastClassification?: IntentClassification | null;
 }
 
 const ChatMentionInput = dynamic(() => import("./chat-mention-input"), {
@@ -94,6 +100,9 @@ export default function PromptInput({
   voiceDisabled,
   threadId,
   disabledMention,
+  autonomousMode,
+  webAgentMode,
+  lastClassification,
 }: PromptInputProps) {
   const t = useTranslations("Chat");
   const [isUploadDropdownOpen, setIsUploadDropdownOpen] = useState(false);
@@ -222,7 +231,7 @@ export default function PromptInput({
   );
 
   const handleGenerateImage = useCallback(
-    (provider?: "google" | "openai") => {
+    (provider?: "google" | "openai" | "flux") => {
       if (!provider) {
         appStoreMutate({
           threadImageToolModel: {},
@@ -383,6 +392,7 @@ export default function PromptInput({
         ...prev.threadFiles,
         [threadId!]: [],
       },
+      threadImageToolModel: {},
     }));
   };
 
@@ -548,11 +558,75 @@ export default function PromptInput({
                             <OpenAIIcon className="mr-2 size-4" />
                             OpenAI
                           </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={modelInfo?.isToolCallUnsupported}
+                            onClick={() => handleGenerateImage("flux")}
+                            className="cursor-pointer"
+                          >
+                            <ImagesIcon className="mr-2 size-4" />
+                            Flux 1 Dev
+                          </DropdownMenuItem>
                         </DropdownMenuSubContent>
                       </DropdownMenuPortal>
                     </DropdownMenuSub>
                   </DropdownMenuContent>
                 </DropdownMenu>
+
+                {/* Autonomous Mode Toggle */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={"ghost"}
+                      size={"sm"}
+                      className={cn(
+                        "rounded-full hover:bg-input! p-2! transition-all duration-200",
+                        autonomousMode
+                          ? "text-primary bg-primary/10 ring-1 ring-primary/30"
+                          : "text-muted-foreground",
+                      )}
+                      onClick={() => {
+                        appStoreMutate((prev) => ({
+                          autonomousMode: !prev.autonomousMode,
+                        }));
+                      }}
+                    >
+                      <Sparkles className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {autonomousMode
+                      ? "Auto mode ON — I'll pick the best model & tools for each message"
+                      : "Auto mode OFF — Click to enable intelligent auto-routing"}
+                  </TooltipContent>
+                </Tooltip>
+
+                {/* Web Agent Mode Toggle */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={"ghost"}
+                      size={"sm"}
+                      className={cn(
+                        "rounded-full hover:bg-input! p-2! transition-all duration-200",
+                        webAgentMode
+                          ? "text-emerald-500 bg-emerald-500/10 ring-1 ring-emerald-500/30"
+                          : "text-muted-foreground",
+                      )}
+                      onClick={() => {
+                        appStoreMutate((prev) => ({
+                          webAgentMode: !prev.webAgentMode,
+                        }));
+                      }}
+                    >
+                      <Globe className="size-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {webAgentMode
+                      ? "Web Agent ON — Full internet access: search, browse, scrape, research"
+                      : "Web Agent OFF — Click to enable autonomous web browsing & research"}
+                  </TooltipContent>
+                </Tooltip>
 
                 {!toolDisabled &&
                   (imageToolModel ? (
@@ -583,38 +657,80 @@ export default function PromptInput({
 
                 <div className="flex-1" />
 
-                <SelectModel onSelect={setChatModel} currentModel={chatModel}>
-                  <Button
-                    variant={"ghost"}
-                    size={"sm"}
-                    className="rounded-full group data-[state=open]:bg-input! hover:bg-input! mr-1"
-                    data-testid="model-selector-button"
+                {/* When autonomous mode is on, show "Auto" badge instead of model selector */}
+                {autonomousMode && !webAgentMode ? (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant={"ghost"}
+                        size={"sm"}
+                        className={cn(
+                          "rounded-full group hover:bg-input! mr-1",
+                          "text-primary",
+                        )}
+                        onClick={() => {
+                          appStoreMutate({ autonomousMode: false });
+                        }}
+                      >
+                        <Sparkles className="size-3" />
+                        <span className="text-xs font-medium">Auto</span>
+                        <ChevronDown className="size-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div className="text-xs max-w-52">
+                        <p className="font-semibold">Autonomous Mode</p>
+                        <p className="text-muted-foreground mt-1">
+                          I automatically select the best model for each
+                          message. Click to switch to manual model selection.
+                        </p>
+                        {lastClassification && (
+                          <p className="text-primary mt-1">
+                            Last: {lastClassification.reasoning}
+                          </p>
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                ) : (
+                  <SelectModel
+                    onSelect={setChatModel}
+                    currentModel={chatModel}
+                    onGenerateImage={handleGenerateImage}
+                    activeImageModel={imageToolModel}
                   >
-                    {chatModel?.model ? (
-                      <>
-                        {chatModel.provider === "openai" ? (
-                          <OpenAIIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
-                        ) : chatModel.provider === "xai" ? (
-                          <GrokIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
-                        ) : chatModel.provider === "anthropic" ? (
-                          <ClaudeIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
-                        ) : chatModel.provider === "google" ? (
-                          <GeminiIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
-                        ) : null}
-                        <span
-                          className="text-foreground group-data-[state=open]:text-foreground  "
-                          data-testid="selected-model-name"
-                        >
-                          {chatModel.model}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground">model</span>
-                    )}
+                    <Button
+                      variant={"ghost"}
+                      size={"sm"}
+                      className="rounded-full group data-[state=open]:bg-input! hover:bg-input! mr-1"
+                      data-testid="model-selector-button"
+                    >
+                      {chatModel?.model ? (
+                        <>
+                          {chatModel.provider === "openai" ? (
+                            <OpenAIIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
+                          ) : chatModel.provider === "xai" ? (
+                            <GrokIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
+                          ) : chatModel.provider === "anthropic" ? (
+                            <ClaudeIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
+                          ) : chatModel.provider === "google" ? (
+                            <GeminiIcon className="size-3 opacity-0 group-data-[state=open]:opacity-100 group-hover:opacity-100" />
+                          ) : null}
+                          <span
+                            className="text-foreground group-data-[state=open]:text-foreground  "
+                            data-testid="selected-model-name"
+                          >
+                            {chatModel.model}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground">model</span>
+                      )}
 
-                    <ChevronDown className="size-3" />
-                  </Button>
-                </SelectModel>
+                      <ChevronDown className="size-3" />
+                    </Button>
+                  </SelectModel>
+                )}
                 {!isLoading && !input.length && !voiceDisabled ? (
                   <Tooltip>
                     <TooltipTrigger asChild>

@@ -313,7 +313,7 @@ export const ModelPricingTable = pgTable(
     // Access restrictions
     isPartnerOnly: boolean("is_partner_only").notNull().default(false),
     minimumPlan: varchar("minimum_plan", {
-      enum: ["free", "premium", "enterprise"],
+      enum: ["free", "pro", "plus", "enterprise"],
     })
       .notNull()
       .default("free"),
@@ -327,6 +327,38 @@ export const ModelPricingTable = pgTable(
     // Rate limits (can override plan defaults)
     customRpmLimit: integer("custom_rpm_limit"),
     customRpdLimit: integer("custom_rpd_limit"),
+
+    // Per-tier daily input token limits (null = unlimited)
+    dailyInputTokensFree: bigint("daily_input_tokens_free", { mode: "number" }),
+    dailyInputTokensPro: bigint("daily_input_tokens_pro", { mode: "number" }),
+    dailyInputTokensPlus: bigint("daily_input_tokens_plus", { mode: "number" }),
+    dailyInputTokensEnterprise: bigint("daily_input_tokens_enterprise", {
+      mode: "number",
+    }),
+
+    // Per-tier daily output token limits (null = unlimited)
+    dailyOutputTokensFree: bigint("daily_output_tokens_free", {
+      mode: "number",
+    }),
+    dailyOutputTokensPro: bigint("daily_output_tokens_pro", { mode: "number" }),
+    dailyOutputTokensPlus: bigint("daily_output_tokens_plus", {
+      mode: "number",
+    }),
+    dailyOutputTokensEnterprise: bigint("daily_output_tokens_enterprise", {
+      mode: "number",
+    }),
+
+    // Per-tier daily request limits (null = unlimited)
+    dailyRequestsFree: integer("daily_requests_free"),
+    dailyRequestsPro: integer("daily_requests_pro"),
+    dailyRequestsPlus: integer("daily_requests_plus"),
+    dailyRequestsEnterprise: integer("daily_requests_enterprise"),
+
+    // Per-tier RPM limits (null = use plan default)
+    rpmFree: integer("rpm_free"),
+    rpmPro: integer("rpm_pro"),
+    rpmPlus: integer("rpm_plus"),
+    rpmEnterprise: integer("rpm_enterprise"),
 
     // Status
     isEnabled: boolean("is_enabled").notNull().default(true),
@@ -358,7 +390,7 @@ export const SubscriptionTable = pgTable(
 
     // Plan info
     plan: varchar("plan", {
-      enum: ["free", "premium", "enterprise"],
+      enum: ["free", "pro", "plus", "enterprise"],
     })
       .notNull()
       .default("free"),
@@ -408,6 +440,75 @@ export const SubscriptionTable = pgTable(
 );
 
 // ============================================================================
+// PRICING PLANS (configurable pricing tiers)
+// ============================================================================
+
+export const PricingPlanTable = pgTable(
+  "pricing_plan",
+  {
+    id: uuid("id").primaryKey().notNull().defaultRandom(),
+
+    // Plan identification
+    tier: varchar("tier", {
+      enum: ["free", "pro", "plus", "enterprise"],
+    }).notNull(),
+
+    // Pricing type determines what is limited
+    pricingType: varchar("pricing_type", {
+      enum: ["token_based", "request_based", "unlimited"],
+    }).notNull(),
+
+    // Display info
+    displayName: text("display_name").notNull(),
+    description: text("description"),
+
+    // Pricing
+    monthlyPrice: decimal("monthly_price", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
+    yearlyPrice: decimal("yearly_price", { precision: 10, scale: 2 })
+      .notNull()
+      .default("0"),
+
+    // Token-based limits (null = unlimited)
+    tokenLimit: bigint("token_limit", { mode: "number" }),
+
+    // Request-based limits (null = unlimited)
+    requestLimit: integer("request_limit"),
+    requestPeriod: varchar("request_period", {
+      enum: ["daily", "monthly"],
+    }).default("monthly"),
+
+    // Monthly credit allowance included in plan
+    monthlyCredits: decimal("monthly_credits", { precision: 12, scale: 4 })
+      .notNull()
+      .default("0"),
+
+    // Features (JSON array of feature strings)
+    features: text("features").default("[]"),
+
+    // UI
+    highlighted: boolean("highlighted").notNull().default(false),
+    badge: text("badge"), // e.g. "Most Popular", "Best Value"
+    sortOrder: integer("sort_order").notNull().default(0),
+
+    // Status
+    isActive: boolean("is_active").notNull().default(true),
+
+    createdAt: timestamp("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    updatedAt: timestamp("updated_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (table) => [
+    index("pricing_plan_type_tier_idx").on(table.pricingType, table.tier),
+    index("pricing_plan_active_idx").on(table.isActive),
+  ],
+);
+
+// ============================================================================
 // TYPE EXPORTS
 // ============================================================================
 
@@ -418,3 +519,4 @@ export type CreditTransactionEntity =
   typeof CreditTransactionTable.$inferSelect;
 export type ModelPricingEntity = typeof ModelPricingTable.$inferSelect;
 export type SubscriptionEntity = typeof SubscriptionTable.$inferSelect;
+export type PricingPlanEntity = typeof PricingPlanTable.$inferSelect;

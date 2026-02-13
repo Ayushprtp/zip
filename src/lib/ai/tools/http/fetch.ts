@@ -2,6 +2,7 @@ import { JSONSchema7 } from "json-schema";
 import { tool as createTool } from "ai";
 import { jsonSchemaToZod } from "lib/json-schema-to-zod";
 import { safe } from "ts-safe";
+import { validateUrl } from "../url-guard";
 
 export const httpFetchSchema: JSONSchema7 = {
   type: "object",
@@ -42,6 +43,9 @@ export const httpFetchTool = createTool({
   inputSchema: jsonSchemaToZod(httpFetchSchema),
   execute: async ({ url, method = "GET", headers, body, timeout = 10000 }) => {
     return safe(async () => {
+      // SSRF protection — block internal/private network requests
+      validateUrl(url);
+
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeout);
 

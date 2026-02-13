@@ -20,10 +20,15 @@ import {
   Code2,
   Eye,
   Columns2,
+  AlertTriangle,
+  SquareTerminal,
+  Globe,
+  Wifi,
 } from "lucide-react";
 import { Button } from "ui/button";
 import { TextShimmer } from "ui/text-shimmer";
 import { Badge } from "ui/badge";
+import { useRemoteDevStore } from "@/stores/remote-dev-store";
 
 type ViewMode = "code" | "preview" | "split";
 
@@ -49,6 +54,13 @@ interface BuilderHeaderProps {
   onViewModeChange?: (mode: ViewMode) => void;
   showConsole?: boolean;
   onToggleConsole?: () => void;
+  showTerminal?: boolean;
+  onToggleTerminal?: () => void;
+  showReport?: boolean;
+  onToggleReport?: () => void;
+  showSSH?: boolean;
+  onToggleSSH?: () => void;
+  bottomPanel?: "none" | "console" | "terminal" | "report" | "ssh";
   builderMode?: "default" | "httpchain";
   onBuilderModeChange?: (mode: "default" | "httpchain") => void;
 }
@@ -73,12 +85,24 @@ export function BuilderHeader({
   serverStatus = "running",
   viewMode,
   onViewModeChange,
-  showConsole,
+  showConsole: _showConsole,
   onToggleConsole,
+  showTerminal: _showTerminal,
+  onToggleTerminal,
+  showReport: _showReport,
+  onToggleReport,
+  showSSH: _showSSH,
+  onToggleSSH,
+  bottomPanel,
   builderMode,
   onBuilderModeChange,
 }: BuilderHeaderProps) {
   const { toggleSidebar, open } = useSidebar();
+  const remoteConnected = useRemoteDevStore(
+    (s) => s.connectionStatus === "connected",
+  );
+  const executionContext = useRemoteDevStore((s) => s.executionContext);
+  const activeConnection = useRemoteDevStore((s) => s.activeConnection);
 
   return (
     <header className="sticky top-0 z-50 flex items-center gap-1 px-2 py-1.5 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 overflow-x-auto">
@@ -246,13 +270,64 @@ export function BuilderHeader({
 
           <Button
             size="icon"
-            variant={showConsole ? "secondary" : "ghost"}
+            variant={bottomPanel === "console" ? "secondary" : "ghost"}
             onClick={onToggleConsole}
             className="h-7 w-7 shrink-0"
+            title="Console"
           >
             <Terminal className="h-3 w-3" />
           </Button>
         </>
+      )}
+
+      {/* Terminal Toggle */}
+      {onToggleTerminal !== undefined && (
+        <Button
+          size="icon"
+          variant={bottomPanel === "terminal" ? "secondary" : "ghost"}
+          onClick={onToggleTerminal}
+          className="h-7 w-7 shrink-0"
+          title="Terminal"
+        >
+          <SquareTerminal className="h-3 w-3" />
+        </Button>
+      )}
+
+      {/* Report Toggle */}
+      {onToggleReport !== undefined && (
+        <Button
+          size="icon"
+          variant={bottomPanel === "report" ? "secondary" : "ghost"}
+          onClick={onToggleReport}
+          className="h-7 w-7 shrink-0"
+          title="Report & Status"
+        >
+          <AlertTriangle className="h-3 w-3" />
+        </Button>
+      )}
+
+      {/* SSH Toggle */}
+      {onToggleSSH !== undefined && (
+        <Button
+          size="icon"
+          variant={bottomPanel === "ssh" ? "secondary" : "ghost"}
+          onClick={onToggleSSH}
+          className="h-7 w-7 shrink-0 relative"
+          title={
+            remoteConnected
+              ? `Remote: ${activeConnection?.name || activeConnection?.host} (${executionContext})`
+              : "SSH Remote"
+          }
+        >
+          {remoteConnected ? (
+            <Wifi className="h-3 w-3 text-green-500" />
+          ) : (
+            <Globe className="h-3 w-3" />
+          )}
+          {remoteConnected && (
+            <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-green-500 border border-background" />
+          )}
+        </Button>
       )}
 
       <div className="h-4 w-px bg-border shrink-0" />

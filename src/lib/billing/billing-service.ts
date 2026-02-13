@@ -69,7 +69,8 @@ export const CREDITS_PER_USD = 1000;
  */
 export const PLAN_CREDITS: Record<UserPlan, number> = {
   free: 1000, // $1 worth
-  premium: 20000, // $20 worth
+  pro: 20000, // $20 worth
+  plus: 50000, // $50 worth
   enterprise: 100000, // $100 worth (or unlimited with flag)
 };
 
@@ -90,20 +91,27 @@ export const PLAN_RATE_LIMITS: Record<
     requestsPerMinute: 5,
     requestsPerDay: 100,
     tokensPerMinute: 10000,
-    tokensPerDay: 100000,
+    tokensPerDay: 210000, // 10k input + 200k output
     concurrentRequests: 1,
   },
-  premium: {
+  pro: {
     requestsPerMinute: 30,
     requestsPerDay: 1000,
     tokensPerMinute: 100000,
-    tokensPerDay: 2000000,
+    tokensPerDay: 2500000,
     concurrentRequests: 5,
+  },
+  plus: {
+    requestsPerMinute: 60,
+    requestsPerDay: 5000,
+    tokensPerMinute: 500000,
+    tokensPerDay: 12000000,
+    concurrentRequests: 10,
   },
   enterprise: {
     requestsPerMinute: 100,
     requestsPerDay: -1, // unlimited
-    tokensPerMinute: 500000,
+    tokensPerMinute: 1000000,
     tokensPerDay: -1, // unlimited
     concurrentRequests: 20,
   },

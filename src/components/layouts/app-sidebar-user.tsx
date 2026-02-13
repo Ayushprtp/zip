@@ -26,12 +26,15 @@ import {
   MoonStar,
   ChevronRight,
   Settings,
+  CreditCard,
+  Sparkles,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { appStore } from "@/app/store";
 import { BASE_THEMES, COOKIE_KEY_LOCALE, SUPPORTED_LOCALES } from "lib/const";
 import { capitalizeFirstLetter, cn, fetcher } from "lib/utils";
 import { authClient } from "auth/client";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import useSWR from "swr";
 import { getLocaleAction } from "@/i18n/get-locale";
@@ -42,6 +45,14 @@ import { useThemeStyle } from "@/hooks/use-theme-style";
 import { BasicUser } from "app-types/user";
 import { getUserAvatar } from "lib/user/utils";
 import { Skeleton } from "ui/skeleton";
+import { Badge } from "ui/badge";
+
+const PLAN_COLORS: Record<string, string> = {
+  free: "bg-zinc-500/10 text-zinc-600 dark:text-zinc-400",
+  pro: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
+  plus: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+  enterprise: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+};
 
 export function AppSidebarUserInner(props: {
   user?: BasicUser;
@@ -112,8 +123,16 @@ export function AppSidebarUserInner(props: {
                   >
                     {user?.name}
                   </span>
-                  <span className="truncate text-xs text-muted-foreground">
+                  <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground">
                     {user?.email}
+                    {user?.plan && user.plan !== "free" && (
+                      <Badge
+                        className={`text-[10px] px-1.5 py-0 h-4 font-medium capitalize ${PLAN_COLORS[user.plan] || ""}`}
+                        variant="outline"
+                      >
+                        {user.plan}
+                      </Badge>
+                    )}
                   </span>
                 </div>
               </div>
@@ -154,6 +173,25 @@ export function AppSidebarUserInner(props: {
               <span>{t("joinCommunity")}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+
+            <DropdownMenuItem asChild className="cursor-pointer">
+              <Link href="/billing">
+                <CreditCard className="size-4 text-foreground" />
+                <span>{t("billing")}</span>
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild className="cursor-pointer">
+              <Link href="/billing">
+                <Sparkles className="size-4 text-foreground" />
+                <span>{t("plan")}</span>
+                <Badge
+                  className={`ml-auto text-[10px] px-1.5 py-0 h-4 font-medium capitalize ${PLAN_COLORS[user?.plan || "free"] || PLAN_COLORS.free}`}
+                  variant="outline"
+                >
+                  {user?.plan || "free"}
+                </Badge>
+              </Link>
+            </DropdownMenuItem>
 
             <DropdownMenuItem
               onClick={() => appStoreMutate({ openUserSettings: true })}

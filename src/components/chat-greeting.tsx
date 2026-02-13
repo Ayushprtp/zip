@@ -7,6 +7,9 @@ import { useTranslations } from "next-intl";
 import useSWR from "swr";
 import { BasicUser } from "app-types/user";
 import { fetcher } from "lib/utils";
+import { appStore } from "@/app/store";
+import { useShallow } from "zustand/shallow";
+import { Sparkles, Globe } from "lucide-react";
 
 function getGreetingByTime() {
   const hour = new Date().getHours();
@@ -20,6 +23,9 @@ export const ChatGreeting = () => {
     revalidateOnMount: false,
   });
   const t = useTranslations("Chat.Greeting");
+  const [autonomousMode, webAgentMode] = appStore(
+    useShallow((state) => [state.autonomousMode, state.webAgentMode]),
+  );
 
   const word = useMemo(() => {
     if (!user?.name) return "";
@@ -38,16 +44,43 @@ export const ChatGreeting = () => {
   return (
     <motion.div
       key="welcome"
-      className="max-w-3xl mx-auto my-4 h-20"
+      className="max-w-3xl mx-auto my-4"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ delay: 0.3 }}
     >
-      <div className="rounded-xl p-6 flex flex-col gap-2 leading-relaxed text-center">
+      <div className="rounded-xl p-6 flex flex-col gap-3 leading-relaxed text-center">
         <h1 className="text-2xl md:text-3xl">
           {word ? <FlipWords words={[word]} className="text-primary" /> : ""}
         </h1>
+        {autonomousMode && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.8, duration: 0.4 }}
+            className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
+          >
+            <Sparkles className="size-3.5 text-primary" />
+            <span>
+              Auto mode is on — just type anything and I'll figure out the rest
+            </span>
+          </motion.div>
+        )}
+        {webAgentMode && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.0, duration: 0.4 }}
+            className="flex items-center justify-center gap-2 text-xs text-muted-foreground"
+          >
+            <Globe className="size-3.5 text-emerald-500" />
+            <span>
+              Web Agent is active — I can search, browse, scrape, and research
+              anything on the internet
+            </span>
+          </motion.div>
+        )}
       </div>
     </motion.div>
   );

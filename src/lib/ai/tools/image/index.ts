@@ -196,6 +196,72 @@ export const openaiImageTool = createTool({
   },
 } as any);
 
+export const fluxImageTool = createTool({
+  name: ImageToolName,
+  description: `Generate images using Flux 1 Dev model. This tool creates high-quality images based on a text prompt derived from the conversation context. Use the 'mode' parameter to specify the operation type: 'create' for new images, 'edit' for modifying existing images, or 'composite' for combining multiple images. Use this when the user requests image creation or visual content generation.`,
+  inputSchema: z.object({
+    mode: z
+      .enum(["create", "edit", "composite"])
+      .optional()
+      .default("create")
+      .describe(
+        "Image generation mode: 'create' for new images, 'edit' for modifying existing images, 'composite' for combining multiple images",
+      ),
+    prompt: z
+      .string()
+      .describe(
+        "A detailed text prompt describing the image to generate. Derive this from the user's latest request and conversation context.",
+      ),
+  }),
+  execute: async ({ mode, prompt }, { abortSignal }) => {
+    try {
+      const response = await fetch(
+        "https://flux-1-dev.voidzero.workers.dev/v1/images/generations",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt,
+            size: "1024x1024",
+            n: 1,
+          }),
+          signal: abortSignal,
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        logger.error(`Flux API error: ${response.status} ${errorText}`);
+        throw new Error(`Flux API request failed: ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        created: number;
+        data: { url: string }[];
+      };
+
+      // Take only the first image
+      const firstImg = (data.data || [])[0];
+      const resultImages = firstImg
+        ? [{ url: firstImg.url, mimeType: "image/png" }]
+        : [];
+
+      return {
+        images: resultImages,
+        mode,
+        model: "flux-1-dev",
+        guide:
+          resultImages.length > 0
+            ? "The image has been successfully generated using Flux 1 Dev and is now displayed above. If you need any edits, modifications, or adjustments to the image, please let me know."
+            : "I apologize, but the image generation was not successful. Please try again with a more detailed prompt.",
+      };
+    } catch (e) {
+      logger.error(e);
+      throw e;
+    }
+  },
+} as any);
+
 function convertToImageToolPartToImagePart(part: ToolResultPart): ImagePart[] {
   if (part.toolName !== ImageToolName) return [];
   if (!toAny(part).result?.images?.length) return [];

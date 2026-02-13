@@ -14,6 +14,7 @@ function getRolePermissions(role: string | undefined | null): BetterAuthRole {
 
   // Default to 'user' role if no role is provided
   switch (cleanRole) {
+    case "super_admin":
     case "admin":
       return admin as BetterAuthRole;
     case "editor":

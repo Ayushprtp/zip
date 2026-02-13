@@ -3,6 +3,7 @@ export enum AppDefaultToolkit {
   WebSearch = "webSearch",
   Http = "http",
   Code = "code",
+  WebAgent = "webAgent",
 }
 
 export enum DefaultToolName {
@@ -15,6 +16,10 @@ export enum DefaultToolName {
   Http = "http",
   JavascriptExecution = "mini-javascript-execution",
   PythonExecution = "python-execution",
+  WebPageReader = "webPageReader",
+  WebResearch = "webResearch",
+  WebScreenshot = "webScreenshot",
+  BrowserAutomation = "browserAutomation",
 }
 
 export const SequentialThinkingToolName = "sequential-thinking";

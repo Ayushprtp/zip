@@ -12,6 +12,7 @@ import {
   hasPermission,
   canAccessPartnerFeatures,
   userPlanInfo,
+  canAccessTier,
 } from "@/types/roles";
 
 /**
@@ -153,19 +154,70 @@ export async function requirePartnerAccess() {
 }
 
 /**
- * Check if a model/feature is accessible by the user
+ * Check if a model/feature is accessible by the user based on
+ * partner status AND plan tier requirements.
  */
-export async function canAccessModel(modelConfig: { isPartnerOnly?: boolean }) {
+export async function canAccessModel(modelConfig: {
+  isPartnerOnly?: boolean;
+  minimumPlan?: string;
+}) {
   const user = await getCurrentUser();
   if (!user) {
     return false;
   }
 
-  if (!modelConfig.isPartnerOnly) {
-    return true; // Public model
+  // Admins/super_admins bypass all restrictions
+  if (user.role === USER_ROLES.SUPER_ADMIN || user.role === USER_ROLES.ADMIN) {
+    return true;
   }
 
-  return canAccessPartnerFeatures(user.role, user.accountType);
+  // Check partner restriction
+  if (modelConfig.isPartnerOnly) {
+    if (!canAccessPartnerFeatures(user.role, user.accountType)) {
+      return false;
+    }
+  }
+
+  // Check plan tier restriction
+  if (modelConfig.minimumPlan && modelConfig.minimumPlan !== "free") {
+    if (!canAccessTier(user.plan, modelConfig.minimumPlan as UserPlan)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Synchronous check if a user can access a model (when user is already resolved)
+ */
+export function canUserAccessModel(
+  user: ExtendedUser,
+  modelConfig: {
+    isPartnerOnly?: boolean;
+    minimumPlan?: string;
+  },
+): boolean {
+  // Admins/super_admins bypass all restrictions
+  if (user.role === USER_ROLES.SUPER_ADMIN || user.role === USER_ROLES.ADMIN) {
+    return true;
+  }
+
+  // Check partner restriction
+  if (modelConfig.isPartnerOnly) {
+    if (!canAccessPartnerFeatures(user.role, user.accountType)) {
+      return false;
+    }
+  }
+
+  // Check plan tier restriction
+  if (modelConfig.minimumPlan && modelConfig.minimumPlan !== "free") {
+    if (!canAccessTier(user.plan, modelConfig.minimumPlan as UserPlan)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 // ============================================================================
@@ -185,9 +237,9 @@ export async function getUserLimits() {
 }
 
 /**
- * Check if user has premium plan or higher
+ * Check if user has pro plan or higher
  */
-export async function requirePremium() {
+export async function requirePaidPlan() {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -195,7 +247,26 @@ export async function requirePremium() {
 
   if (user.plan === USER_PLANS.FREE) {
     return NextResponse.json(
-      { error: "Premium plan required" },
+      { error: "A paid plan is required" },
+      { status: 403 },
+    );
+  }
+
+  return user;
+}
+
+/**
+ * Require a minimum plan tier
+ */
+export async function requirePlan(minimumPlan: UserPlan) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  if (!canAccessTier(user.plan, minimumPlan)) {
+    return NextResponse.json(
+      { error: `${minimumPlan} plan or higher is required` },
       { status: 403 },
     );
   }

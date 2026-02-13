@@ -9,6 +9,10 @@ import {
 import { Suspense } from "react";
 import { getSession } from "auth/server";
 import { requireAdminPermission } from "auth/permissions";
+import {
+  getUserCreditsById,
+  getActivePricingPlans,
+} from "lib/admin/billing-repository";
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -25,9 +29,11 @@ export default async function UserDetailPage({ params }: PageProps) {
   if (!session) {
     redirect("/login");
   }
-  const [user, userAccountInfo] = await Promise.all([
+  const [user, userAccountInfo, userBilling, pricingPlans] = await Promise.all([
     getUser(id),
     getUserAccounts(id),
+    getUserCreditsById(id),
+    getActivePricingPlans(),
   ]);
 
   if (!user) {
@@ -39,6 +45,22 @@ export default async function UserDetailPage({ params }: PageProps) {
       user={user}
       currentUserId={session.user.id}
       userAccountInfo={userAccountInfo}
+      subscription={userBilling?.subscription || null}
+      userCredits={
+        userBilling?.credits
+          ? {
+              balance: userBilling.credits.balance,
+              totalCreditsUsed: userBilling.credits.totalCreditsUsed,
+              totalCreditsGranted: userBilling.credits.totalCreditsGranted,
+              totalCreditsPurchased: userBilling.credits.totalCreditsPurchased,
+              monthlyCreditsUsed: userBilling.credits.monthlyCreditsUsed,
+              dailyRequestCount: userBilling.credits.dailyRequestCount,
+              dailyResetAt:
+                userBilling.credits.dailyResetAt?.toISOString() || null,
+            }
+          : null
+      }
+      pricingPlans={pricingPlans}
       userStatsSlot={
         <Suspense fallback={<UserStatsCardLoaderSkeleton />}>
           <UserStatsCardLoader userId={id} view="admin" />

@@ -49,6 +49,11 @@ import { getStorageManager } from "lib/browser-stroage";
 import { AnimatePresence, motion } from "framer-motion";
 import { useThreadFileUploader } from "@/hooks/use-thread-file-uploader";
 import { useFileDragOverlay } from "@/hooks/use-file-drag-overlay";
+import {
+  useAutonomousAgent,
+  AutonomousRouteResult,
+} from "@/hooks/use-autonomous-agent";
+import { UserIntent } from "lib/ai/agent/intent-classifier";
 
 type Props = {
   threadId: string;
@@ -64,7 +69,7 @@ const Particles = dynamic(() => import("ui/particles"), {
   ssr: false,
 });
 
-const debounce = createDebounce();
+const _debounce = createDebounce();
 
 const firstTimeStorage = getStorageManager("IS_FIRST");
 const isFirstTime = firstTimeStorage.get() ?? true;
@@ -95,6 +100,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     threadMentions,
     pendingThreadMention,
     threadImageToolModel,
+    autonomousMode,
+    webAgentMode,
   ] = appStore(
     useShallow((state) => [
       state.mutate,
@@ -106,14 +113,20 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       state.threadMentions,
       state.pendingThreadMention,
       state.threadImageToolModel,
+      state.autonomousMode,
+      state.webAgentMode,
     ]),
   );
+
+  // Autonomous agent: stores the latest auto-route result for the current send
+  const autoRouteRef = useRef<AutonomousRouteResult | null>(null);
+  const { classifyLocally, lastClassification } = useAutonomousAgent();
 
   const generateTitle = useGenerateThreadTitle({
     threadId,
   });
 
-  const [showParticles, setShowParticles] = useState(isFirstTime);
+  const [showParticles, _setShowParticles] = useState(true);
 
   const onFinish = useCallback(() => {
     const messages = latestRef.current.messages;
@@ -196,11 +209,27 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           (p) => (p as any)?.type === "file",
         );
 
+        // ── Autonomous Agent: auto-route model & image provider ──
+        const autoRoute = autoRouteRef.current;
+        const isAutoMode = latestRef.current.autonomousMode && autoRoute;
+
+        // Determine the chat model: auto-routed model takes priority in autonomous mode
+        const resolvedModel =
+          isAutoMode && autoRoute?.model
+            ? autoRoute.model
+            : ((body as { model: ChatModel })?.model ??
+              latestRef.current.model);
+
+        // Determine image tool: auto-detected image intent takes priority
+        const resolvedImageModel =
+          isAutoMode && autoRoute?.intent === ("image_generation" as any)
+            ? autoRoute.imageProvider
+            : latestRef.current.threadImageToolModel[threadId];
+
         const requestBody: ChatApiSchemaRequestBody = {
           ...body,
           id,
-          chatModel:
-            (body as { model: ChatModel })?.model ?? latestRef.current.model,
+          chatModel: resolvedModel,
           toolChoice: latestRef.current.toolChoice,
           allowedAppDefaultToolkit:
             latestRef.current.mentions?.length || hasFilePart
@@ -212,10 +241,15 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           mentions: latestRef.current.mentions,
           message: sanitizedLastMessage,
           imageTool: {
-            model: latestRef.current.threadImageToolModel[threadId],
+            model: resolvedImageModel,
           },
           attachments,
+          webAgentMode: latestRef.current.webAgentMode,
         };
+
+        // Clear the auto-route after use
+        autoRouteRef.current = null;
+
         return { body: requestBody };
       },
     }),
@@ -234,6 +268,27 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     [_addToolResult],
   );
 
+  // Wrap sendMessage to auto-classify intent before sending in autonomous mode
+  const autonomousSendMessage = useCallback(
+    (...args: Parameters<typeof sendMessage>) => {
+      if (latestRef.current.autonomousMode) {
+        // Extract the text from the message parts
+        const msg = args[0];
+        const textPart = msg?.parts?.find((p: any) => p.type === "text") as any;
+        const text = textPart?.text || "";
+        const hasFiles =
+          msg?.parts?.some((p: any) => p.type === "file") || false;
+
+        if (text) {
+          const result = classifyLocally(text, hasFiles);
+          autoRouteRef.current = result;
+        }
+      }
+      return sendMessage(...args);
+    },
+    [sendMessage, classifyLocally],
+  );
+
   const mounted = useMounted();
 
   const latestRef = useToRef({
@@ -246,6 +301,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
     threadId,
     mentions: threadMentions[threadId],
     threadImageToolModel,
+    autonomousMode,
+    webAgentMode,
   });
 
   const isLoading = useMemo(
@@ -324,8 +381,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
   }, [showParticles]);
 
   const handleFocus = useCallback(() => {
-    setShowParticles(false);
-    debounce(() => setShowParticles(true), 60000);
+    // Keep particles visible at all times
   }, []);
 
   const handleScroll = useCallback(() => {
@@ -494,11 +550,14 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           <PromptInput
             input={input}
             threadId={threadId}
-            sendMessage={sendMessage}
+            sendMessage={autonomousSendMessage}
             setInput={setInput}
             isLoading={isLoading || isPendingToolCall}
             onStop={stop}
             onFocus={isFirstTime ? undefined : handleFocus}
+            autonomousMode={autonomousMode}
+            webAgentMode={webAgentMode}
+            lastClassification={lastClassification}
           />
         </div>
         <DeleteThreadPopup

@@ -2,61 +2,120 @@ import { tool as createTool } from "ai";
 import { JSONSchema7 } from "json-schema";
 import { jsonSchemaToZod } from "lib/json-schema-to-zod";
 import { safe } from "ts-safe";
+import globalLogger from "logger";
 
-// Exa API Types
-export interface ExaSearchRequest {
-  query: string;
-  type: string;
-  category?: string;
-  includeDomains?: string[];
-  excludeDomains?: string[];
-  startPublishedDate?: string;
-  endPublishedDate?: string;
-  numResults: number;
-  contents: {
-    text:
-      | {
-          maxCharacters?: number;
+const logger = globalLogger.withDefaults({
+  message: "[WebSearch] ",
+});
+
+// ---------------------------------------------------------------------------
+//  TheAgenticBrowser helper — shared by search & content tools
+// ---------------------------------------------------------------------------
+const AGENTIC_BROWSER_BASE_URL =
+  process.env.AGENTIC_BROWSER_URL || "http://127.0.0.1:8000";
+const AGENTIC_BROWSER_API_KEY = process.env.AGENTIC_BROWSER_API_KEY || "";
+
+interface BrowserTaskResult {
+  result: string | null;
+  plan?: string;
+  steps: string[];
+  events: any[];
+}
+
+/**
+ * Send a natural-language command to TheAgenticBrowser and parse the SSE
+ * response into structured data.
+ */
+async function executeAgenticBrowserTask(
+  command: string,
+  timeoutSec = 120,
+): Promise<BrowserTaskResult> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutSec * 1000);
+
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (AGENTIC_BROWSER_API_KEY) {
+      headers["Authorization"] = `Bearer ${AGENTIC_BROWSER_API_KEY}`;
+      headers["x-api-key"] = AGENTIC_BROWSER_API_KEY;
+    }
+
+    const response = await fetch(`${AGENTIC_BROWSER_BASE_URL}/execute_task`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ command }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      throw new Error(
+        `Agentic Browser returned HTTP ${response.status}: ${response.statusText}`,
+      );
+    }
+
+    // Parse Server-Sent Events stream
+    const text = await response.text();
+    const events = text
+      .split("\n\n")
+      .filter((block) => block.startsWith("data: "))
+      .map((block) => {
+        try {
+          return JSON.parse(block.replace(/^data: /, ""));
+        } catch {
+          return null;
         }
-      | boolean;
-    livecrawl?: "always" | "fallback" | "preferred";
-    subpages?: number;
-    subpageTarget?: string[];
-  };
+      })
+      .filter(Boolean);
+
+    const steps: string[] = [];
+    const plans: string[] = [];
+    const errors: string[] = [];
+    let finalResult: string | null = null;
+
+    for (const event of events) {
+      const msg = event.message || "";
+      const type = (event.type || "").toLowerCase();
+
+      if (type === "final" || type === "complete") {
+        finalResult = msg;
+      } else if (type === "error") {
+        errors.push(msg);
+      } else if (type === "plan") {
+        plans.push(msg);
+      } else if (type === "step" || type === "info") {
+        steps.push(msg);
+      }
+    }
+
+    if (errors.length && !finalResult) {
+      throw new Error(errors.join("\n"));
+    }
+
+    return {
+      result: finalResult || steps[steps.length - 1] || "Task completed",
+      plan: plans.length > 0 ? plans.join("\n") : undefined,
+      steps,
+      events,
+    };
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      throw new Error(
+        `Browser automation timed out after ${timeoutSec} seconds.`,
+      );
+    }
+    throw error;
+  }
 }
 
-export interface ExaSearchResult {
-  id: string;
-  title: string;
-  url: string;
-  publishedDate: string;
-  author: string;
-  text: string;
-  image?: string;
-  favicon?: string;
-  score?: number;
-}
-
-export interface ExaSearchResponse {
-  requestId: string;
-  autopromptString: string;
-  resolvedSearchType: string;
-  results: ExaSearchResult[];
-}
-
-export interface ExaContentsRequest {
-  ids: string[];
-  contents: {
-    text:
-      | {
-          maxCharacters?: number;
-        }
-      | boolean;
-    livecrawl?: "always" | "fallback" | "preferred";
-  };
-}
-
-export const exaSearchSchema: JSONSchema7 = {
+// ---------------------------------------------------------------------------
+//  Schemas
+// ---------------------------------------------------------------------------
+export const webSearchSchema: JSONSchema7 = {
   type: "object",
   properties: {
     query: {
@@ -70,62 +129,11 @@ export const exaSearchSchema: JSONSchema7 = {
       minimum: 1,
       maximum: 20,
     },
-    type: {
-      type: "string",
-      enum: ["auto", "keyword", "neural"],
-      description:
-        "Search type - auto lets Exa decide, keyword for exact matches, neural for semantic search",
-      default: "auto",
-    },
-    category: {
-      type: "string",
-      enum: [
-        "company",
-        "research paper",
-        "news",
-        "linkedin profile",
-        "github",
-        "tweet",
-        "movie",
-        "song",
-        "personal site",
-        "pdf",
-      ],
-      description: "Category to focus the search on",
-    },
-    includeDomains: {
-      type: "array",
-      items: { type: "string" },
-      description: "List of domains to specifically include in search results",
-      default: [],
-    },
-    excludeDomains: {
-      type: "array",
-      items: { type: "string" },
-      description:
-        "List of domains to specifically exclude from search results",
-      default: [],
-    },
-    startPublishedDate: {
-      type: "string",
-      description: "Start date for published content (YYYY-MM-DD format)",
-    },
-    endPublishedDate: {
-      type: "string",
-      description: "End date for published content (YYYY-MM-DD format)",
-    },
-    maxCharacters: {
-      type: "number",
-      description: "Maximum characters to extract from each result",
-      default: 3000,
-      minimum: 100,
-      maximum: 10000,
-    },
   },
   required: ["query"],
 };
 
-export const exaContentsSchema: JSONSchema7 = {
+export const webContentsSchema: JSONSchema7 = {
   type: "object",
   properties: {
     urls: {
@@ -140,171 +148,146 @@ export const exaContentsSchema: JSONSchema7 = {
       minimum: 100,
       maximum: 10000,
     },
-    livecrawl: {
-      type: "string",
-      enum: ["always", "fallback", "preferred"],
-      description:
-        "Live crawling preference - always forces live crawl, fallback uses cache first, preferred tries live first",
-      default: "preferred",
-    },
   },
   required: ["urls"],
 };
 
-const API_KEY = process.env.EXA_API_KEY;
-const BASE_URL = "https://api.exa.ai";
-
-const fetchExa = async (endpoint: string, body: any): Promise<any> => {
-  if (!API_KEY) {
-    throw new Error("EXA_API_KEY is not configured");
-  }
-
-  const response = await fetch(`${BASE_URL}${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": API_KEY,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (response.status === 401) {
-    throw new Error("Invalid EXA API key");
-  }
-  if (response.status === 429) {
-    throw new Error("Exa API usage limit exceeded");
-  }
-
-  if (!response.ok) {
-    throw new Error(`Exa API error: ${response.status} ${response.statusText}`);
-  }
-
-  return await response.json();
-};
-
-export const exaSearchToolForWorkflow = createTool({
+// ---------------------------------------------------------------------------
+//  Workflow versions (direct execute, no safe wrapper)
+// ---------------------------------------------------------------------------
+export const webSearchToolForWorkflow = createTool({
   description:
-    "Search the web using Exa AI - performs real-time web searches with semantic and neural search capabilities. Returns high-quality, relevant results with full content extraction.",
-  inputSchema: jsonSchemaToZod(exaSearchSchema),
+    "Search the web for information using a real browser agent. Returns relevant search results with titles, URLs, and content. Use this to find current information or answer questions requiring web knowledge.",
+  inputSchema: jsonSchemaToZod(webSearchSchema),
   execute: async (params) => {
-    const searchRequest: ExaSearchRequest = {
+    const numResults = params.numResults || 5;
+    logger.info(
+      `🔍 webSearch(workflow): "${params.query}" (${numResults} results)`,
+    );
+
+    const command = `Go to Google and search for "${params.query}". Extract the top ${numResults} search results. For each result, extract the title, URL, and a brief snippet/description. Return the results as structured data.`;
+    const browserResult = await executeAgenticBrowserTask(command, 90);
+
+    return {
       query: params.query,
-      type: params.type || "auto",
-      numResults: params.numResults || 5,
-      contents: {
-        text: {
-          maxCharacters: params.maxCharacters || 3000,
-        },
-        livecrawl: "preferred",
-      },
+      result: browserResult.result,
+      steps: browserResult.steps,
     };
-
-    // Add optional parameters if provided
-    if (params.category) searchRequest.category = params.category;
-    if (params.includeDomains?.length)
-      searchRequest.includeDomains = params.includeDomains;
-    if (params.excludeDomains?.length)
-      searchRequest.excludeDomains = params.excludeDomains;
-    if (params.startPublishedDate)
-      searchRequest.startPublishedDate = params.startPublishedDate;
-    if (params.endPublishedDate)
-      searchRequest.endPublishedDate = params.endPublishedDate;
-
-    return fetchExa("/search", searchRequest);
   },
 });
 
-export const exaContentsToolForWorkflow = createTool({
+export const webContentsToolForWorkflow = createTool({
   description:
-    "Extract detailed content from specific URLs using Exa AI - retrieves full text content, metadata, and structured information from web pages with live crawling capabilities.",
-  inputSchema: jsonSchemaToZod(exaContentsSchema),
+    "Extract detailed content from specific URLs using a real browser agent. Retrieves full text content and metadata from web pages, handling JavaScript-rendered content.",
+  inputSchema: jsonSchemaToZod(webContentsSchema),
   execute: async (params) => {
-    const contentsRequest: ExaContentsRequest = {
-      ids: params.urls,
-      contents: {
-        text: {
-          maxCharacters: params.maxCharacters || 3000,
-        },
-        livecrawl: params.livecrawl || "preferred",
-      },
-    };
+    const maxChars = params.maxCharacters || 3000;
+    logger.info(
+      `📖 webContent(workflow): extracting from ${params.urls.length} URLs`,
+    );
 
-    return fetchExa("/contents", contentsRequest);
+    const urlList = params.urls.join(", ");
+    const command = `Visit each of these URLs and extract the main text content from each page (up to ${maxChars} characters per page): ${urlList}. Return the extracted text content for each URL separately.`;
+    const browserResult = await executeAgenticBrowserTask(command, 120);
+
+    return {
+      urls: params.urls,
+      result: browserResult.result,
+      steps: browserResult.steps,
+    };
   },
 });
 
-export const exaSearchTool = createTool({
+// ---------------------------------------------------------------------------
+//  Chat versions (safe-wrapped, user-friendly error handling)
+// ---------------------------------------------------------------------------
+export const webSearchTool = createTool({
   description:
-    "Search the web using Exa AI - performs real-time web searches with semantic and neural search capabilities. Returns high-quality, relevant results with full content extraction.",
-  inputSchema: jsonSchemaToZod(exaSearchSchema),
+    "Search the web for information using a real browser agent. Performs live web searches by navigating a real browser. Returns relevant search results with content extraction. Use this to find current information, websites, or answer questions requiring up-to-date web knowledge.",
+  inputSchema: jsonSchemaToZod(webSearchSchema),
   execute: (params) => {
     return safe(async () => {
-      const searchRequest: ExaSearchRequest = {
-        query: params.query,
-        type: params.type || "auto",
-        numResults: params.numResults || 5,
-        contents: {
-          text: {
-            maxCharacters: params.maxCharacters || 3000,
-          },
-          livecrawl: "preferred",
-        },
-      };
+      const numResults = params.numResults || 5;
+      logger.info(`🔍 webSearch: "${params.query}" (${numResults} results)`);
 
-      // Add optional parameters if provided
-      if (params.category) searchRequest.category = params.category;
-      if (params.includeDomains?.length)
-        searchRequest.includeDomains = params.includeDomains;
-      if (params.excludeDomains?.length)
-        searchRequest.excludeDomains = params.excludeDomains;
-      if (params.startPublishedDate)
-        searchRequest.startPublishedDate = params.startPublishedDate;
-      if (params.endPublishedDate)
-        searchRequest.endPublishedDate = params.endPublishedDate;
+      const command = `Go to Google and search for "${params.query}". Extract the top ${numResults} search results. For each result, extract the title, URL, and a brief snippet/description. Return the results as structured data.`;
+      const startTime = Date.now();
+      const browserResult = await executeAgenticBrowserTask(command, 90);
+      const elapsed = Date.now() - startTime;
 
-      const result = await fetchExa("/search", searchRequest);
+      logger.info(`✅ webSearch: done in ${elapsed}ms`);
 
       return {
-        ...result,
+        query: params.query,
+        result: browserResult.result,
+        steps: browserResult.steps,
+        durationMs: elapsed,
         guide: `Use the search results to answer the user's question. Summarize the content and ask if they have any additional questions about the topic.`,
       };
     })
       .ifFail((e) => {
+        logger.error(`❌ webSearch failed: ${e.message}`);
         return {
           isError: true,
           error: e.message,
           solution:
-            "A web search error occurred. First, explain to the user what caused this specific error and how they can resolve it. Then provide helpful information based on your existing knowledge to answer their question.",
+            "A web search error occurred. Ensure TheAgenticBrowser service is running. As a fallback, try using webPageReader or http tools to access specific URLs directly.",
         };
       })
       .unwrap();
   },
 });
 
-export const exaContentsTool = createTool({
+export const webContentsTool = createTool({
   description:
-    "Extract detailed content from specific URLs using Exa AI - retrieves full text content, metadata, and structured information from web pages with live crawling capabilities.",
-  inputSchema: jsonSchemaToZod(exaContentsSchema),
+    "Extract detailed content from specific URLs using a real browser agent. Navigates a real browser to retrieve full text content, metadata, and structured information from web pages — including JavaScript-rendered content that simple HTTP fetches cannot access.",
+  inputSchema: jsonSchemaToZod(webContentsSchema),
   execute: async (params) => {
     return safe(async () => {
-      const contentsRequest: ExaContentsRequest = {
-        ids: params.urls,
-        contents: {
-          text: {
-            maxCharacters: params.maxCharacters || 3000,
-          },
-          livecrawl: params.livecrawl || "preferred",
-        },
-      };
+      const maxChars = params.maxCharacters || 3000;
+      logger.info(`📖 webContent: extracting from ${params.urls.length} URLs`);
 
-      return await fetchExa("/contents", contentsRequest);
+      const startTime = Date.now();
+
+      // Process URLs individually for better results
+      const results: {
+        url: string;
+        content?: string | null;
+        error?: string;
+      }[] = [];
+      for (const url of params.urls) {
+        try {
+          const command = `Navigate to ${url} and extract the main text content of the page. Focus on the article/main content, ignore navigation, ads, and footers. Return up to ${maxChars} characters of the main content along with the page title.`;
+          const browserResult = await executeAgenticBrowserTask(command, 60);
+          results.push({
+            url,
+            content: browserResult.result,
+          });
+        } catch (err: any) {
+          results.push({
+            url,
+            error: err.message,
+          });
+        }
+      }
+
+      const elapsed = Date.now() - startTime;
+      logger.info(
+        `✅ webContent: done in ${elapsed}ms — ${results.length} pages`,
+      );
+
+      return {
+        results,
+        durationMs: elapsed,
+      };
     })
       .ifFail((e) => {
+        logger.error(`❌ webContent failed: ${e.message}`);
         return {
           isError: true,
           error: e.message,
           solution:
-            "A web content extraction error occurred. First, explain to the user what caused this specific error and how they can resolve it. Then provide helpful information based on your existing knowledge to answer their question.",
+            "Web content extraction failed. Ensure TheAgenticBrowser service is running. Try using webPageReader or http tools as alternatives.",
         };
       })
       .unwrap();

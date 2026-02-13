@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { SandpackWrapper } from "./SandpackWrapper";
 import { HttpChainWrapper } from "./HttpChainWrapper";
 import { useBuilderEngine, type Template } from "@/hooks/useBuilderEngine";
-import { ProjectProvider } from "./ProjectContext";
+import { ProjectProvider } from "@/lib/builder/project-context";
 import { ChatInterface } from "./chat-interface";
 import { TemplateSelectionDialog } from "./TemplateSelectionDialog";
 import { X, Copy, Check } from "lucide-react";
@@ -329,7 +329,7 @@ function BuilderContent() {
       case "vite-react":
         return "dist";
       case "nextjs":
-        return ".next";
+        return "out";
       case "node":
         return ".";
       case "static":
@@ -339,12 +339,12 @@ function BuilderContent() {
     }
   };
 
-  const handleSendMessage = (content: string, mentions: any[]) => {
+  const handleSendMessage = (content: string, mentions?: any[]) => {
     const newMessage = {
       id: Date.now().toString(),
       role: "user" as const,
       content,
-      mentions,
+      mentions: mentions || [],
       timestamp: Date.now(),
     };
     setMessages((prev) => [...prev, newMessage]);

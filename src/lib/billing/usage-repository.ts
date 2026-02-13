@@ -327,6 +327,56 @@ export async function getRateLimitCounts(userId: string) {
 }
 
 /**
+ * Get per-model daily usage (input/output tokens and requests)
+ */
+export async function getModelDailyUsage(
+  userId: string,
+  provider: string,
+  model: string,
+) {
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfMinute = new Date(now.getTime() - 60000);
+
+  const [dailyStats] = await db
+    .select({
+      requestCount: sql<number>`COUNT(*)`,
+      inputTokens: sql<number>`COALESCE(SUM(${UsageLogTable.inputTokens}), 0)`,
+      outputTokens: sql<number>`COALESCE(SUM(${UsageLogTable.outputTokens}), 0)`,
+    })
+    .from(UsageLogTable)
+    .where(
+      and(
+        eq(UsageLogTable.userId, userId),
+        eq(UsageLogTable.provider, provider),
+        eq(UsageLogTable.model, model),
+        gte(UsageLogTable.createdAt, startOfDay),
+      ),
+    );
+
+  const [minuteStats] = await db
+    .select({
+      requestCount: sql<number>`COUNT(*)`,
+    })
+    .from(UsageLogTable)
+    .where(
+      and(
+        eq(UsageLogTable.userId, userId),
+        eq(UsageLogTable.provider, provider),
+        eq(UsageLogTable.model, model),
+        gte(UsageLogTable.createdAt, startOfMinute),
+      ),
+    );
+
+  return {
+    dailyRequests: dailyStats?.requestCount || 0,
+    dailyInputTokens: dailyStats?.inputTokens || 0,
+    dailyOutputTokens: dailyStats?.outputTokens || 0,
+    minuteRequests: minuteStats?.requestCount || 0,
+  };
+}
+
+/**
  * Get transaction history
  */
 export async function getTransactionHistory(

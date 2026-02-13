@@ -1,5 +1,5 @@
 import { useState, type PropsWithChildren } from "react";
-import { Link, Server } from "lucide-react";
+import { Server } from "lucide-react";
 import { Toaster } from "../../../components/ui/sonner";
 import { ThemeToggle } from "./ThemeToggle";
 import { BackendUrlDialog } from "../BackendUrlDialog";

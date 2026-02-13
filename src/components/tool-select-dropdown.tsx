@@ -89,7 +89,7 @@ interface ToolSelectDropdownProps {
   mentions?: ChatMention[];
   onSelectWorkflow?: (workflow: WorkflowSummary) => void;
   onSelectAgent?: (agent: AgentSummary) => void;
-  onGenerateImage?: (provider?: "google" | "openai") => void;
+  onGenerateImage?: (provider?: "google" | "openai" | "flux") => void;
   className?: string;
 }
 
@@ -1051,7 +1051,7 @@ function ImageGeneratorSelector({
   onGenerateImage,
   modelInfo,
 }: {
-  onGenerateImage?: (provider?: "google" | "openai") => void;
+  onGenerateImage?: (provider?: "google" | "openai" | "flux") => void;
   modelInfo?: { isToolCallUnsupported?: boolean };
 }) {
   const t = useTranslations("Chat");
@@ -1080,6 +1080,14 @@ function ImageGeneratorSelector({
             >
               <OpenAIIcon className="mr-2 size-4" />
               OpenAI
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              disabled={modelInfo?.isToolCallUnsupported}
+              onClick={() => onGenerateImage?.("flux")}
+              className="cursor-pointer"
+            >
+              <ImagesIcon className="mr-2 size-4" />
+              Flux 1 Dev
             </DropdownMenuItem>
           </DropdownMenuSubContent>
         </DropdownMenuPortal>

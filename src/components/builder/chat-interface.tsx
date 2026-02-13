@@ -23,7 +23,7 @@ import {
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
-  onSendMessage: (content: string) => void;
+  onSendMessage: (content: string, mentions?: any[]) => void;
   isStreaming?: boolean;
   streamingContent?: string;
   condensed?: boolean;

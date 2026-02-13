@@ -151,6 +151,7 @@ function getRolePermissions(role: string | undefined | null): BetterAuthRole {
   const cleanRole = parseRoleString(role);
 
   switch (cleanRole) {
+    case "super_admin":
     case "admin":
       return admin as BetterAuthRole;
     case "editor":

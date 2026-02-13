@@ -27,8 +27,8 @@ import { toAny } from "lib/utils";
 import { AppError } from "lib/errors";
 import { DefaultToolName } from "lib/ai/tools";
 import {
-  exaSearchToolForWorkflow,
-  exaContentsToolForWorkflow,
+  webSearchToolForWorkflow,
+  webContentsToolForWorkflow,
 } from "lib/ai/tools/web/web-search";
 import { mcpClientsManager } from "lib/ai/mcp/mcp-manager";
 
@@ -251,9 +251,9 @@ export const toolNodeExecutor: NodeExecutor<ToolNodeData> = async ({
   } else if (node.tool.type == "app-tool") {
     const executor =
       node.tool.id == DefaultToolName.WebContent
-        ? exaContentsToolForWorkflow.execute
+        ? webContentsToolForWorkflow.execute
         : node.tool.id == DefaultToolName.WebSearch
-          ? exaSearchToolForWorkflow.execute
+          ? webSearchToolForWorkflow.execute
           : () => "Unknown tool";
 
     const toolResult = await executor?.(result.input.parameter, {

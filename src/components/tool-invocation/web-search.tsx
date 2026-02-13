@@ -1,20 +1,26 @@
 "use client";
 
 import { ToolUIPart } from "ai";
-import { ExaSearchResponse } from "lib/ai/tools/web/web-search";
 import equal from "lib/equal";
-import { notify } from "lib/notify";
-import { cn, toAny } from "lib/utils";
+import { toAny } from "lib/utils";
 import { AlertTriangleIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { memo, useMemo, useState } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
+import { memo, useMemo } from "react";
 import { GlobalIcon } from "ui/global-icon";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "ui/hover-card";
 import JsonView from "ui/json-view";
 import { Separator } from "ui/separator";
 import { TextShimmer } from "ui/text-shimmer";
-import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
+
+/** TheAgenticBrowser returns a flat result string + steps array */
+interface BrowserSearchResult {
+  query?: string;
+  result?: string | null;
+  steps?: string[];
+  durationMs?: number;
+  isError?: boolean;
+  error?: string;
+}
 
 interface WebSearchToolInvocationProps {
   part: ToolUIPart;
@@ -25,12 +31,8 @@ function PureWebSearchToolInvocation({ part }: WebSearchToolInvocationProps) {
 
   const result = useMemo(() => {
     if (!part.state.startsWith("output")) return null;
-    return part.output as ExaSearchResponse & {
-      isError: boolean;
-      error?: string;
-    };
+    return part.output as BrowserSearchResult;
   }, [part.state]);
-  const [errorSrc, setErrorSrc] = useState<string[]>([]);
 
   const options = useMemo(() => {
     return (
@@ -51,21 +53,6 @@ function PureWebSearchToolInvocation({ part }: WebSearchToolInvocationProps) {
       </HoverCard>
     );
   }, [part.input]);
-
-  const onError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    const target = e.currentTarget;
-    if (errorSrc.includes(target.src)) return;
-    setErrorSrc([...errorSrc, target.src]);
-  };
-
-  const images = useMemo(() => {
-    // Exa doesn't provide separate images array, but individual results may have image property
-    return (
-      result?.results
-        ?.filter((r) => r.image && !errorSrc.includes(r.image))
-        .map((r) => ({ url: r.image!, description: r.title })) ?? []
-    );
-  }, [result?.results, errorSrc]);
 
   if (!part.state.startsWith("output"))
     return (
@@ -91,137 +78,39 @@ function PureWebSearchToolInvocation({ part }: WebSearchToolInvocationProps) {
           />
         </div>
         <div className="flex flex-col gap-2 pb-2">
-          {Boolean(images?.length) && (
-            <div className="grid grid-cols-3 gap-3 max-w-2xl">
-              {images.map((image, i) => {
-                if (!image.url) return null;
-                return (
-                  <Tooltip key={i}>
-                    <TooltipTrigger asChild>
-                      <div
-                        key={image.url}
-                        onClick={() => {
-                          notify.component({
-                            className: "max-w-[90vw]! max-h-[90vh]! p-6!",
-                            children: (
-                              <div className="flex flex-col h-full gap-4">
-                                <div className="flex-1 flex items-center justify-center min-h-0 py-6">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={image.url}
-                                    className="max-w-[80vw] max-h-[80vh] object-contain rounded-lg"
-                                    alt={image.description}
-                                    onError={onError}
-                                  />
-                                </div>
-                              </div>
-                            ),
-                          });
-                        }}
-                        className="block shadow rounded-lg overflow-hidden ring ring-input cursor-pointer"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          loading="lazy"
-                          src={image.url}
-                          alt={image.description}
-                          className="w-full h-36 object-cover hover:scale-120 transition-transform duration-300"
-                          onError={onError}
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent className="p-4 max-w-xs whitespace-pre-wrap break-words">
-                      <p className="text-xs text-muted-foreground">
-                        {image.description || image.url}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-1">
-            {result?.isError ? (
-              <p className="text-xs text-destructive flex items-center gap-1">
-                <AlertTriangleIcon className="size-3.5" />
-                {result.error || "Error"}
-              </p>
-            ) : (
-              (result as ExaSearchResponse)?.results?.map((result, i) => {
-                return (
-                  <HoverCard key={i} openDelay={200} closeDelay={0}>
-                    <HoverCardTrigger asChild>
-                      <a
-                        href={result.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group rounded-full bg-secondary pl-1.5 pr-2 py-1.5 text-xs flex items-center gap-1 hover:bg-input hover:ring hover:ring-blue-500 transition-all cursor-pointer"
-                      >
-                        <div className="rounded-full bg-input ring ring-input">
-                          <Avatar className="size-3 rounded-full">
-                            <AvatarImage src={result.favicon} />
-                            <AvatarFallback>
-                              {result.title?.slice(0, 1).toUpperCase() || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <span className="truncate max-w-44">{result.url}</span>
-                      </a>
-                    </HoverCardTrigger>
-
-                    <HoverCardContent className="flex flex-col gap-1 p-6">
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-full ring ring-input">
-                          <Avatar className="size-6 rounded-full">
-                            <AvatarImage src={result.favicon} />
-                            <AvatarFallback>
-                              {result.title?.slice(0, 1).toUpperCase() || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <span
-                          className={cn(
-                            "font-medium",
-                            !result.title && "truncate",
-                          )}
-                        >
-                          {result.title || result.url}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-2 mt-4">
-                        <div className="relative">
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent to-card from-80% " />
-                          <p className="text-xs text-muted-foreground max-h-60 overflow-y-auto">
-                            {result.text}
-                          </p>
-                        </div>
-                        {result.author && (
-                          <div className="text-xs text-muted-foreground mt-2">
-                            <span className="font-medium">Author:</span>{" "}
-                            {result.author}
-                          </div>
-                        )}
-                        {result.publishedDate && (
-                          <div className="text-xs text-muted-foreground">
-                            <span className="font-medium">Published:</span>{" "}
-                            {new Date(
-                              result.publishedDate,
-                            ).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                    </HoverCardContent>
-                  </HoverCard>
-                );
-              })
-            )}
-          </div>
-          {result?.results?.length && (
-            <p className="text-xs text-muted-foreground ml-1 flex items-center gap-1">
-              {t("Common.resultsFound", {
-                count: result?.results?.length,
-              })}
+          {result?.isError ? (
+            <p className="text-xs text-destructive flex items-center gap-1">
+              <AlertTriangleIcon className="size-3.5" />
+              {result.error || "Error"}
             </p>
+          ) : (
+            <div className="flex flex-col gap-1">
+              {result?.result && (
+                <p className="text-xs text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto">
+                  {result.result}
+                </p>
+              )}
+              {result?.steps && result.steps.length > 0 && (
+                <HoverCard openDelay={200} closeDelay={0}>
+                  <HoverCardTrigger asChild>
+                    <span className="text-xs text-muted-foreground hover:text-primary cursor-pointer transition-colors">
+                      {result.steps.length} step
+                      {result.steps.length !== 1 ? "s" : ""} completed
+                      {result.durationMs
+                        ? ` in ${(result.durationMs / 1000).toFixed(1)}s`
+                        : ""}
+                    </span>
+                  </HoverCardTrigger>
+                  <HoverCardContent className="flex flex-col gap-1 p-4 max-w-md max-h-80 overflow-y-auto">
+                    {result.steps.map((step, i) => (
+                      <p key={i} className="text-xs text-muted-foreground">
+                        {i + 1}. {step}
+                      </p>
+                    ))}
+                  </HoverCardContent>
+                </HoverCard>
+              )}
+            </div>
           )}
         </div>
       </div>
