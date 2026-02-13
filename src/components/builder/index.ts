@@ -22,6 +22,19 @@ export { GitHistorySidebar } from "./git-history-sidebar";
 export { DeploymentDashboard } from "./deployment-dashboard";
 export { GitHubVercelIntegration } from "./github-vercel-integration";
 export { GitHubVercelButton } from "./github-vercel-button";
+export { GitHubAppConnectionPanel } from "./github-app-connection-panel";
+export { GitHubProjectSetup } from "./github-project-setup";
+export type { ProjectConfig } from "./github-project-setup";
+export { CheckpointHistory } from "./checkpoint-history";
+
+// Cloud Integration Hub
+export {
+  CloudIntegrationHub,
+  SecretsForm,
+  BackendSetupPanel,
+  DeployPipelinePanel,
+  EnvOutputPanel,
+} from "./cloud-integration";
 
 // Error Handling
 export {
