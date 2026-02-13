@@ -25,7 +25,10 @@ import {
   X,
   GitCommitHorizontal,
   FileText,
-  Plus,
+  Folder,
+  Terminal,
+  MessageSquare,
+  Command,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -45,6 +48,7 @@ interface ChatInterfaceProps {
   hasUncommittedChanges?: boolean;
   modelName?: string;
   onModelChange?: () => void;
+  files?: Record<string, string>;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────
@@ -60,21 +64,24 @@ export function ChatInterface({
   hasUncommittedChanges = false,
   modelName,
   onModelChange,
+  files = {},
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
+  const [mentions, setMentions] = useState<any[]>([]);
 
   const handleSend = useCallback(() => {
     if (input.trim() && !isStreaming) {
       onSendMessage(
         input.trim(),
-        undefined,
+        mentions.length > 0 ? mentions : undefined,
         attachments.length > 0 ? attachments : undefined,
       );
       setInput("");
       setAttachments([]);
+      setMentions([]);
     }
-  }, [input, onSendMessage, isStreaming, attachments]);
+  }, [input, onSendMessage, isStreaming, attachments, mentions]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -117,6 +124,14 @@ export function ChatInterface({
     setAttachments((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const handleAddMention = useCallback((mention: any) => {
+    setMentions((prev) => [...prev, mention]);
+  }, []);
+
+  const handleRemoveMention = useCallback((index: number) => {
+    setMentions((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
   return (
     <div className="flex flex-col h-full">
       <MessageList
@@ -153,6 +168,10 @@ export function ChatInterface({
         onRemoveAttachment={removeAttachment}
         modelName={modelName}
         onModelChange={onModelChange}
+        files={files}
+        mentions={mentions}
+        onAddMention={handleAddMention}
+        onRemoveMention={handleRemoveMention}
       />
     </div>
   );
@@ -328,6 +347,8 @@ const MessageBubble = memo(function MessageBubble({
 
 // ─── Cursor-Style Chat Input Bar ───────────────────────────────────────────
 
+// ─── Cursor-Style Chat Input Bar ───────────────────────────────────────────
+
 interface ChatInputBarProps {
   value: string;
   onChange: (value: string) => void;
@@ -341,6 +362,10 @@ interface ChatInputBarProps {
   onRemoveAttachment?: (index: number) => void;
   modelName?: string;
   onModelChange?: () => void;
+  files?: Record<string, string>;
+  mentions?: any[];
+  onAddMention?: (mention: any) => void;
+  onRemoveMention?: (index: number) => void;
 }
 
 function ChatInputBar({
@@ -356,8 +381,16 @@ function ChatInputBar({
   onRemoveAttachment,
   modelName = "GPT-4.1 Mini",
   onModelChange,
+  files = {},
+  mentions = [],
+  onAddMention,
+  onRemoveMention,
 }: ChatInputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [showMentions, setShowMentions] = useState(false);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [mentionType, setMentionType] = useState<"root" | "files">("root");
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -368,14 +401,185 @@ function ChatInputBar({
     }
   }, [value]);
 
+  // Handle @ mentions detection
+  useEffect(() => {
+    if (!value) {
+      setShowMentions(false);
+      return;
+    }
+
+    // Simple robust detection: check if cursor is at the end of a word starting with @
+    // Note: robust cursor tracking requires selectionStart, doing simplified "last word" check for now
+    const lastWord = value.split(/\s+/).pop() || "";
+
+    if (lastWord.startsWith("@")) {
+      const query = lastWord.slice(1);
+      setShowMentions(true);
+
+      if (query.startsWith("files:")) {
+        setMentionType("files");
+        setMentionQuery(query.replace("files:", ""));
+      } else {
+        setMentionType("root");
+        setMentionQuery(query);
+      }
+      setSelectedIndex(0);
+    } else {
+      setShowMentions(false);
+    }
+  }, [value]);
+
+  // Filter items based on type and query
+  const filteredItems = useMemo(() => {
+    if (mentionType === "root") {
+      const rootItems = [
+        {
+          id: "files",
+          label: "Files",
+          icon: FileText,
+          description: "Select specific files",
+        },
+        {
+          id: "folders",
+          label: "Folders",
+          icon: Folder,
+          description: "Add folder context",
+        },
+        {
+          id: "terminal",
+          label: "Terminal",
+          icon: Terminal,
+          description: "Add terminal logs",
+        },
+        {
+          id: "conversations",
+          label: "Conversations",
+          icon: MessageSquare,
+          description: "Reference previous chats",
+        },
+      ];
+      return rootItems.filter((item) =>
+        item.label.toLowerCase().includes(mentionQuery.toLowerCase()),
+      );
+    } else if (mentionType === "files") {
+      return Object.keys(files || {})
+        .filter((path) =>
+          path.toLowerCase().includes(mentionQuery.toLowerCase()),
+        )
+        .slice(0, 100) // Limit results
+        .map((path) => ({
+          id: path,
+          label: path.split("/").pop() || path,
+          icon: FileText,
+          description: path,
+          value: path,
+        }));
+    }
+    return [];
+  }, [mentionType, mentionQuery, files]);
+
+  const handleSelect = (item: any) => {
+    if (mentionType === "root") {
+      if (item.id === "files") {
+        // Transition to file selection
+        const newValue = value.replace(/@[\w-]*$/, "@files:");
+        onChange(newValue);
+      } else if (item.id === "folders") {
+        // Can implement folder selection similarly
+        const newValue = value.replace(/@[\w-]*$/, "@folders:");
+        onChange(newValue);
+      } else {
+        // Direct add
+        onAddMention?.({ type: item.id, data: {} });
+        const newValue = value.replace(/@[\w-]*$/, "");
+        onChange(newValue);
+        setShowMentions(false);
+      }
+    } else {
+      // File selected
+      onAddMention?.({ type: "file", data: item.value });
+      const newValue = value.replace(/@files:[\w./-]*$/, "");
+      onChange(newValue);
+      setShowMentions(false);
+      // Reset type
+      setMentionType("root");
+    }
+  };
+
+  const handleKeyDownInternal = (
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ) => {
+    if (showMentions) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev + 1) % filteredItems.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex(
+          (prev) => (prev - 1 + filteredItems.length) % filteredItems.length,
+        );
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        if (filteredItems[selectedIndex]) {
+          handleSelect(filteredItems[selectedIndex]);
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        setShowMentions(false);
+        return;
+      }
+    }
+    onKeyDown(e);
+  };
+
   return (
-    <div className="border-t border-border/40 bg-background/80 backdrop-blur-sm">
-      {/* Attachment Preview Strip */}
-      {attachments.length > 0 && (
+    <div className="relative border-t border-border/40 bg-background/80 backdrop-blur-sm">
+      {/* Mentions Dropdown */}
+      {showMentions && filteredItems.length > 0 && (
+        <div className="absolute bottom-full left-3 mb-2 w-64 bg-popover border border-border rounded-lg shadow-lg overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-200">
+          <div className="p-1 max-h-60 overflow-y-auto">
+            {filteredItems.map((item, index) => (
+              <button
+                key={item.id}
+                onClick={() => handleSelect(item)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-left text-sm rounded-md transition-colors ${
+                  index === selectedIndex
+                    ? "bg-accent text-accent-foreground"
+                    : "hover:bg-muted/50"
+                }`}
+              >
+                <item.icon className="h-4 w-4 shrink-0 opacity-70" />
+                <div className="flex flex-col overflow-hidden">
+                  <span className="truncate font-medium">{item.label}</span>
+                  {item.description && (
+                    <span className="text-[10px] text-muted-foreground truncate opacity-70">
+                      {item.description}
+                    </span>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+          {mentionType === "files" && (
+            <div className="px-2 py-1 bg-muted/30 border-t border-border/40 text-[10px] text-muted-foreground">
+              Select a file to add context
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Reused Attachment Preview Strip + Mentions Chip Strip */}
+      {(attachments.length > 0 || mentions.length > 0) && (
         <div className="flex gap-2 px-3 pt-2 pb-1 overflow-x-auto">
+          {/* File Attachments */}
           {attachments.map((file, index) => (
             <div
-              key={`${file.name}-${index}`}
+              key={`att-${index}`}
               className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-muted/60 border border-border/40 text-[10px] text-muted-foreground shrink-0 group"
             >
               {file.type.startsWith("image/") ? (
@@ -392,6 +596,33 @@ function ChatInputBar({
               </button>
             </div>
           ))}
+
+          {/* Context Mentions */}
+          {mentions.map((mention, index) => (
+            <div
+              key={`men-${index}`}
+              className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-violet-500/10 border border-violet-500/20 text-[10px] text-violet-600 dark:text-violet-300 shrink-0 group"
+            >
+              {mention.type === "file" ? (
+                <FileText className="h-3 w-3" />
+              ) : mention.type === "terminal" ? (
+                <Terminal className="h-3 w-3" />
+              ) : (
+                <Command className="h-3 w-3" />
+              )}
+              <span className="max-w-[100px] truncate">
+                {mention.type === "file"
+                  ? mention.data.split("/").pop()
+                  : mention.type}
+              </span>
+              <button
+                onClick={() => onRemoveMention?.(index)}
+                className="ml-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="h-2.5 w-2.5 hover:text-foreground" />
+              </button>
+            </div>
+          ))}
         </div>
       )}
 
@@ -403,7 +634,7 @@ function ChatInputBar({
             ref={textareaRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            onKeyDown={onKeyDown}
+            onKeyDown={handleKeyDownInternal}
             placeholder={
               isStreaming
                 ? "Waiting for response..."
@@ -419,14 +650,7 @@ function ChatInputBar({
           <div className="absolute bottom-1 left-1 right-1 flex items-center justify-between px-1.5 py-0.5">
             {/* Left side — action buttons */}
             <div className="flex items-center gap-0.5">
-              {/* Add/Attach Menu */}
-              <button
-                onClick={onAttachFile}
-                className="p-1.5 rounded-md hover:bg-muted/80 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
-                title="Attach file"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+              {/* Add/Attach Menu (now just wrapper logic, functional attach button exists below) */}
 
               {/* File attachment */}
               <button

@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 
-import { X, Copy, Check } from "lucide-react";
+import { X, Copy, Check, History, Plus, MessageSquare } from "lucide-react";
 import { BuilderHeader } from "./BuilderHeader";
 import { exportService } from "@/lib/builder/export-service";
 import {
@@ -156,7 +156,10 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
   const toggleMobilePreview = useBuilderUIStore((s) => s.toggleMobilePreview);
 
-  const [selectedModel] = useState<{ provider: string; model: string }>({
+  const [selectedModel, setSelectedModel] = useState<{
+    provider: string;
+    model: string;
+  }>({
     provider: "openai",
     model: "gpt-4.1-mini",
   });
@@ -607,7 +610,37 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
 
       <div className="flex flex-1 w-full overflow-hidden min-h-0">
         {/* Left Sidebar — Chat + Checkpoint History */}
-        <div className="w-56 md:w-64 lg:w-80 border-r flex flex-col shrink-0">
+        <div className="w-56 md:w-64 lg:w-80 border-r flex flex-col shrink-0 bg-muted/20">
+          {/* Chat Header */}
+          <div className="flex items-center justify-between px-3 py-2 border-b bg-background/50 shrink-0 h-10">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Chat</span>
+            </div>
+            <div className="flex items-center gap-0.5">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => {
+                  // TODO: Implement history list
+                  toast.info("Chat history coming soon");
+                }}
+                title="History"
+              >
+                <History className="h-4 w-4 text-muted-foreground" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => router.push("/builder")}
+                title="New Chat"
+              >
+                <Plus className="h-4 w-4 text-muted-foreground" />
+              </Button>
+            </div>
+          </div>
           <ChatInterface
             messages={transformedMessages}
             onSendMessage={handleSendMessage}
@@ -621,6 +654,15 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
                 ? "GPT-4.1 Mini"
                 : selectedModel.model
             }
+            onModelChange={() => {
+              // Simple toggle for now, can be expanded to a full selector later
+              const nextModel =
+                selectedModel.model === "gpt-4.1-mini"
+                  ? "gpt-4o"
+                  : "gpt-4.1-mini";
+              setSelectedModel({ ...selectedModel, model: nextModel });
+            }}
+            files={state.files}
             condensed
           />
 
