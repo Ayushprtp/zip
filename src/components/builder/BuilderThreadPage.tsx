@@ -99,6 +99,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const files = useBuilderStore((s) => s.files);
   const loadThread = useBuilderStore((s) => s.loadThread);
   const addMessage = useBuilderStore((s) => s.addMessage);
+  const setMessages = useBuilderStore((s) => s.setMessages);
 
   const { state, actions } = useProject();
 
@@ -277,7 +278,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
     try {
       const config: DeploymentConfig = {
-        platform: "netlify",
+        platform: "vercel",
         projectName: currentThread.title,
         buildCommand: "npm run build",
         outputDirectory: "dist",
@@ -365,6 +366,31 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     setIsStreaming(false);
     setStreamingContent("");
   }, []);
+
+  const handleResetChat = useCallback(async () => {
+    if (!threadId) return;
+
+    // Optional: Ask for confirmation
+    if (!confirm("Are you sure you want to clear the chat history?")) return;
+
+    try {
+      // Clear local state immediately
+      setMessages([]);
+
+      // Clear server state
+      const response = await fetch(
+        `/api/builder/threads/${threadId}/messages`,
+        { method: "DELETE" },
+      );
+
+      if (!response.ok) throw new Error("Failed to clear messages");
+
+      toast.success("Chat history cleared");
+    } catch (error) {
+      console.error("Failed to reset chat:", error);
+      toast.error("Failed to clear chat history");
+    }
+  }, [threadId, setMessages]);
 
   const handleSendMessage = useCallback(
     async (content: string) => {
@@ -634,7 +660,7 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
                 variant="ghost"
                 size="icon"
                 className="h-7 w-7"
-                onClick={() => router.push("/builder")}
+                onClick={handleResetChat}
                 title="New Chat"
               >
                 <Plus className="h-4 w-4 text-muted-foreground" />
