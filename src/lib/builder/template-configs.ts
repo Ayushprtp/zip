@@ -6,6 +6,15 @@
 import type { TemplateType, TemplateConfig } from "@/types/builder";
 
 export const TEMPLATE_CONFIGS: Record<TemplateType, TemplateConfig> = {
+  react: {
+    entry: "/App.jsx",
+    dependencies: {
+      react: "^18.3.1",
+      "react-dom": "^18.3.1",
+    },
+    devDependencies: {},
+    structure: ["/App.jsx", "/index.js", "/styles.css", "/package.json"],
+  },
   "vite-react": {
     entry: "/src/main.tsx",
     dependencies: {
@@ -65,6 +74,13 @@ export const TEMPLATE_CONFIGS: Record<TemplateType, TemplateConfig> = {
     devDependencies: {},
     runtime: "static",
     structure: ["/index.html", "/style.css", "/script.js"],
+  },
+  vanilla: {
+    entry: "/index.js",
+    dependencies: {},
+    devDependencies: {},
+    runtime: "static",
+    structure: ["/index.html", "/index.js", "/style.css"],
   },
   httpchain: {
     entry: "/src/main.tsx",
@@ -394,6 +410,50 @@ export default App;`,
           null,
           2,
         ),
+      };
+
+    case "react":
+      return {
+        "/App.jsx": `import React from 'react';
+
+export default function App() {
+  return (
+    <div style={{ textAlign: 'center', padding: '2rem' }}>
+      <h1>Hello React!</h1>
+      <p>Start building your application.</p>
+    </div>
+  );
+}`,
+        "/styles.css": `body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}`,
+      };
+
+    case "vanilla":
+      return {
+        "/index.html": `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vanilla JS App</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="index.js"></script>
+  </body>
+</html>`,
+        "/index.js": `document.getElementById("app").innerHTML = \`
+  <h1>Hello Vanilla JS!</h1>
+  <p>Start building your application.</p>
+\`;`,
+        "/style.css": `body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  padding: 2rem;
+}`,
       };
 
     default:

@@ -6,5 +6,10 @@ export const getUserAvatar = (user: { image?: string | null }): string => {
 };
 
 export const getIsUserAdmin = (user?: { role?: string | null }): boolean => {
-  return user?.role?.split(",").includes(USER_ROLES.ADMIN) || false;
+  const roles = user?.role?.split(",") || [];
+  return (
+    roles.includes(USER_ROLES.ADMIN) ||
+    roles.includes(USER_ROLES.SUPER_ADMIN) ||
+    false
+  );
 };

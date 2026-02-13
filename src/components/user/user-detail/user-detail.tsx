@@ -4,10 +4,25 @@ import { BasicUserWithLastLogin } from "app-types/user";
 import { UserDetailFormCard } from "./user-detail-form-card";
 import { UserAccessCard } from "./user-access-card";
 import { UserApiKeysCard } from "./user-api-keys-card";
+import { UserPlanCard } from "./user-plan-card";
 import { useProfileTranslations } from "@/hooks/use-profile-translations";
 import { useSidebar } from "ui/sidebar";
 import useSWR, { mutate } from "swr";
 import { cn, fetcher } from "lib/utils";
+import type {
+  SubscriptionEntity,
+  PricingPlanEntity,
+} from "lib/db/pg/schema-billing.pg";
+
+interface UserCreditsInfo {
+  balance: string;
+  totalCreditsUsed: string;
+  totalCreditsGranted: string;
+  totalCreditsPurchased: string;
+  monthlyCreditsUsed: string;
+  dailyRequestCount: number;
+  dailyResetAt: string | null;
+}
 
 interface UserDetailProps {
   user: BasicUserWithLastLogin;
@@ -18,6 +33,9 @@ interface UserDetailProps {
   };
   userStatsSlot?: React.ReactNode;
   view?: "admin" | "user";
+  subscription?: SubscriptionEntity | null;
+  userCredits?: UserCreditsInfo | null;
+  pricingPlans?: PricingPlanEntity[];
 }
 
 export function UserDetail({
@@ -26,6 +44,9 @@ export function UserDetail({
   currentUserId,
   userAccountInfo,
   userStatsSlot,
+  subscription,
+  userCredits,
+  pricingPlans,
 }: UserDetailProps) {
   const { open: sidebarOpen } = useSidebar();
   const userDetailRoute =
@@ -85,6 +106,23 @@ export function UserDetail({
           view={view}
           onUserDetailsUpdate={handleUserUpdate}
         />
+
+        {view === "admin" && (
+          <div
+            className={cn("col-span-1 md:col-span-2", {
+              "col-span-1 md:col-span-1 lg:col-span-2": sidebarOpen,
+            })}
+          >
+            <UserPlanCard
+              userId={(user ?? initialUser).id}
+              userName={(user ?? initialUser).name || "User"}
+              subscription={subscription || null}
+              credits={userCredits || null}
+              pricingPlans={pricingPlans || []}
+              view={view}
+            />
+          </div>
+        )}
 
         <div
           className={cn("col-span-1 md:col-span-2", {

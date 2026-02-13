@@ -41,7 +41,14 @@ export async function POST(request: NextRequest) {
 
     if (
       !template ||
-      !["react", "nextjs", "vite-react", "vanilla", "static"].includes(template)
+      ![
+        "react",
+        "nextjs",
+        "vite-react",
+        "vanilla",
+        "static",
+        "httpchain",
+      ].includes(template)
     ) {
       return NextResponse.json({ error: "Invalid template" }, { status: 400 });
     }

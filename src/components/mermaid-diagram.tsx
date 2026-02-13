@@ -6,12 +6,20 @@ import { useTheme } from "next-themes";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 let mermaidModule: typeof import("mermaid").default | null = null;
+let purifyModule: typeof import("dompurify").default | null = null;
 
 const loadMermaid = async () => {
   if (!mermaidModule) {
     mermaidModule = (await import("mermaid")).default;
   }
   return mermaidModule;
+};
+
+const loadDOMPurify = async () => {
+  if (!purifyModule) {
+    purifyModule = (await import("dompurify")).default;
+  }
+  return purifyModule;
 };
 
 interface MermaidDiagramProps {
@@ -54,7 +62,7 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
         mermaid.initialize({
           startOnLoad: false,
           theme: theme == "dark" ? "dark" : "default",
-          securityLevel: "loose",
+          securityLevel: "strict",
         });
 
         // // First try to parse to catch syntax errors early
@@ -64,7 +72,14 @@ export function MermaidDiagram({ chart }: MermaidDiagramProps) {
         const id = `mermaid-${Date.now()}`;
         const { svg } = await mermaid.render(id, chart);
 
-        setState({ svg, error: null, loading: false });
+        // Sanitize SVG to prevent XSS from LLM-generated content
+        const DOMPurify = await loadDOMPurify();
+        const cleanSvg = DOMPurify.sanitize(svg, {
+          USE_PROFILES: { svg: true, svgFilters: true },
+          ADD_TAGS: ["foreignObject"],
+        });
+
+        setState({ svg: cleanSvg, error: null, loading: false });
       } catch (err) {
         console.error("Mermaid rendering error:", err);
         setState({

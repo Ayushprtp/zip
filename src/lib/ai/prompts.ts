@@ -6,6 +6,21 @@ import { createMCPToolId } from "./mcp/mcp-tool-id";
 import { format } from "date-fns";
 import { Agent } from "app-types/agent";
 
+/** Map locale code → full language name for the system prompt */
+const LOCALE_TO_LANGUAGE: Record<string, string> = {
+  en: "English",
+  ko: "Korean",
+  es: "Spanish",
+  fr: "French",
+  ja: "Japanese",
+  zh: "Chinese",
+  no: "Norwegian",
+};
+
+function getLanguageName(locale?: string): string {
+  return LOCALE_TO_LANGUAGE[locale || "en"] || "English";
+}
+
 export const CREATE_THREAD_TITLE_PROMPT = `
 You are a chat title generation expert.
 
@@ -52,6 +67,7 @@ export const buildUserSystemPrompt = (
   user?: User,
   userPreferences?: UserPreferences,
   agent?: Agent,
+  locale?: string,
 ) => {
   const assistantName = agent?.name || userPreferences?.botName || "Flare.sh";
   const currentTime = format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a");
@@ -96,7 +112,11 @@ You can assist with:
 - Analysis and problem-solving across various domains
 - Using available tools and resources to complete tasks
 - Adapting communication to user preferences and context
-</general_capabilities>`;
+</general_capabilities>
+
+<language_policy>
+IMPORTANT: You MUST always respond in ${getLanguageName(locale)} regardless of the language the user writes in. Never respond in any other language. If the user writes in another language, understand their message but always reply in ${getLanguageName(locale)}.
+</language_policy>`;
 
   // Communication preferences
   const displayName = userPreferences?.displayName || user?.name;
@@ -135,6 +155,7 @@ export const buildSpeechSystemPrompt = (
   user: User,
   userPreferences?: UserPreferences,
   agent?: Agent,
+  locale?: string,
 ) => {
   const assistantName = agent?.name || userPreferences?.botName || "Assistant";
   const currentTime = format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a");
@@ -178,7 +199,11 @@ You excel at conversational voice interactions by:
 - Providing clear, natural spoken responses
 - Using available tools to gather information and complete tasks
 - Adapting communication to user preferences and context
-</voice_capabilities>`;
+</voice_capabilities>
+
+<language_policy>
+IMPORTANT: You MUST always respond in ${getLanguageName(locale)} regardless of the language the user speaks in. Never respond in any other language.
+</language_policy>`;
 
   // Communication preferences
   const displayName = userPreferences?.displayName || user?.name;

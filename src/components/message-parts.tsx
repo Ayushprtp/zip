@@ -726,6 +726,17 @@ const ImageGeneratorToolInvocation = dynamic(
   },
 );
 
+const WebAgentToolInvocation = dynamic(
+  () =>
+    import("./tool-invocation/web-agent-log").then(
+      (mod) => mod.WebAgentToolInvocation,
+    ),
+  {
+    ssr: false,
+    loading,
+  },
+);
+
 // Local shortcuts for tool invocation approval/rejection
 const approveToolInvocationShortcut: Shortcut = {
   description: "approveToolInvocation",
@@ -758,10 +769,10 @@ export const ToolMessagePart = memo(
 
     const { output, toolCallId, state, input, errorText } = part;
 
-    const toolName = useMemo(() => getToolName(part), [part.type]);
+    const toolName = useMemo(() => getToolName(part), [part.toolCallId]);
 
     const isCompleted = useMemo(() => {
-      return state.startsWith("output");
+      return state?.startsWith("output") ?? false;
     }, [state]);
 
     const [expanded, setExpanded] = useState(false);
@@ -874,6 +885,16 @@ export const ToolMessagePart = memo(
         toolName === DefaultToolName.WebContent
       ) {
         return <WebSearchToolInvocation part={part} />;
+      }
+
+      if (
+        toolName === DefaultToolName.WebPageReader ||
+        toolName === DefaultToolName.WebResearch ||
+        toolName === DefaultToolName.WebScreenshot ||
+        toolName === DefaultToolName.Http ||
+        toolName === DefaultToolName.BrowserAutomation
+      ) {
+        return <WebAgentToolInvocation part={part} toolName={toolName} />;
       }
 
       if (toolName === ImageToolName) {

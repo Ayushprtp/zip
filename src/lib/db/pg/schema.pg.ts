@@ -129,7 +129,7 @@ export const UserTable = pgTable("user", {
 
   // 3. Plan → HOW MUCH they can use (limits & pricing)
   plan: varchar("plan", {
-    enum: ["free", "premium", "enterprise"],
+    enum: ["free", "pro", "plus", "enterprise"],
   })
     .notNull()
     .default("free"),

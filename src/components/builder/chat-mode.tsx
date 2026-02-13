@@ -15,7 +15,7 @@ import type { ChatMessage } from "@/types/builder";
 interface ChatModeProps {
   className?: string;
   messages: ChatMessage[];
-  onSendMessage: (content: string, mentions: any[]) => void;
+  onSendMessage: (content: string, mentions?: any[]) => void;
 }
 
 /**

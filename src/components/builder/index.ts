@@ -2,7 +2,7 @@
 export { SandpackWrapper } from "./SandpackWrapper";
 export { BuilderPage } from "./BuilderPage";
 export { BuilderThreadPage } from "./BuilderThreadPage";
-export { ProjectProvider, useProject } from "./ProjectContext";
+export { ProjectProvider, useProject } from "@/lib/builder/project-context";
 export { BuilderErrorBoundary } from "./BuilderErrorBoundary";
 export { TemplateSelectionDialog } from "./TemplateSelectionDialog";
 export { VSCodeFileExplorer } from "./VSCodeFileExplorer";

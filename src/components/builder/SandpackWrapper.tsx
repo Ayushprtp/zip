@@ -13,10 +13,16 @@ import { Button } from "@/components/ui/button";
 import { BuilderErrorBoundary } from "./BuilderErrorBoundary";
 import { getAssetGenerator } from "@/lib/builder/asset-generator";
 import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
+import { BuilderTerminal } from "./BuilderTerminal";
+import { BuilderReportPanel } from "./BuilderReportPanel";
+import { RemoteTerminal } from "./RemoteTerminal";
+import { RemoteFileBrowser } from "./RemoteFileBrowser";
+import { RemoteStatusBar } from "./RemoteStatusBar";
 import { createSandpackTheme } from "@/lib/builder/sandpack-theme";
 import { useTheme } from "next-themes";
 import { useProject } from "@/lib/builder/project-context";
 import { useBuilderUIStore } from "@/stores/builder-ui-store";
+import { useRemoteDevStore } from "@/stores/remote-dev-store";
 import type { RuntimeError } from "@/types/builder";
 
 type Template =
@@ -35,6 +41,12 @@ interface SandpackWrapperProps {
   onAssetGenerated?: (path: string, content: string) => void;
   viewMode?: ViewMode;
   showConsole?: boolean;
+  showTerminal?: boolean;
+  showReport?: boolean;
+  showSSH?: boolean;
+  bottomPanel?: "none" | "console" | "terminal" | "report" | "ssh";
+  bottomPanelMaximized?: boolean;
+  onToggleBottomPanelMaximized?: () => void;
 }
 
 const DEFAULT_FILES: Record<Template, Record<string, string>> = {
@@ -92,7 +104,7 @@ function ServerControlRegistrar() {
         }, 1000);
       },
       stop: () => {
-        sandpackRef.current.resetAllFiles();
+        // Just update status — don't destroy user files
         setServerStatus("idle");
       },
       restart: () => {
@@ -138,8 +150,15 @@ function FileChangeListener() {
 
   // Sync ProjectContext → Sandpack (for hot reload when AI or external changes occur)
   // Use a stringified key of context file paths+content lengths to detect real changes
+  // Use a simple hash of each file's content for change detection
   const contextFilesKey = Object.entries(state.files)
-    .map(([p, c]) => `${p}:${c.length}`)
+    .map(([p, c]) => {
+      let h = 0;
+      for (let i = 0; i < c.length; i++) {
+        h = ((h << 5) - h + c.charCodeAt(i)) | 0;
+      }
+      return `${p}:${h}`;
+    })
     .join("|");
 
   useEffect(() => {
@@ -280,20 +299,31 @@ export function SandpackWrapper({
   template,
   onAssetGenerated,
   viewMode: externalViewMode,
-  showConsole: externalShowConsole,
+  showConsole: _externalShowConsole,
+  showTerminal: _externalShowTerminal,
+  showReport: _externalShowReport,
+  showSSH: _externalShowSSH,
+  bottomPanel: externalBottomPanel,
+  bottomPanelMaximized,
+  onToggleBottomPanelMaximized,
 }: SandpackWrapperProps) {
   // Use external props if provided, otherwise use local state
   const [localViewMode, _setLocalViewMode] = useState<ViewMode>("split");
-  const [localShowConsole, _setLocalShowConsole] = useState(false);
 
   const viewMode =
     externalViewMode !== undefined ? externalViewMode : localViewMode;
-  const showConsole =
-    externalShowConsole !== undefined ? externalShowConsole : localShowConsole;
+
+  const bottomPanel = externalBottomPanel || "none";
+
+  const hasBottomPanel = bottomPanel !== "none";
 
   const [showFileExplorer, setShowFileExplorer] = useState(true);
+  const [showRemoteFiles, setShowRemoteFiles] = useState(false);
   const { theme, systemTheme } = useTheme();
   const mergedFiles = { ...DEFAULT_FILES[template], ...files };
+  const remoteConnected = useRemoteDevStore(
+    (s) => s.connectionStatus === "connected",
+  );
 
   const currentTheme = theme === "system" ? systemTheme : theme;
   const isDark = currentTheme === "dark";
@@ -311,7 +341,7 @@ export function SandpackWrapper({
       theme={sandpackTheme}
       files={mergedFiles}
       options={{
-        externalResources: ["https://cdn.tailwindcss.com"],
+        externalResources: ["https://cdn.tailwindcss.com/3.4.17"],
         recompileMode: "delayed",
         recompileDelay: 500,
       }}
@@ -340,9 +370,26 @@ export function SandpackWrapper({
               (viewMode === "code" || viewMode === "split") && (
                 <div className="w-40 lg:w-48 xl:w-56 border-r flex flex-col bg-muted/20 shrink-0">
                   <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/50 shrink-0">
-                    <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                      Files
-                    </span>
+                    {remoteConnected ? (
+                      <div className="flex gap-0.5">
+                        <button
+                          className={`px-1.5 py-0.5 text-[10px] rounded ${!showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() => setShowRemoteFiles(false)}
+                        >
+                          Local
+                        </button>
+                        <button
+                          className={`px-1.5 py-0.5 text-[10px] rounded ${showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() => setShowRemoteFiles(true)}
+                        >
+                          Remote
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                        Files
+                      </span>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -353,7 +400,11 @@ export function SandpackWrapper({
                     </Button>
                   </div>
                   <div className="flex-1 overflow-auto min-h-0">
-                    <VSCodeFileExplorer />
+                    {showRemoteFiles && remoteConnected ? (
+                      <RemoteFileBrowser />
+                    ) : (
+                      <VSCodeFileExplorer />
+                    )}
                   </div>
                 </div>
               )}
@@ -416,10 +467,84 @@ export function SandpackWrapper({
                 )}
               </div>
 
-              {/* Console - Collapsible bottom panel */}
-              {showConsole && (
-                <div className="h-28 md:h-32 lg:h-40 border-t shrink-0">
-                  <SandpackConsole style={{ height: "100%", width: "100%" }} />
+              {/* Remote Status Bar */}
+              {remoteConnected && <RemoteStatusBar />}
+
+              {/* Bottom Panel - Console / Terminal / Report / Remote */}
+              {hasBottomPanel && (
+                <div
+                  className={`${bottomPanelMaximized ? "flex-1 min-h-0" : "h-28 md:h-32 lg:h-40"} border-t shrink-0 flex flex-col`}
+                >
+                  {/* Bottom Panel Tabs */}
+                  <div className="flex items-center gap-0.5 px-1 py-0.5 bg-muted/30 border-b shrink-0">
+                    <button
+                      className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "console" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                      onClick={() =>
+                        useBuilderUIStore.getState().setBottomPanel("console")
+                      }
+                    >
+                      Console
+                    </button>
+                    <button
+                      className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "terminal" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                      onClick={() =>
+                        useBuilderUIStore.getState().setBottomPanel("terminal")
+                      }
+                    >
+                      Terminal
+                    </button>
+                    <button
+                      className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "report" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                      onClick={() =>
+                        useBuilderUIStore.getState().setBottomPanel("report")
+                      }
+                    >
+                      Report
+                    </button>
+                    <button
+                      className={`px-2 py-0.5 text-[10px] rounded flex items-center gap-1 ${bottomPanel === "ssh" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                      onClick={() =>
+                        useBuilderUIStore.getState().setBottomPanel("ssh")
+                      }
+                    >
+                      Remote
+                      {remoteConnected && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    {bottomPanel === "console" && (
+                      <SandpackConsole
+                        style={{ height: "100%", width: "100%" }}
+                      />
+                    )}
+                    {bottomPanel === "terminal" && (
+                      <BuilderTerminal
+                        onClose={() =>
+                          useBuilderUIStore.getState().setBottomPanel("none")
+                        }
+                        isMaximized={bottomPanelMaximized}
+                        onToggleMaximize={onToggleBottomPanelMaximized}
+                      />
+                    )}
+                    {bottomPanel === "report" && (
+                      <BuilderReportPanel
+                        onClose={() =>
+                          useBuilderUIStore.getState().setBottomPanel("none")
+                        }
+                      />
+                    )}
+                    {bottomPanel === "ssh" && (
+                      <RemoteTerminal
+                        onClose={() =>
+                          useBuilderUIStore.getState().setBottomPanel("none")
+                        }
+                        isMaximized={bottomPanelMaximized}
+                        onToggleMaximize={onToggleBottomPanelMaximized}
+                      />
+                    )}
+                  </div>
                 </div>
               )}
             </div>

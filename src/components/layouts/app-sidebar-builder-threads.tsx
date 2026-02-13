@@ -68,7 +68,7 @@ export function AppSidebarBuilderThreads({ user }: { user?: { id: string } }) {
 
   const handleNewBuilder = () => {
     setOpenMobile(false);
-    router.push("/builder");
+    router.push("/builder?new=true");
   };
 
   const handleDeleteThread = async (threadId: string, e: React.MouseEvent) => {

@@ -65,6 +65,8 @@ export interface AppState {
     };
   };
   pendingThreadMention?: ChatMention;
+  autonomousMode: boolean;
+  webAgentMode: boolean;
 }
 
 export interface AppDispatch {
@@ -85,10 +87,7 @@ const initialState: AppState = {
   toolChoice: "auto",
   allowedMcpServers: undefined,
   openUserSettings: false,
-  allowedAppDefaultToolkit: [
-    AppDefaultToolkit.Code,
-    AppDefaultToolkit.Visualization,
-  ],
+  allowedAppDefaultToolkit: Object.values(AppDefaultToolkit),
   toolPresets: [],
   chatModel: undefined,
   openShortcutsPopup: false,
@@ -108,6 +107,8 @@ const initialState: AppState = {
     },
   },
   pendingThreadMention: undefined,
+  autonomousMode: true,
+  webAgentMode: false,
 };
 
 export const appStore = create<AppState & AppDispatch>()(
@@ -118,6 +119,19 @@ export const appStore = create<AppState & AppDispatch>()(
     }),
     {
       name: "mc-app-store-v2.0.1",
+      version: 1,
+      migrate: (persistedState: any, version: number) => {
+        if (version === 0) {
+          // Existing users only had Code + Visualization — add all toolkits
+          const existing: string[] =
+            persistedState.allowedAppDefaultToolkit || [];
+          const all = Object.values(AppDefaultToolkit);
+          persistedState.allowedAppDefaultToolkit = [
+            ...new Set([...existing, ...all]),
+          ];
+        }
+        return persistedState as any;
+      },
       partialize: (state) => ({
         chatModel: state.chatModel || initialState.chatModel,
         toolChoice: state.toolChoice || initialState.toolChoice,
@@ -133,6 +147,8 @@ export const appStore = create<AppState & AppDispatch>()(
           isOpen: false,
         },
         toolPresets: state.toolPresets || initialState.toolPresets,
+        autonomousMode: state.autonomousMode ?? initialState.autonomousMode,
+        webAgentMode: state.webAgentMode ?? initialState.webAgentMode,
         voiceChat: {
           ...initialState.voiceChat,
           ...state.voiceChat,

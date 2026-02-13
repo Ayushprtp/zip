@@ -25,36 +25,106 @@ function CustomModel(modelId: string): any {
 
   /**
    * Converts AI SDK v3 prompt messages into OpenAI-compatible messages.
+   * Handles text, reasoning, tool-call, and tool-result content types.
    */
   function convertPromptToMessages(prompt: any[]): any[] {
-    return prompt
-      .map((m: any) => {
-        if (m.role === "system") {
-          return {
-            role: "system",
-            content: typeof m.content === "string" ? m.content : "",
-          };
-        }
+    const result: any[] = [];
 
-        // For user/assistant/tool roles, content can be a string or array of parts
-        let textContent = "";
-        if (typeof m.content === "string") {
-          textContent = m.content;
-        } else if (Array.isArray(m.content)) {
-          textContent = m.content
-            .filter(
-              (c: any) => c && (c.type === "text" || c.type === "reasoning"),
-            )
-            .map((c: any) => c.text || "")
-            .join("");
-        }
+    for (const m of prompt) {
+      if (m.role === "system") {
+        result.push({
+          role: "system",
+          content: typeof m.content === "string" ? m.content : "",
+        });
+        continue;
+      }
 
-        return {
+      if (typeof m.content === "string") {
+        result.push({
           role: m.role === "tool" ? "user" : m.role,
-          content: textContent || " ", // Ensure non-empty content
-        };
-      })
-      .filter((m: any) => m.content && m.content.trim().length > 0);
+          content: m.content || " ",
+        });
+        continue;
+      }
+
+      if (!Array.isArray(m.content)) {
+        continue;
+      }
+
+      // Check for tool-call parts (assistant messages calling tools)
+      const toolCallParts = m.content.filter(
+        (c: any) => c.type === "tool-call",
+      );
+      // Check for tool-result parts (tool response messages)
+      const toolResultParts = m.content.filter(
+        (c: any) => c.type === "tool-result",
+      );
+
+      if (m.role === "assistant" && toolCallParts.length > 0) {
+        // Extract any text content alongside tool calls
+        const textContent = m.content
+          .filter(
+            (c: any) => c && (c.type === "text" || c.type === "reasoning"),
+          )
+          .map((c: any) => c.text || "")
+          .join("");
+
+        const toolCalls = toolCallParts.map((tc: any) => ({
+          id: tc.toolCallId,
+          type: "function" as const,
+          function: {
+            name: tc.toolName,
+            arguments:
+              typeof tc.args === "string"
+                ? tc.args
+                : JSON.stringify(tc.args || {}),
+          },
+        }));
+
+        result.push({
+          role: "assistant",
+          content: textContent || null,
+          tool_calls: toolCalls,
+        });
+        continue;
+      }
+
+      if (m.role === "tool" && toolResultParts.length > 0) {
+        // Convert each tool result into an OpenAI-compatible tool message
+        for (const tr of toolResultParts) {
+          const resultContent =
+            typeof tr.result === "string"
+              ? tr.result
+              : JSON.stringify(tr.result || {});
+          result.push({
+            role: "tool",
+            tool_call_id: tr.toolCallId,
+            content: resultContent,
+          });
+        }
+        continue;
+      }
+
+      // Default: extract text/reasoning content
+      const textContent = m.content
+        .filter((c: any) => c && (c.type === "text" || c.type === "reasoning"))
+        .map((c: any) => c.text || "")
+        .join("");
+
+      if (textContent.trim()) {
+        result.push({
+          role: m.role === "tool" ? "user" : m.role,
+          content: textContent,
+        });
+      }
+    }
+
+    return result.filter(
+      (m: any) =>
+        (m.content && String(m.content).trim().length > 0) ||
+        m.tool_calls?.length > 0 ||
+        m.tool_call_id,
+    );
   }
 
   return {
@@ -66,17 +136,35 @@ function CustomModel(modelId: string): any {
     doGenerate: async (options: any) => {
       const messages = convertPromptToMessages(options.prompt || []);
 
+      // Build tools array from AI SDK tool definitions
+      const tools = options.tools?.length
+        ? options.tools.map((t: any) => ({
+            type: "function" as const,
+            function: {
+              name: t.name,
+              description: t.description || "",
+              parameters: t.inputSchema || t.parameters || {},
+            },
+          }))
+        : undefined;
+
+      const requestBody: Record<string, any> = {
+        model: modelId,
+        messages,
+        stream: false,
+      };
+      if (tools) {
+        requestBody.tools = tools;
+        requestBody.tool_choice = "auto";
+      }
+
       const resp = await fetch(`${baseURL}/chat/completions`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
         },
-        body: JSON.stringify({
-          model: modelId,
-          messages,
-          stream: false,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!resp.ok) {
@@ -86,24 +174,44 @@ function CustomModel(modelId: string): any {
 
       const data = await resp.json();
       const content: any[] = [];
+      const choice = data.choices?.[0];
 
       // Extract reasoning content if present
-      const reasoningContent = data.choices?.[0]?.message?.reasoning_content;
+      const reasoningContent = choice?.message?.reasoning_content;
       if (reasoningContent) {
         content.push({ type: "reasoning", text: reasoningContent });
       }
 
       // Extract text content
-      const textContent = data.choices?.[0]?.message?.content || "";
+      const textContent = choice?.message?.content || "";
       if (textContent) {
         content.push({ type: "text", text: textContent });
       }
 
+      // Extract tool calls from response
+      if (choice?.message?.tool_calls?.length) {
+        for (const tc of choice.message.tool_calls) {
+          content.push({
+            type: "tool-call",
+            toolCallId: tc.id,
+            toolName: tc.function?.name,
+            args: tc.function?.arguments
+              ? JSON.parse(tc.function.arguments)
+              : {},
+          });
+        }
+      }
+
+      const finishReason = choice?.finish_reason || "stop";
+
       return {
         content,
         finishReason: {
-          unified: "stop" as const,
-          raw: data.choices?.[0]?.finish_reason || "stop",
+          unified:
+            finishReason === "tool_calls"
+              ? ("tool-calls" as const)
+              : ("stop" as const),
+          raw: finishReason,
         },
         usage: {
           inputTokens: {
@@ -130,6 +238,28 @@ function CustomModel(modelId: string): any {
     doStream: async (options: any) => {
       const messages = convertPromptToMessages(options.prompt || []);
 
+      // Build tools array from AI SDK tool definitions
+      const tools = options.tools?.length
+        ? options.tools.map((t: any) => ({
+            type: "function" as const,
+            function: {
+              name: t.name,
+              description: t.description || "",
+              parameters: t.inputSchema || t.parameters || {},
+            },
+          }))
+        : undefined;
+
+      const requestBody: Record<string, any> = {
+        model: modelId,
+        messages,
+        stream: true,
+      };
+      if (tools) {
+        requestBody.tools = tools;
+        requestBody.tool_choice = "auto";
+      }
+
       const resp = await fetch(`${baseURL}/chat/completions`, {
         method: "POST",
         headers: {
@@ -137,11 +267,7 @@ function CustomModel(modelId: string): any {
           Authorization: `Bearer ${apiKey}`,
           Accept: "text/event-stream",
         },
-        body: JSON.stringify({
-          model: modelId,
-          messages,
-          stream: true,
-        }),
+        body: JSON.stringify(requestBody),
         signal: options.abortSignal,
       });
 
@@ -155,6 +281,12 @@ function CustomModel(modelId: string): any {
       let reasoningIdCounter = 0;
       const genTextId = () => `text-${textIdCounter++}`;
       const genReasoningId = () => `reasoning-${reasoningIdCounter++}`;
+
+      // Track streamed tool calls (accumulated across deltas)
+      const pendingToolCalls = new Map<
+        number,
+        { id: string; name: string; arguments: string }
+      >();
 
       const stream = new ReadableStream({
         async start(controller) {
@@ -291,6 +423,25 @@ function CustomModel(modelId: string): any {
                       delta: contentDelta,
                     });
                   }
+
+                  // Handle tool_calls deltas
+                  if (delta.tool_calls) {
+                    for (const tc of delta.tool_calls) {
+                      const idx = tc.index ?? 0;
+                      if (!pendingToolCalls.has(idx)) {
+                        pendingToolCalls.set(idx, {
+                          id: tc.id || "",
+                          name: tc.function?.name || "",
+                          arguments: "",
+                        });
+                      }
+                      const pending = pendingToolCalls.get(idx)!;
+                      if (tc.id) pending.id = tc.id;
+                      if (tc.function?.name) pending.name = tc.function.name;
+                      if (tc.function?.arguments)
+                        pending.arguments += tc.function.arguments;
+                    }
+                  }
                 } catch (e: any) {
                   if (controller.desiredSize === null) return;
                   if (
@@ -328,6 +479,24 @@ function CustomModel(modelId: string): any {
             }
             if (hasStartedText) {
               controller.enqueue({ type: "text-end", id: currentTextId });
+            }
+
+            // Emit accumulated tool calls
+            for (const [, tc] of pendingToolCalls) {
+              if (tc.name) {
+                let parsedArgs = {};
+                try {
+                  parsedArgs = JSON.parse(tc.arguments || "{}");
+                } catch {
+                  parsedArgs = {};
+                }
+                controller.enqueue({
+                  type: "tool-call",
+                  toolCallId: tc.id,
+                  toolName: tc.name,
+                  args: parsedArgs,
+                });
+              }
             }
 
             // Map raw finish_reason to v3 unified reason
@@ -510,8 +679,7 @@ if (staticModels.google) {
 
 // Exports required by other files
 export const isToolCallUnsupportedModel = (_model: any) => {
-  // Disable all tools by default
-  return true;
+  return false;
 };
 
 export const isImageInputUnsupportedModel = (model: any) => {

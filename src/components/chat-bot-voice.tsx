@@ -4,10 +4,11 @@ import { getToolName, isToolUIPart, TextPart } from "ai";
 import { DEFAULT_VOICE_TOOLS, UIMessageWithCompleted } from "lib/ai/speech";
 
 import {
-  OPENAI_VOICE,
-  useOpenAIVoiceChat as OpenAIVoiceChat,
-} from "lib/ai/speech/open-ai/use-voice-chat.openai";
+  PICCY_VOICES,
+  usePiccyVoiceChat,
+} from "lib/ai/speech/piccy/use-voice-chat.piccy";
 import { cn, groupBy, isNull } from "lib/utils";
+import { useChatModels } from "@/hooks/queries/use-chat-models";
 import {
   CheckIcon,
   Loader,
@@ -40,9 +41,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "ui/dropdown-menu";
-import { GeminiIcon } from "ui/gemini-icon";
 import { MessageLoading } from "ui/message-loading";
-import { OpenAIIcon } from "ui/openai-icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { ToolMessagePart } from "./message-parts";
 
@@ -122,6 +121,8 @@ export function ChatBotVoice() {
     );
   }, [agentId, agent, mcpList, allowedMcpServers]);
 
+  const { data: modelProviders = [] } = useChatModels();
+
   const {
     isListening,
     isAssistantSpeaking,
@@ -134,10 +135,11 @@ export function ChatBotVoice() {
     startListening,
     stop,
     stopListening,
-  } = OpenAIVoiceChat({
+  } = usePiccyVoiceChat({
     toolMentions,
     agentId,
-    ...voiceChat.options.providerOptions,
+    voice: voiceChat.options.providerOptions?.voice || PICCY_VOICES.Alloy,
+    chatModel: model,
   });
 
   const startWithSound = useCallback(() => {
@@ -345,79 +347,121 @@ export function ChatBotVoice() {
 
               <EnabledToolsDropdown align="start" side="bottom" tools={tools} />
 
-              <DrawerTitle className="ml-auto">
+              <DrawerTitle className="ml-auto flex items-center gap-2">
+                {/* Voice Selection Dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant={"ghost"} size={"icon"}>
-                      <Settings2Icon className="text-foreground size-5" />
+                    <Button
+                      variant={"outline"}
+                      size={"sm"}
+                      className="gap-2 text-xs"
+                    >
+                      <MicIcon className="size-3.5" />
+                      {Object.entries(PICCY_VOICES).find(
+                        ([, v]) =>
+                          v ===
+                          (voiceChat.options.providerOptions?.voice || "alloy"),
+                      )?.[0] || "Alloy"}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent
-                    side="left"
-                    className="min-w-40"
-                    align="start"
+                    side="bottom"
+                    className="min-w-36"
+                    align="end"
                   >
                     <DropdownMenuGroup className="cursor-pointer">
-                      <DropdownMenuSub>
-                        <DropdownMenuSubTrigger
-                          className="flex items-center gap-2 cursor-pointer"
-                          icon=""
+                      {Object.entries(PICCY_VOICES).map(([key, value]) => (
+                        <DropdownMenuItem
+                          className="cursor-pointer flex items-center justify-between"
+                          onClick={() =>
+                            appStoreMutate({
+                              voiceChat: {
+                                ...voiceChat,
+                                options: {
+                                  provider: "piccy",
+                                  providerOptions: {
+                                    ...voiceChat.options.providerOptions,
+                                    voice: value,
+                                  },
+                                },
+                              },
+                            })
+                          }
+                          key={key}
                         >
-                          <OpenAIIcon className="size-3.5 stroke-none fill-foreground" />
-                          Open AI
-                        </DropdownMenuSubTrigger>
-                        <DropdownMenuPortal>
-                          <DropdownMenuSubContent>
-                            {Object.entries(OPENAI_VOICE).map(
-                              ([key, value]) => (
+                          {key}
+                          {value ===
+                            (voiceChat.options.providerOptions?.voice ||
+                              "alloy") && <CheckIcon className="size-3.5" />}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuGroup>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
+                {/* Model Selection Dropdown */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant={"outline"}
+                      size={"sm"}
+                      className="gap-2 text-xs max-w-48 truncate"
+                    >
+                      <Settings2Icon className="size-3.5 shrink-0" />
+                      <span className="truncate">
+                        {model?.model || "Select Model"}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    side="bottom"
+                    className="min-w-48 max-h-80 overflow-y-auto"
+                    align="end"
+                  >
+                    <DropdownMenuGroup className="cursor-pointer">
+                      {modelProviders.map((provider) => (
+                        <DropdownMenuSub key={provider.provider}>
+                          <DropdownMenuSubTrigger
+                            className="flex items-center gap-2 cursor-pointer"
+                            icon=""
+                          >
+                            <span className="font-medium">
+                              {provider.provider}
+                            </span>
+                            {!provider.hasAPIKey && (
+                              <span className="text-[10px] text-muted-foreground">
+                                (No Key)
+                              </span>
+                            )}
+                          </DropdownMenuSubTrigger>
+                          <DropdownMenuPortal>
+                            <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                              {provider.models.map((m) => (
                                 <DropdownMenuItem
-                                  className="cursor-pointer flex items-center justify-between"
+                                  className="cursor-pointer flex items-center justify-between gap-2"
                                   onClick={() =>
                                     appStoreMutate({
-                                      voiceChat: {
-                                        ...voiceChat,
-                                        options: {
-                                          provider: "openai",
-                                          providerOptions: {
-                                            voice: value,
-                                          },
-                                        },
+                                      chatModel: {
+                                        provider: provider.provider,
+                                        model: m.name,
                                       },
                                     })
                                   }
-                                  key={key}
+                                  key={m.name}
                                 >
-                                  {key}
-
-                                  {value ===
-                                    voiceChat.options.providerOptions
-                                      ?.voice && (
-                                    <CheckIcon className="size-3.5" />
-                                  )}
+                                  <span className="truncate text-xs">
+                                    {m.name}
+                                  </span>
+                                  {model?.provider === provider.provider &&
+                                    model?.model === m.name && (
+                                      <CheckIcon className="size-3.5 shrink-0" />
+                                    )}
                                 </DropdownMenuItem>
-                              ),
-                            )}
-                          </DropdownMenuSubContent>
-                        </DropdownMenuPortal>
-                      </DropdownMenuSub>
-                      <DropdownMenuSub>
-                        <DropdownMenuSub>
-                          <DropdownMenuSubTrigger
-                            className="flex items-center gap-2 text-muted-foreground"
-                            icon=""
-                          >
-                            <GeminiIcon className="size-3.5" />
-                            Gemini
-                          </DropdownMenuSubTrigger>
-                          <DropdownMenuPortal>
-                            <DropdownMenuSubContent>
-                              <div className="text-xs text-muted-foreground p-6">
-                                Not Implemented Yet
-                              </div>
+                              ))}
                             </DropdownMenuSubContent>
                           </DropdownMenuPortal>
                         </DropdownMenuSub>
-                      </DropdownMenuSub>
+                      ))}
                     </DropdownMenuGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>

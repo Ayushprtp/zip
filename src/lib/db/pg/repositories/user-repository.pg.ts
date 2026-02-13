@@ -125,6 +125,7 @@ export const pgUserRepository: UserRepository = {
     const modelStats = await db
       .select({
         model: sql<string>`${ChatMessageTable.metadata}->'chatModel'->>'model'`,
+        provider: sql<string>`COALESCE(${ChatMessageTable.metadata}->'chatModel'->>'provider', 'unknown')`,
         messageCount: count(ChatMessageTable.id),
         // Extract usage tokens from metadata
         totalTokens: sql<number>`COALESCE(SUM((${ChatMessageTable.metadata}->'usage'->>'totalTokens')::numeric), 0)`,
@@ -140,7 +141,10 @@ export const pgUserRepository: UserRepository = {
             AND ${ChatMessageTable.metadata} IS NOT NULL
             AND ${ChatMessageTable.metadata}->'chatModel'->>'model' IS NOT NULL`,
       )
-      .groupBy(sql`${ChatMessageTable.metadata}->'chatModel'->>'model'`)
+      .groupBy(
+        sql`${ChatMessageTable.metadata}->'chatModel'->>'model'`,
+        sql`${ChatMessageTable.metadata}->'chatModel'->>'provider'`,
+      )
       .orderBy(
         sql`SUM((${ChatMessageTable.metadata}->'usage'->>'totalTokens')::numeric) DESC`,
       )

@@ -25,7 +25,12 @@ export interface BetterAuthRole {
 /**
  * Valid role names in the system
  */
-export type RoleName = "admin" | "editor" | "user";
+export type RoleName =
+  | "super_admin"
+  | "admin"
+  | "editor"
+  | "moderator"
+  | "user";
 
 /**
  * Validates and cleans a role string, handling OAuth provider prefixes
@@ -46,7 +51,13 @@ export function parseRoleString(role: string | undefined | null): RoleName {
   }
 
   // Validate the role is one of our known roles
-  const validRoles: RoleName[] = ["admin", "editor", "user"];
+  const validRoles: RoleName[] = [
+    "super_admin",
+    "admin",
+    "editor",
+    "moderator",
+    "user",
+  ];
 
   // Normalize to lowercase for comparison, then return proper case
   const normalizedRole = cleanRole.toLowerCase();

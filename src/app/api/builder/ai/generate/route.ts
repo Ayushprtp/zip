@@ -11,10 +11,15 @@ export async function POST(request: Request) {
       return new Response("Unauthorized", { status: 401 });
     }
 
-    const { prompt, provider, model } = await request.json();
+    const { prompt, system, messages, provider, model } = await request.json();
 
-    if (!prompt || !provider || !model) {
+    if (!provider || !model) {
       return new Response("Missing required fields", { status: 400 });
+    }
+
+    // Require either prompt (legacy) or messages (new)
+    if (!prompt && (!messages || messages.length === 0)) {
+      return new Response("Missing prompt or messages", { status: 400 });
     }
 
     // Get user's personal API keys
@@ -24,7 +29,18 @@ export async function POST(request: Request) {
       userApiKeys,
     );
 
-    // Stream the response
+    // Support both legacy single-prompt and new messages format
+    if (messages && messages.length > 0) {
+      const result = streamText({
+        model: aiModel,
+        system: system || undefined,
+        messages,
+        maxRetries: 2,
+      });
+      return result.toTextStreamResponse();
+    }
+
+    // Legacy: single prompt mode
     const result = streamText({
       model: aiModel,
       prompt,

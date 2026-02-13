@@ -112,6 +112,17 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const setViewMode = useBuilderUIStore((s) => s.setViewMode);
   const showConsole = useBuilderUIStore((s) => s.showConsole);
   const toggleConsole = useBuilderUIStore((s) => s.toggleConsole);
+  const showTerminal = useBuilderUIStore((s) => s.showTerminal);
+  const toggleTerminal = useBuilderUIStore((s) => s.toggleTerminal);
+  const showReport = useBuilderUIStore((s) => s.showReport);
+  const toggleReport = useBuilderUIStore((s) => s.toggleReport);
+  const showSSH = useBuilderUIStore((s) => s.showSSH);
+  const toggleSSH = useBuilderUIStore((s) => s.toggleSSH);
+  const bottomPanel = useBuilderUIStore((s) => s.bottomPanel);
+  const bottomPanelMaximized = useBuilderUIStore((s) => s.bottomPanelMaximized);
+  const toggleBottomPanelMaximized = useBuilderUIStore(
+    (s) => s.toggleBottomPanelMaximized,
+  );
   const setIsSynced = useBuilderUIStore((s) => s.setIsSynced);
   const serverStatus = useBuilderUIStore((s) => s.serverStatus);
   const startServer = useBuilderUIStore((s) => s.startServer);
@@ -273,6 +284,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
    *   ```language filepath:/path/to/file.ext  (language + filepath)
    *   ```language /path/to/file.ext     (language + absolute path)
    *   ```/path/to/file.ext              (just the path)
+   *   ```language src/file.ext          (language + relative path)
+   *   ```filepath:src/file.ext          (relative filepath prefix)
    */
   const parseAIResponse = useCallback(
     (response: string) => {
@@ -282,9 +295,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         content: string;
       }> = [];
 
-      // Match code blocks with various filepath patterns
+      // Match code blocks with various filepath patterns (absolute or relative)
       const codeBlockRegex =
-        /```(?:[\w.*+-]*\s+)?(?:filepath:)?(\/[^\n`]+)\n([\s\S]*?)```/g;
+        /```(?:[\w.*+-]*\s+)?(?:filepath:)?([^\n`]+\.[a-zA-Z0-9]+)\n([\s\S]*?)```/g;
       let match;
 
       while ((match = codeBlockRegex.exec(response)) !== null) {
@@ -327,37 +340,71 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
 
-        // Build prompt with context
-        const systemPrompt = `You are an expert code generator for a web development IDE.
+        // Build prompt with template-specific context
+        const templateGuidelines: Record<string, string> = {
+          react: `This is a React (Vite) project.
+- Use functional components with hooks.
+- Entry file is /App.jsx or /App.tsx.
+- Use JSX syntax. Import React only if needed (React 18+ auto-imports).
+- Use CSS modules, inline styles, or a /styles.css file for styling.`,
+          "vite-react": `This is a Vite + React project.
+- Use functional components with hooks.
+- Entry file is /src/App.tsx, mounted in /src/main.tsx.
+- Use TypeScript (.tsx files).
+- Use CSS modules or Tailwind CSS for styling.`,
+          nextjs: `This is a Next.js App Router project.
+- ALWAYS use the App Router pattern (files under /app/ directory).
+- NEVER use Pages Router patterns (no /pages/ directory, no getServerSideProps, no getStaticProps).
+- Use "use client" directive for client components with hooks/state/effects.
+- Server Components are the default — only add "use client" when needed.
+- Main page is /app/page.tsx, layout is /app/layout.tsx.
+- Use TypeScript (.tsx files).`,
+          vanilla: `This is a vanilla JavaScript project.
+- Entry file is /index.js.
+- Use /index.html for markup.
+- No frameworks — plain JS/HTML/CSS only.`,
+          static: `This is a static HTML project.
+- Entry file is /index.html.
+- Use plain HTML, CSS, and JavaScript.
+- Include styles in /style.css and scripts in /script.js.`,
+          httpchain: `This is an HTTP Chain (API workflow) project built with Vite + React.
+- Entry file is /src/App.tsx.
+- Use TypeScript and React components.`,
+        };
 
-When generating or modifying code:
-1. Wrap each file in a code block with the file path
-2. Use format: \`\`\`language filepath:/path/to/file.ext
-3. Include complete, working code
-4. Follow best practices and modern standards
-5. Add helpful comments
-6. Ensure code is production-ready
+        const templateGuide =
+          templateGuidelines[currentThread?.template || "react"] ||
+          templateGuidelines.react;
 
-Example response format:
-\`\`\`jsx filepath:/App.jsx
-import React from 'react';
+        const systemPrompt = `You are an expert code generator for a web-based IDE.
 
-export default function App() {
-  return <div>Hello World</div>;
-}
-\`\`\`
+PROJECT TEMPLATE: ${currentThread?.template || "react"}
+${templateGuide}
 
-Current files in project:
+RULES:
+1. Wrap each file in a code block with the filepath using this format:
+   \`\`\`language filepath:/path/to/file.ext
+2. Always include complete, working code — no placeholders or "// rest of code here".
+3. Follow modern best practices and use TypeScript where applicable.
+4. Ensure code is production-ready and well-commented.
+5. When modifying existing code, output the COMPLETE file content.
+
+Current project files:
 ${Object.keys(state.files).join(", ") || "No files yet"}`;
 
-        const fullPrompt = `${systemPrompt}\n\nUser request: ${content}`;
+        // Build conversation history for context (last 10 messages)
+        const recentMessages = transformedMessages.slice(-10).map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
 
-        // Call builder AI endpoint
+        // Call builder AI endpoint with separated system/user prompts + history
         const response = await fetch("/api/builder/ai/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            prompt: fullPrompt,
+            system: systemPrompt,
+            messages: [...recentMessages, { role: "user", content }],
             provider: selectedModel.provider,
             model: selectedModel.model,
           }),
@@ -467,6 +514,13 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
         onViewModeChange={setViewMode}
         showConsole={showConsole}
         onToggleConsole={toggleConsole}
+        showTerminal={showTerminal}
+        onToggleTerminal={toggleTerminal}
+        showReport={showReport}
+        onToggleReport={toggleReport}
+        showSSH={showSSH}
+        onToggleSSH={toggleSSH}
+        bottomPanel={bottomPanel}
         serverStatus={serverStatus}
         onServerStart={startServer}
         onServerStop={stopServer}
@@ -510,6 +564,14 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
                           template={currentThread.template}
                           viewMode={viewMode}
                           showConsole={showConsole}
+                          showTerminal={showTerminal}
+                          showReport={showReport}
+                          showSSH={showSSH}
+                          bottomPanel={bottomPanel}
+                          bottomPanelMaximized={bottomPanelMaximized}
+                          onToggleBottomPanelMaximized={
+                            toggleBottomPanelMaximized
+                          }
                         />
                       </div>
                     )}
@@ -519,6 +581,14 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
                         template={currentThread.template}
                         viewMode={viewMode}
                         showConsole={showConsole}
+                        showTerminal={showTerminal}
+                        showReport={showReport}
+                        showSSH={showSSH}
+                        bottomPanel={bottomPanel}
+                        bottomPanelMaximized={bottomPanelMaximized}
+                        onToggleBottomPanelMaximized={
+                          toggleBottomPanelMaximized
+                        }
                       />
                     )}
                   </>

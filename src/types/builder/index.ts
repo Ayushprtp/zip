@@ -30,8 +30,10 @@ export interface VirtualFileSystem {
 // ============================================================================
 
 export type TemplateType =
+  | "react"
   | "vite-react"
   | "nextjs"
+  | "vanilla"
   | "node"
   | "static"
   | "httpchain";
@@ -255,3 +257,27 @@ export interface EditorConfig {
 // ============================================================================
 
 export type LayoutMode = "chat" | "builder";
+
+// ============================================================================
+// Remote Development Types (re-exported)
+// ============================================================================
+
+export type {
+  SSHConnectionConfig,
+  SSHConnectionStatus,
+  SSHSession,
+  RemoteFileInfo,
+  RemoteFileContent,
+  RemoteCommandResult,
+  RemoteSystemInfo,
+  RemoteGitStatus,
+  ExecutionContext,
+  RemoteDevState,
+  RemoteTerminalEntry,
+  SafetyConfirmation,
+  SSHApiAction,
+  SSHApiRequest,
+  SSHApiResponse,
+} from "./remote";
+
+export { DESTRUCTIVE_PATTERNS, REMOTE_PROJECT_TEMPLATES } from "./remote";

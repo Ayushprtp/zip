@@ -139,13 +139,31 @@ export const accountTypeInfo: AccountTypeInfo = {
 
 export const USER_PLANS = {
   FREE: "free",
-  PREMIUM: "premium",
+  PRO: "pro",
+  PLUS: "plus",
   ENTERPRISE: "enterprise",
 } as const;
 
 export type UserPlan = (typeof USER_PLANS)[keyof typeof USER_PLANS];
 
 export const DEFAULT_USER_PLAN: UserPlan = USER_PLANS.FREE;
+
+/**
+ * Tier hierarchy for access checks: free < pro < plus < enterprise
+ */
+export const TIER_HIERARCHY: Record<UserPlan, number> = {
+  free: 0,
+  pro: 1,
+  plus: 2,
+  enterprise: 3,
+};
+
+export function canAccessTier(
+  userPlan: UserPlan,
+  requiredPlan: UserPlan,
+): boolean {
+  return TIER_HIERARCHY[userPlan] >= TIER_HIERARCHY[requiredPlan];
+}
 
 export type PlanLimits = {
   creditsPerMonth: number;
@@ -180,8 +198,8 @@ export const userPlanInfo: UserPlanInfo = {
       slaGuarantee: false,
     },
   },
-  premium: {
-    label: "Premium",
+  pro: {
+    label: "Pro",
     description: "Enhanced tier with higher limits",
     limits: {
       creditsPerMonth: 10000,
@@ -189,6 +207,19 @@ export const userPlanInfo: UserPlanInfo = {
       requestsPerDay: 1000,
       maxConcurrentRequests: 5,
       maxSessionLength: 120,
+      priorityQueue: true,
+      slaGuarantee: false,
+    },
+  },
+  plus: {
+    label: "Plus",
+    description: "Power user tier with generous limits",
+    limits: {
+      creditsPerMonth: 50000,
+      requestsPerMinute: 60,
+      requestsPerDay: 5000,
+      maxConcurrentRequests: 10,
+      maxSessionLength: -1, // unlimited
       priorityQueue: true,
       slaGuarantee: false,
     },
