@@ -654,13 +654,20 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
                 ? "GPT-4.1 Mini"
                 : selectedModel.model
             }
-            onModelChange={() => {
-              // Simple toggle for now, can be expanded to a full selector later
-              const nextModel =
-                selectedModel.model === "gpt-4.1-mini"
-                  ? "gpt-4o"
-                  : "gpt-4.1-mini";
-              setSelectedModel({ ...selectedModel, model: nextModel });
+            onModelChange={(modelId?: string) => {
+              if (modelId) {
+                const [provider, model] = modelId.includes("/")
+                  ? modelId.split("/")
+                  : ["custom", modelId];
+                setSelectedModel({ provider, model });
+              } else {
+                // Toggle fallback
+                const nextModel =
+                  selectedModel.model === "gpt-4.1-mini"
+                    ? "gpt-4o"
+                    : "gpt-4.1-mini";
+                setSelectedModel({ ...selectedModel, model: nextModel });
+              }
             }}
             files={state.files}
             condensed

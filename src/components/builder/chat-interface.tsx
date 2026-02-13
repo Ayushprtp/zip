@@ -29,6 +29,9 @@ import {
   Terminal,
   MessageSquare,
   Command,
+  Check,
+  Server,
+  Book,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -47,7 +50,7 @@ interface ChatInterfaceProps {
   onReviewChanges?: () => void;
   hasUncommittedChanges?: boolean;
   modelName?: string;
-  onModelChange?: () => void;
+  onModelChange?: (modelId?: string) => void;
   files?: Record<string, string>;
 }
 
@@ -361,7 +364,7 @@ interface ChatInputBarProps {
   attachments?: File[];
   onRemoveAttachment?: (index: number) => void;
   modelName?: string;
-  onModelChange?: () => void;
+  onModelChange?: (modelId?: string) => void;
   files?: Record<string, string>;
   mentions?: any[];
   onAddMention?: (mention: any) => void;
@@ -392,6 +395,37 @@ function ChatInputBar({
   const [mentionType, setMentionType] = useState<"root" | "files">("root");
   const [selectedIndex, setSelectedIndex] = useState(0);
 
+  // Model Selector State
+  const [availableModels, setAvailableModels] = useState<any[]>([]);
+  const [showModelSelector, setShowModelSelector] = useState(false);
+  const modelSelectorRef = useRef<HTMLDivElement>(null);
+
+  // Fetch models
+  useEffect(() => {
+    fetch("/api/chat/models")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setAvailableModels(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Click outside to close model selector
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        modelSelectorRef.current &&
+        !modelSelectorRef.current.contains(event.target as Node)
+      ) {
+        setShowModelSelector(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
@@ -408,8 +442,6 @@ function ChatInputBar({
       return;
     }
 
-    // Simple robust detection: check if cursor is at the end of a word starting with @
-    // Note: robust cursor tracking requires selectionStart, doing simplified "last word" check for now
     const lastWord = value.split(/\s+/).pop() || "";
 
     if (lastWord.startsWith("@")) {
@@ -441,21 +473,33 @@ function ChatInputBar({
         },
         {
           id: "folders",
-          label: "Folders",
+          label: "Directories",
           icon: Folder,
           description: "Add folder context",
         },
         {
-          id: "terminal",
-          label: "Terminal",
-          icon: Terminal,
-          description: "Add terminal logs",
+          id: "mcp",
+          label: "MCP servers",
+          icon: Server,
+          description: "Use MCP tools",
+        },
+        {
+          id: "rules",
+          label: "Rules",
+          icon: Book,
+          description: "Add project rules",
         },
         {
           id: "conversations",
           label: "Conversations",
           icon: MessageSquare,
           description: "Reference previous chats",
+        },
+        {
+          id: "terminal",
+          label: "Terminal",
+          icon: Terminal,
+          description: "Add terminal logs",
         },
       ];
       return rootItems.filter((item) =>
@@ -484,8 +528,8 @@ function ChatInputBar({
         // Transition to file selection
         const newValue = value.replace(/@[\w-]*$/, "@files:");
         onChange(newValue);
-      } else if (item.id === "folders") {
-        // Can implement folder selection similarly
+      } else if (item.id === "folders" || item.id === "directories") {
+        // Placeholder for folders
         const newValue = value.replace(/@[\w-]*$/, "@folders:");
         onChange(newValue);
       } else {
@@ -542,6 +586,13 @@ function ChatInputBar({
       {/* Mentions Dropdown */}
       {showMentions && filteredItems.length > 0 && (
         <div className="absolute bottom-full left-3 mb-2 w-64 bg-popover border border-border rounded-lg shadow-lg overflow-hidden z-50 animate-in slide-in-from-bottom-2 duration-200">
+          {/* Header */}
+          <div className="flex items-center justify-between px-2 py-1.5 bg-blue-500/10 border-b border-border/40 text-[10px] font-medium text-blue-400">
+            <div className="flex items-center gap-1.5">
+              <span>{"< >"}</span>
+              <span>Code Context Items</span>
+            </div>
+          </div>
           <div className="p-1 max-h-60 overflow-y-auto">
             {filteredItems.map((item, index) => (
               <button
@@ -570,6 +621,53 @@ function ChatInputBar({
               Select a file to add context
             </div>
           )}
+        </div>
+      )}
+
+      {/* Model Selector Popover */}
+      {showModelSelector && (
+        <div
+          ref={modelSelectorRef}
+          className="absolute bottom-12 right-3 w-64 bg-popover border border-border rounded-lg shadow-xl overflow-hidden z-50 animate-in fade-in-0 zoom-in-95 duration-200"
+        >
+          <div className="px-3 py-2 border-b border-border/40 text-xs font-semibold text-muted-foreground">
+            Select Model
+          </div>
+          <div className="max-h-60 overflow-y-auto p-1">
+            {availableModels.length === 0 && (
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                Loading models...
+              </div>
+            )}
+            {availableModels.map((group) => (
+              <div key={group.provider} className="mb-1">
+                <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground/50 font-bold">
+                  {group.provider}
+                </div>
+                {group.models.map((model: any) => {
+                  const modelId = `${group.provider}/${model.name}`;
+                  const isSelected = modelName.includes(model.name); // Simple check
+                  return (
+                    <button
+                      key={modelId}
+                      onClick={() => {
+                        onModelChange?.(modelId);
+                        setShowModelSelector(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 text-left text-xs rounded-md transition-colors ${
+                        isSelected
+                          ? "bg-violet-500/10 text-violet-500"
+                          : "hover:bg-muted"
+                      }`}
+                    >
+                      <span className="truncate">{model.name}</span>
+                      {isSelected && <Check className="h-3 w-3 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -673,14 +771,16 @@ function ChatInputBar({
 
             {/* Right side — model selector, mic, send */}
             <div className="flex items-center gap-1">
-              {/* Model Selector */}
+              {/* Model Selector Button */}
               <button
-                onClick={onModelChange}
+                onClick={() => setShowModelSelector(!showModelSelector)}
                 className="flex items-center gap-1 px-2 py-1 rounded-md hover:bg-muted/80 text-muted-foreground/60 hover:text-muted-foreground transition-colors"
                 title="Change AI model"
               >
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-medium">{modelName}</span>
+                </div>
                 <ChevronUp className="h-3 w-3" />
-                <span className="text-[10px] font-medium">{modelName}</span>
               </button>
 
               {/* Mic button */}

@@ -34,6 +34,8 @@ import {
   Clock,
   Zap,
   ChevronRight,
+  LogOut,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Template } from "@/hooks/useBuilderEngine";
@@ -151,8 +153,8 @@ export function GitHubProjectSetup({
       const res = await fetch("/api/github/user");
       if (res.ok) {
         const data = await res.json();
-        setGhLogin(data.user?.login || "");
-        setGhAvatar(data.user?.avatar_url || "");
+        setGhLogin(data.login || "");
+        setGhAvatar(data.avatar_url || "");
         setIsConnected(true);
         setStep("choose");
       }
@@ -183,6 +185,19 @@ export function GitHubProjectSetup({
       }
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const handleDisconnect = useCallback(async () => {
+    try {
+      await fetch("/api/github/auth", { method: "DELETE" });
+      setIsConnected(false);
+      setGhLogin("");
+      setGhAvatar("");
+      setStep("connect");
+      toast.success("Disconnected from GitHub");
+    } catch {
+      toast.error("Failed to disconnect");
     }
   }, []);
 
@@ -391,8 +406,17 @@ export function GitHubProjectSetup({
                   className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 px-3 py-1"
                 >
                   <CheckCircle2 className="mr-1.5 h-3 w-3" />
-                  Connected as @{ghLogin}
+                  Connected as @{ghLogin || "User"}
                 </Badge>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDisconnect}
+                  className="h-7 px-2 text-muted-foreground hover:text-destructive"
+                  title="Disconnect GitHub"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                </Button>
               </div>
             )}
 
@@ -642,8 +666,35 @@ export function GitHubProjectSetup({
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
               ) : filteredRepos.length === 0 ? (
-                <div className="text-center py-8 text-xs text-muted-foreground">
-                  No repositories found
+                <div className="flex flex-col items-center justify-center py-8 text-center space-y-3">
+                  <div className="text-xs text-muted-foreground">
+                    No repositories found matching your search.
+                  </div>
+                  {repos.length === 0 && (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-muted-foreground max-w-[200px] mx-auto">
+                        If you don't see your repositories, you might need to
+                        grant access to the Flare Builder App.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1.5"
+                        onClick={() =>
+                          window.open(
+                            `https://github.com/apps/${
+                              process.env.NEXT_PUBLIC_GITHUB_APP_NAME ||
+                              "flare-sh"
+                            }/installations/new`,
+                            "_blank",
+                          )
+                        }
+                      >
+                        <Settings className="h-3 w-3" />
+                        Configure GitHub App Access
+                      </Button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 filteredRepos.map((repo) => (
