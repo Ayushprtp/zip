@@ -48,12 +48,16 @@ export async function POST(request: NextRequest) {
     }
 
     const app = getGitHubApp();
-    const repo = await app.createRepository(auth.installationId, {
-      name,
-      description,
-      private: isPrivate ?? true,
-      auto_init: auto_init ?? true,
-    });
+    const repo = await app.createRepository(
+      auth.installationId,
+      {
+        name,
+        description,
+        private: isPrivate ?? true,
+        auto_init: auto_init ?? true,
+      },
+      auth.token,
+    );
 
     return NextResponse.json({ repo });
   } catch (error: any) {

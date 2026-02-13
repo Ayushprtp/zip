@@ -188,6 +188,7 @@ export class GitHubAppService {
       private?: boolean;
       auto_init?: boolean;
     },
+    userToken?: string,
   ) {
     const octokit = await this.getInstallationOctokit(installationId);
 
@@ -207,9 +208,22 @@ export class GitHubAppService {
       });
       return data;
     } else {
-      // For user accounts, we use the user's token to create (installation tokens can't create user repos)
-      // Fall back to creating via the installation with auto_init
-      const { data } = await octokit.repos.createForAuthenticatedUser({
+      // For user accounts, we MUST use the user's OAuth token to create repositories
+      // because installation tokens cannot create repositories on user accounts.
+
+      let client = octokit;
+
+      if (userToken) {
+        // Use the user's token if available
+        client = new Octokit({ auth: userToken });
+      } else {
+        console.warn(
+          "No user token provided for creating user repository. This will likely fail with 403.",
+        );
+      }
+
+      // Create via the user's token (or fallback to installation which will fail)
+      const { data } = await client.repos.createForAuthenticatedUser({
         name: options.name,
         description: options.description,
         private: options.private ?? true,
