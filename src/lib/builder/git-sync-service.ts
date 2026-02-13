@@ -73,9 +73,7 @@ export class GitSyncService {
 
         // Commit
         const timestamp = new Date().toISOString();
-        const commitSha = await this.git.commit(
-          `Auto-save: ${timestamp}`,
-        );
+        const commitSha = await this.git.commit(`Auto-save: ${timestamp}`);
         this.status.lastCommit = commitSha;
       }
 
@@ -105,7 +103,7 @@ export class GitSyncService {
     }
   }
 
-  private async handleConflict(token: string): Promise<void> {
+  private async handleConflict(_token: string): Promise<void> {
     switch (this.config.conflictResolution) {
       case "theirs":
         // Accept remote changes
@@ -119,9 +117,7 @@ export class GitSyncService {
 
       case "manual":
         // Throw error for manual resolution
-        throw new Error(
-          "Merge conflict detected. Manual resolution required.",
-        );
+        throw new Error("Merge conflict detected. Manual resolution required.");
     }
   }
 

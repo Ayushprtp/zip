@@ -1,0 +1,718 @@
+/**
+ * CloudService — Unified helper class for GitHub + Vercel API calls
+ *
+ * This is the central "API layer" for the Cloud Integration Hub.
+ * It orchestrates:
+ *   • GitHub: Push code (via octokit), auto-generate .env files
+ *   • Vercel: Link projects, inject env vars, trigger deploys, poll status
+ *
+ * It delegates to the existing GitHubService & VercelService where possible
+ * and adds the "glue" logic the pipeline requires.
+ */
+
+import { Octokit } from "@octokit/rest";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export type DeploymentState =
+  | "idle"
+  | "linking"
+  | "injecting_env"
+  | "triggering"
+  | "building"
+  | "ready"
+  | "error";
+
+export interface DeploymentStatus {
+  state: DeploymentState;
+  message: string;
+  url?: string;
+  deploymentId?: string;
+  error?: string;
+}
+
+export interface VercelProjectInfo {
+  id: string;
+  name: string;
+  framework: string | null;
+  url?: string;
+}
+
+export interface PushResult {
+  sha: string;
+  message: string;
+  htmlUrl: string;
+}
+
+export type FrameworkPreset =
+  | "nextjs"
+  | "vite"
+  | "create-react-app"
+  | "gatsby"
+  | "nuxtjs"
+  | "svelte"
+  | "angular"
+  | null;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function detectFrameworkPreset(
+  files: Record<string, string>,
+  template?: string,
+): FrameworkPreset {
+  if (template === "nextjs" || template === "next") return "nextjs";
+
+  const filenames = Object.keys(files);
+
+  if (filenames.some((f) => f.includes("next.config"))) return "nextjs";
+  if (filenames.some((f) => f.includes("vite.config"))) return "vite";
+  if (filenames.some((f) => f.includes("gatsby-config"))) return "gatsby";
+  if (filenames.some((f) => f.includes("nuxt.config"))) return "nuxtjs";
+  if (filenames.some((f) => f.includes("svelte.config"))) return "svelte";
+  if (filenames.some((f) => f.includes("angular.json"))) return "angular";
+
+  // Check package.json for react-scripts (CRA)
+  const pkgJson = files["/package.json"] || files["package.json"];
+  if (pkgJson) {
+    try {
+      const pkg = JSON.parse(pkgJson);
+      if (pkg.dependencies?.["react-scripts"]) return "create-react-app";
+      if (pkg.dependencies?.["next"]) return "nextjs";
+      if (pkg.devDependencies?.["vite"]) return "vite";
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  return "vite"; // default
+}
+
+function getOutputDirectory(preset: FrameworkPreset): string {
+  switch (preset) {
+    case "nextjs":
+      return ".next";
+    case "create-react-app":
+      return "build";
+    case "gatsby":
+      return "public";
+    case "nuxtjs":
+      return ".output";
+    default:
+      return "dist";
+  }
+}
+
+function getBuildCommand(preset: FrameworkPreset): string {
+  switch (preset) {
+    case "nextjs":
+      return "next build";
+    case "create-react-app":
+      return "react-scripts build";
+    case "gatsby":
+      return "gatsby build";
+    case "nuxtjs":
+      return "nuxt build";
+    default:
+      return "npm run build";
+  }
+}
+
+// ─── CloudService Class ──────────────────────────────────────────────────────
+
+export class CloudService {
+  private githubToken: string | null = null;
+  private vercelToken: string | null = null;
+  private octokit: Octokit | null = null;
+
+  // ──── Token Management ─────────────────────────────────────────────────────
+
+  setGitHubToken(token: string): void {
+    this.githubToken = token;
+    this.octokit = new Octokit({ auth: token });
+  }
+
+  setVercelToken(token: string): void {
+    this.vercelToken = token;
+  }
+
+  get isGitHubConnected(): boolean {
+    return !!this.githubToken && !!this.octokit;
+  }
+
+  get isVercelConnected(): boolean {
+    return !!this.vercelToken;
+  }
+
+  // ──── GITHUB: Push Code ────────────────────────────────────────────────────
+
+  /**
+   * Push the user's project files to a GitHub repository.
+   *
+   * CRITICAL: Before pushing, auto-generates a `.env.local` file from the
+   * secrets provided, so the app can communicate with Firebase / Supabase
+   * locally.
+   */
+  async pushToGitHub(
+    owner: string,
+    repo: string,
+    files: Record<string, string>,
+    envVars: Record<string, string>,
+    commitMessage = "Update from Flare IDE",
+    branch = "main",
+  ): Promise<PushResult> {
+    if (!this.octokit) throw new Error("GitHub not connected");
+
+    // Step 1: Generate .env.local content from secrets
+    const envFileContent = this.generateEnvFileContent(envVars);
+
+    // Merge the .env.local into the files to push
+    const allFiles: Record<string, string> = {
+      ...files,
+    };
+
+    // Only add env file if there are env vars
+    if (Object.keys(envVars).length > 0) {
+      allFiles[".env.local"] = envFileContent;
+    }
+
+    // Make sure .env.local is in .gitignore
+    const gitignore = allFiles[".gitignore"] || allFiles["/.gitignore"] || "";
+    if (!gitignore.includes(".env.local")) {
+      allFiles[".gitignore"] =
+        (gitignore ? gitignore + "\n" : "") +
+        "# Environment variables (auto-generated by Flare IDE)\n.env.local\n.env\n";
+    }
+
+    // Step 2: Get the current tree SHA (or create initial commit)
+    let baseTreeSha: string | undefined;
+    let parentSha: string | undefined;
+
+    try {
+      const { data: ref } = await this.octokit.git.getRef({
+        owner,
+        repo,
+        ref: `heads/${branch}`,
+      });
+      parentSha = ref.object.sha;
+
+      const { data: commit } = await this.octokit.git.getCommit({
+        owner,
+        repo,
+        commit_sha: parentSha,
+      });
+      baseTreeSha = commit.tree.sha;
+    } catch {
+      // Repository is empty — we'll create the initial commit
+    }
+
+    // Step 3: Create blobs for all files
+    const treeItems: {
+      path: string;
+      mode: "100644";
+      type: "blob";
+      sha: string;
+    }[] = [];
+
+    for (const [filePath, content] of Object.entries(allFiles)) {
+      const normalizedPath = filePath.startsWith("/")
+        ? filePath.slice(1)
+        : filePath;
+
+      const { data: blob } = await this.octokit.git.createBlob({
+        owner,
+        repo,
+        content: btoa(unescape(encodeURIComponent(content))),
+        encoding: "base64",
+      });
+
+      treeItems.push({
+        path: normalizedPath,
+        mode: "100644",
+        type: "blob",
+        sha: blob.sha,
+      });
+    }
+
+    // Step 4: Create tree
+    const { data: newTree } = await this.octokit.git.createTree({
+      owner,
+      repo,
+      base_tree: baseTreeSha,
+      tree: treeItems,
+    });
+
+    // Step 5: Create commit
+    const { data: newCommit } = await this.octokit.git.createCommit({
+      owner,
+      repo,
+      message: commitMessage,
+      tree: newTree.sha,
+      parents: parentSha ? [parentSha] : [],
+    });
+
+    // Step 6: Update the branch ref
+    try {
+      await this.octokit.git.updateRef({
+        owner,
+        repo,
+        ref: `heads/${branch}`,
+        sha: newCommit.sha,
+      });
+    } catch {
+      // Branch doesn't exist, create it
+      await this.octokit.git.createRef({
+        owner,
+        repo,
+        ref: `refs/heads/${branch}`,
+        sha: newCommit.sha,
+      });
+    }
+
+    return {
+      sha: newCommit.sha,
+      message: commitMessage,
+      htmlUrl: `https://github.com/${owner}/${repo}/commit/${newCommit.sha}`,
+    };
+  }
+
+  // ──── VERCEL: Link Project ─────────────────────────────────────────────────
+
+  /**
+   * Create (or link) a Vercel project from a GitHub repository.
+   * Automatically detects the framework preset.
+   */
+  async linkVercelProject(
+    repoFullName: string,
+    files: Record<string, string>,
+    template?: string,
+    projectName?: string,
+  ): Promise<VercelProjectInfo> {
+    if (!this.vercelToken) throw new Error("Vercel not connected");
+
+    const preset = detectFrameworkPreset(files, template);
+    const name =
+      projectName || repoFullName.split("/").pop() || "flare-project";
+
+    const body: Record<string, any> = {
+      name,
+      framework: preset,
+      buildCommand: getBuildCommand(preset),
+      outputDirectory: getOutputDirectory(preset),
+      gitRepository: {
+        type: "github",
+        repo: repoFullName,
+      },
+    };
+
+    const response = await fetch("https://api.vercel.com/v9/projects", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.vercelToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+
+      // If project already exists, try to fetch it
+      if (err.error?.code === "project_already_exists") {
+        return this.getVercelProjectByName(name);
+      }
+
+      throw new Error(
+        err.error?.message ||
+          `Failed to create Vercel project: ${response.statusText}`,
+      );
+    }
+
+    const project = await response.json();
+    return {
+      id: project.id,
+      name: project.name,
+      framework: project.framework,
+    };
+  }
+
+  /** Get a Vercel project by name */
+  private async getVercelProjectByName(
+    name: string,
+  ): Promise<VercelProjectInfo> {
+    const response = await fetch(
+      `https://api.vercel.com/v9/projects/${encodeURIComponent(name)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.vercelToken}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch existing Vercel project");
+    }
+
+    const project = await response.json();
+    return {
+      id: project.id,
+      name: project.name,
+      framework: project.framework,
+    };
+  }
+
+  // ──── VERCEL: Inject Environment Variables ─────────────────────────────────
+
+  /**
+   * Upload the Firebase / Supabase keys from the Secrets Manager
+   * to the Vercel project's environment variables.
+   * This is CRITICAL so the deployed app works.
+   */
+  async injectVercelEnvVars(
+    projectId: string,
+    envVars: Record<string, string>,
+    targets: ("production" | "preview" | "development")[] = [
+      "production",
+      "preview",
+      "development",
+    ],
+  ): Promise<{ injected: number; skipped: number }> {
+    if (!this.vercelToken) throw new Error("Vercel not connected");
+
+    // First, get existing env vars to avoid duplicates
+    const existing = await this.getVercelEnvVars(projectId);
+    const existingKeys = new Set(existing.map((v: any) => v.key));
+
+    let injected = 0;
+    let skipped = 0;
+
+    for (const [key, value] of Object.entries(envVars)) {
+      if (!value) {
+        skipped++;
+        continue;
+      }
+
+      if (existingKeys.has(key)) {
+        // Update existing
+        const existingVar = existing.find((v: any) => v.key === key);
+        if (existingVar) {
+          await fetch(
+            `https://api.vercel.com/v9/projects/${projectId}/env/${existingVar.id}`,
+            {
+              method: "PATCH",
+              headers: {
+                Authorization: `Bearer ${this.vercelToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ value, target: targets }),
+            },
+          );
+          injected++;
+        }
+      } else {
+        // Create new
+        const response = await fetch(
+          `https://api.vercel.com/v9/projects/${projectId}/env`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${this.vercelToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              key,
+              value,
+              target: targets,
+              type: "encrypted",
+            }),
+          },
+        );
+
+        if (response.ok) {
+          injected++;
+        } else {
+          skipped++;
+        }
+      }
+    }
+
+    return { injected, skipped };
+  }
+
+  /** Get existing env vars for a Vercel project */
+  private async getVercelEnvVars(projectId: string): Promise<any[]> {
+    const response = await fetch(
+      `https://api.vercel.com/v9/projects/${projectId}/env`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.vercelToken}`,
+        },
+      },
+    );
+
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return data.envs || [];
+  }
+
+  // ──── VERCEL: Trigger Deploy ───────────────────────────────────────────────
+
+  /**
+   * Trigger a new deployment from the latest GitHub commit.
+   */
+  async triggerVercelDeploy(projectId: string): Promise<DeploymentStatus> {
+    if (!this.vercelToken) throw new Error("Vercel not connected");
+
+    const response = await fetch("https://api.vercel.com/v13/deployments", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${this.vercelToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: projectId,
+        target: "production",
+      }),
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      return {
+        state: "error",
+        message: err.error?.message || "Failed to trigger deployment",
+        error: err.error?.message,
+      };
+    }
+
+    const deployment = await response.json();
+    return {
+      state: "building",
+      message: "Deployment triggered, building...",
+      deploymentId: deployment.id,
+      url: deployment.url,
+    };
+  }
+
+  // ──── VERCEL: Poll Deployment Status ───────────────────────────────────────
+
+  /**
+   * Poll a Vercel deployment status.
+   * Returns the current status — call this repeatedly to implement
+   * the "Building...", "Ready", or "Error" status stream.
+   */
+  async pollDeploymentStatus(deploymentId: string): Promise<DeploymentStatus> {
+    if (!this.vercelToken) throw new Error("Vercel not connected");
+
+    const response = await fetch(
+      `https://api.vercel.com/v13/deployments/${deploymentId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${this.vercelToken}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      return {
+        state: "error",
+        message: "Failed to check deployment status",
+        deploymentId,
+      };
+    }
+
+    const deployment = await response.json();
+
+    switch (deployment.readyState) {
+      case "QUEUED":
+      case "INITIALIZING":
+        return {
+          state: "building",
+          message: "Queued, waiting to build...",
+          deploymentId,
+          url: deployment.url,
+        };
+      case "BUILDING":
+        return {
+          state: "building",
+          message: "Building your project...",
+          deploymentId,
+          url: deployment.url,
+        };
+      case "READY":
+        return {
+          state: "ready",
+          message: "Deployment is live!",
+          deploymentId,
+          url: deployment.url,
+        };
+      case "ERROR":
+        return {
+          state: "error",
+          message: "Deployment failed",
+          deploymentId,
+          url: deployment.url,
+          error: "Build error — check Vercel dashboard for details",
+        };
+      case "CANCELED":
+        return {
+          state: "error",
+          message: "Deployment was canceled",
+          deploymentId,
+        };
+      default:
+        return {
+          state: "building",
+          message: `Status: ${deployment.readyState}`,
+          deploymentId,
+          url: deployment.url,
+        };
+    }
+  }
+
+  /**
+   * Full polling loop — resolves when deployment is READY or ERROR.
+   * Calls `onStatusUpdate` on each poll so the UI can show progress.
+   */
+  async waitForDeployment(
+    deploymentId: string,
+    onStatusUpdate: (status: DeploymentStatus) => void,
+    pollIntervalMs = 4000,
+    maxAttempts = 90,
+  ): Promise<DeploymentStatus> {
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      const status = await this.pollDeploymentStatus(deploymentId);
+      onStatusUpdate(status);
+
+      if (status.state === "ready" || status.state === "error") {
+        return status;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      attempts++;
+    }
+
+    const timeoutStatus: DeploymentStatus = {
+      state: "error",
+      message: "Deployment timed out after 6 minutes",
+      deploymentId,
+    };
+    onStatusUpdate(timeoutStatus);
+    return timeoutStatus;
+  }
+
+  // ──── FULL PIPELINE: "Ship It" ─────────────────────────────────────────────
+
+  /**
+   * End-to-end deployment pipeline:
+   *   1. Push code to GitHub (with .env.local)
+   *   2. Link Vercel project (if not already linked)
+   *   3. Inject env vars into Vercel
+   *   4. Trigger deploy
+   *   5. Poll until ready
+   */
+  async shipIt(
+    owner: string,
+    repo: string,
+    files: Record<string, string>,
+    envVars: Record<string, string>,
+    template: string | undefined,
+    onStatusUpdate: (status: DeploymentStatus) => void,
+  ): Promise<DeploymentStatus> {
+    try {
+      // Step 1: Push to GitHub
+      onStatusUpdate({
+        state: "linking",
+        message: "Pushing code to GitHub...",
+      });
+
+      await this.pushToGitHub(
+        owner,
+        repo,
+        files,
+        envVars,
+        "Deploy from Flare IDE",
+      );
+
+      // Step 2: Link Vercel project
+      onStatusUpdate({
+        state: "linking",
+        message: "Linking Vercel project...",
+      });
+
+      const repoFullName = `${owner}/${repo}`;
+      const project = await this.linkVercelProject(
+        repoFullName,
+        files,
+        template,
+      );
+
+      // Step 3: Inject env vars
+      onStatusUpdate({
+        state: "injecting_env",
+        message: "Uploading environment variables to Vercel...",
+      });
+
+      const { injected } = await this.injectVercelEnvVars(project.id, envVars);
+
+      onStatusUpdate({
+        state: "injecting_env",
+        message: `Injected ${injected} environment variable(s)`,
+      });
+
+      // Step 4: Trigger deployment
+      onStatusUpdate({
+        state: "triggering",
+        message: "Triggering deployment...",
+      });
+
+      const deployResult = await this.triggerVercelDeploy(project.id);
+
+      if (deployResult.state === "error") {
+        onStatusUpdate(deployResult);
+        return deployResult;
+      }
+
+      // Step 5: Poll until ready
+      if (deployResult.deploymentId) {
+        return await this.waitForDeployment(
+          deployResult.deploymentId,
+          onStatusUpdate,
+        );
+      }
+
+      return deployResult;
+    } catch (err: any) {
+      const errorStatus: DeploymentStatus = {
+        state: "error",
+        message: err.message || "Pipeline failed",
+        error: err.message,
+      };
+      onStatusUpdate(errorStatus);
+      return errorStatus;
+    }
+  }
+
+  // ──── Helpers ──────────────────────────────────────────────────────────────
+
+  /** Generate .env file content from a map of env vars */
+  private generateEnvFileContent(envVars: Record<string, string>): string {
+    const lines = [
+      "# Auto-generated by Flare IDE",
+      `# Generated at: ${new Date().toISOString()}`,
+      "",
+    ];
+
+    for (const [key, value] of Object.entries(envVars)) {
+      if (value) {
+        lines.push(`${key}=${value}`);
+      }
+    }
+
+    return lines.join("\n") + "\n";
+  }
+}
+
+// Singleton
+export const cloudService = new CloudService();

@@ -7,8 +7,10 @@ import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { SandpackWrapper } from "./SandpackWrapper";
 import { HttpChainWrapper } from "./HttpChainWrapper";
 import { ChatInterface } from "./chat-interface";
+import { CheckpointHistory } from "./checkpoint-history";
 import { ProjectProvider, useProject } from "@/lib/builder/project-context";
 import { useProjectSync } from "@/lib/builder/use-project-sync";
+import { useGitAutoCommit } from "@/lib/builder/git-auto-commit";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
@@ -158,6 +160,41 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     provider: "openai",
     model: "gpt-4.1-mini",
   });
+
+  // Git auto-commit integration
+  // Stores the linked repo info (owner/repo/branch) — no tokens on the client
+  const [repoConfig, setRepoConfig] = useState<{
+    owner: string;
+    repo: string;
+    branch: string;
+    installationId?: number;
+  } | null>(null);
+
+  const {
+    isCommitting,
+    checkpoints,
+    commitAndPush,
+    rollback: rollbackCheckpoint,
+    isConfigured: gitConfigured,
+  } = useGitAutoCommit({
+    repoConfig,
+    enabled: !!repoConfig,
+  });
+
+  const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
+  const [showCheckpoints, setShowCheckpoints] = useState(false);
+
+  // Load repo config from localStorage (saved when project was set up)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`flare_repo_config_${threadId}`);
+      if (stored) {
+        setRepoConfig(JSON.parse(stored));
+      }
+    } catch {
+      // Config not available
+    }
+  }, [threadId]);
 
   // --- Streaming state ---
   const [isStreaming, setIsStreaming] = useState(false);
@@ -443,6 +480,7 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
         const fileOperations = parseAIResponse(fullText);
 
         if (fileOperations.length > 0) {
+          const changedPaths: string[] = [];
           for (const op of fileOperations) {
             if (op.type === "create" || op.type === "update") {
               console.log(
@@ -450,14 +488,47 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
                 op.path,
               );
               actions.updateFile(op.path, op.content);
+              changedPaths.push(op.path);
             } else if (op.type === "delete") {
               console.log("[AI] Deleting file:", op.path);
               actions.deleteFile(op.path);
+              changedPaths.push(op.path);
             }
           }
           toast.success(
             `${fileOperations.length} file${fileOperations.length > 1 ? "s" : ""} updated!`,
           );
+
+          // Auto-commit to GitHub if configured
+          if (gitConfigured && commitAndPush) {
+            try {
+              // Build files array for commit
+              const filesToCommit: Array<{ path: string; content: string }> =
+                [];
+              for (const op of fileOperations) {
+                if (op.type === "create" || op.type === "update") {
+                  const path = op.path.startsWith("/")
+                    ? op.path.slice(1)
+                    : op.path;
+                  filesToCommit.push({ path, content: op.content });
+                }
+              }
+
+              const commitMessage = `AI: ${content.slice(0, 60)}${content.length > 60 ? "..." : ""}`;
+              const result = await commitAndPush(filesToCommit, commitMessage);
+
+              if (result) {
+                toast.success(`Committed: ${result.sha.slice(0, 7)}`, {
+                  description: "Changes pushed to GitHub",
+                });
+              }
+            } catch (commitError) {
+              console.error("Auto-commit failed:", commitError);
+              setHasUncommittedChanges(true);
+            }
+          } else {
+            setHasUncommittedChanges(true);
+          }
         }
       } catch (error: any) {
         if (error.name === "AbortError") {
@@ -473,7 +544,14 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [threadId, selectedModel, isStreaming, state.files],
+    [
+      threadId,
+      selectedModel,
+      isStreaming,
+      state.files,
+      gitConfigured,
+      commitAndPush,
+    ],
   );
 
   if (isLoading || !currentThread || !filesReady) {
@@ -528,7 +606,7 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
       />
 
       <div className="flex flex-1 w-full overflow-hidden min-h-0">
-        {/* Left Sidebar — Chat (fills full height, no secondary header) */}
+        {/* Left Sidebar — Chat + Checkpoint History */}
         <div className="w-56 md:w-64 lg:w-80 border-r flex flex-col shrink-0">
           <ChatInterface
             messages={transformedMessages}
@@ -536,8 +614,34 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
             isStreaming={isStreaming}
             streamingContent={streamingContent}
             onStopStreaming={handleStopStreaming}
+            onReviewChanges={() => setShowCheckpoints(!showCheckpoints)}
+            hasUncommittedChanges={hasUncommittedChanges || isCommitting}
+            modelName={
+              selectedModel.model === "gpt-4.1-mini"
+                ? "GPT-4.1 Mini"
+                : selectedModel.model
+            }
             condensed
           />
+
+          {/* Checkpoint History Panel (collapsible) */}
+          {showCheckpoints && (
+            <div className="border-t border-border/40 max-h-[40%] overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-300">
+              <CheckpointHistory
+                checkpoints={checkpoints}
+                onRollback={async (id) => {
+                  const success = await rollbackCheckpoint(id);
+                  if (success) {
+                    toast.success("Rolled back successfully");
+                    setHasUncommittedChanges(false);
+                  }
+                }}
+                isRollingBack={isCommitting}
+                repoOwner={repoConfig?.owner}
+                repoName={repoConfig?.repo}
+              />
+            </div>
+          )}
         </div>
 
         {/* Main Area — Sandpack Workspace */}

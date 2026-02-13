@@ -85,7 +85,7 @@ export class GitService {
   }
 
   async pull(
-    remote: string = "origin",
+    _remote: string = "origin",
     branch: string = "main",
     token: string,
   ): Promise<void> {
@@ -177,11 +177,13 @@ export class GitService {
   }
 
   async getCurrentBranch(): Promise<string> {
-    return await git.currentBranch({
-      fs: this.vfs.getFS(),
-      dir: this.dir,
-      fullname: false,
-    }) || "main";
+    return (
+      (await git.currentBranch({
+        fs: this.vfs.getFS(),
+        dir: this.dir,
+        fullname: false,
+      })) || "main"
+    );
   }
 
   async listBranches(): Promise<string[]> {

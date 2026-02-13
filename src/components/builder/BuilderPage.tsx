@@ -6,6 +6,7 @@ import { HttpChainWrapper } from "./HttpChainWrapper";
 import { useBuilderEngine, type Template } from "@/hooks/useBuilderEngine";
 import { ProjectProvider } from "@/lib/builder/project-context";
 import { ChatInterface } from "./chat-interface";
+import { GitHubProjectSetup, type ProjectConfig } from "./github-project-setup";
 import { TemplateSelectionDialog } from "./TemplateSelectionDialog";
 import { X, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -144,7 +145,11 @@ function BuilderContent() {
   const [deploymentError, setDeploymentError] = useState<string | undefined>();
   const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
-  const [showTemplateDialog, setShowTemplateDialog] = useState(true);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [showGitHubSetup, setShowGitHubSetup] = useState(true);
+  const [_projectConfig, setProjectConfig] = useState<ProjectConfig | null>(
+    null,
+  );
   const [isAskAIMode, setIsAskAIMode] = useState(false);
   const [recommendedTemplate, setRecommendedTemplate] = useState<
     Template | undefined
@@ -158,6 +163,25 @@ function BuilderContent() {
   );
   const viewMode: "code" | "preview" | "split" = "split";
   const showConsole = false;
+
+  // Handle GitHub project setup completion
+  const handleProjectReady = (config: ProjectConfig) => {
+    setProjectConfig(config);
+    setShowGitHubSetup(false);
+
+    // If a framework was selected in the setup, use it directly
+    if (config.framework) {
+      handleTemplateSelect(config.framework);
+    } else {
+      // Show template selection dialog
+      setShowTemplateDialog(true);
+    }
+  };
+
+  const handleSkipGitHubSetup = () => {
+    setShowGitHubSetup(false);
+    setShowTemplateDialog(true);
+  };
 
   // Keyboard shortcuts
   useKeyboardShortcuts([
@@ -418,6 +442,18 @@ function BuilderContent() {
   // Show loading screen
   if (isLoading) {
     return <FullPageLoading />;
+  }
+
+  // Show GitHub Project Setup as the first step
+  if (showGitHubSetup) {
+    return (
+      <ErrorBoundary>
+        <GitHubProjectSetup
+          onProjectReady={handleProjectReady}
+          onSkip={handleSkipGitHubSetup}
+        />
+      </ErrorBoundary>
+    );
   }
 
   return (

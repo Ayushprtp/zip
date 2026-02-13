@@ -27,8 +27,7 @@ import {
 import { Github, Loader2, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
-const GITHUB_APP_NAME =
-  process.env.NEXT_PUBLIC_GITHUB_APP_NAME || "ai-builder-ide";
+const GITHUB_APP_NAME = process.env.NEXT_PUBLIC_GITHUB_APP_NAME || "flare-sh";
 const GITHUB_APP_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_APP_CLIENT_ID;
 
 export function GitHubAppConnectionPanel() {
