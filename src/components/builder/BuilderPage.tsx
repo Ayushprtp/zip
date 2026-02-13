@@ -262,6 +262,19 @@ function BuilderContent() {
 
       const { thread } = await response.json();
 
+      // Persist GitHub repo config if available
+      if (_projectConfig) {
+        const repoConfig = {
+          owner: _projectConfig.repo.owner,
+          repo: _projectConfig.repo.name,
+          branch: _projectConfig.branch,
+        };
+        localStorage.setItem(
+          `flare_repo_config_${thread.id}`,
+          JSON.stringify(repoConfig),
+        );
+      }
+
       // Redirect to the new thread
       window.location.href = `/builder/${thread.id}`;
     } catch (error) {
@@ -299,7 +312,7 @@ function BuilderContent() {
 
       // Create deployment configuration
       const config: DeploymentConfig = {
-        platform: "netlify",
+        platform: "vercel",
         projectName: "project",
         buildCommand: getBuildCommand(templateType),
         outputDirectory: getOutputDirectory(templateType),
@@ -477,7 +490,7 @@ function BuilderContent() {
             aria-label="AI Assistant Chat"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b bg-background/50 shrink-0">
-              <h2 className="font-semibold text-sm">AI Assistant</h2>
+              <h2 className="font-semibold text-sm">Builder AI</h2>
               <span className="text-xs text-muted-foreground">
                 {messages.length} messages
               </span>

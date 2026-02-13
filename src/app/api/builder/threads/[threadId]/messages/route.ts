@@ -66,3 +66,44 @@ export async function POST(
     );
   }
 }
+
+// DELETE /api/builder/threads/[threadId]/messages - Clear messages
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ threadId: string }> },
+) {
+  try {
+    const session = await getSession();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { threadId } = await params;
+
+    const [thread] = await pgDb
+      .select()
+      .from(builderThreads)
+      .where(
+        and(
+          eq(builderThreads.id, threadId),
+          eq(builderThreads.userId, session!.user!.id),
+        ),
+      );
+
+    if (!thread) {
+      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+
+    await pgDb
+      .delete(builderMessages)
+      .where(eq(builderMessages.threadId, threadId));
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error clearing messages:", error);
+    return NextResponse.json(
+      { error: "Failed to clear messages" },
+      { status: 500 },
+    );
+  }
+}

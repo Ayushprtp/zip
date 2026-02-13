@@ -31,7 +31,7 @@ export async function GET() {
   authUrl.searchParams.set("client_id", GITHUB_APP_CLIENT_ID);
   authUrl.searchParams.set("redirect_uri", GITHUB_REDIRECT_URI);
   // Request minimal scopes — the GitHub App installation provides repo access
-  authUrl.searchParams.set("scope", "repo,user:email");
+  authUrl.searchParams.set("scope", "repo read:user user:email");
 
   return NextResponse.redirect(authUrl.toString());
 }

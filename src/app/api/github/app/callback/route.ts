@@ -53,8 +53,30 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (installationId) {
-      cookieStore.set("github_installation_id", installationId, {
+    let finalInstallationId = installationId;
+
+    if (!finalInstallationId) {
+      try {
+        // If coming from a standard OAuth flow (not a fresh install),
+        // we need to find the user's installation ID manually.
+        const installations = await githubApp.getUserInstallations(token);
+        if (installations.length > 0) {
+          const user = await githubApp.getAuthenticatedUser(token);
+          // Prefer installation on the user's own account
+          const userInstallation = installations.find(
+            (inst) => inst.account.login === user.login,
+          );
+          finalInstallationId = userInstallation
+            ? userInstallation.id.toString()
+            : installations[0].id.toString();
+        }
+      } catch (err) {
+        console.warn("Failed to auto-detect GitHub installation:", err);
+      }
+    }
+
+    if (finalInstallationId) {
+      cookieStore.set("github_installation_id", finalInstallationId, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
