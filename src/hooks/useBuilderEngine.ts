@@ -3,13 +3,7 @@
 import { useState, useCallback } from "react";
 import JSZip from "jszip";
 
-export type Template =
-  | "react"
-  | "nextjs"
-  | "vite-react"
-  | "vanilla"
-  | "static"
-  | "httpchain";
+export type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
 export type ServerStatus = "idle" | "booting" | "running" | "error";
 
 interface BuilderState {

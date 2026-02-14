@@ -22,9 +22,7 @@ export const builderThreads = pgTable(
       .default("Untitled Project"),
     template: varchar("template", { length: 50 })
       .notNull()
-      .$type<
-        "react" | "nextjs" | "vite-react" | "vanilla" | "static" | "httpchain"
-      >(),
+      .$type<"react" | "nextjs" | "vite-react" | "vanilla" | "static">(),
     githubRepoUrl: text("github_repo_url"),
     githubRepoId: text("github_repo_id"),
     githubRepoName: text("github_repo_name"),

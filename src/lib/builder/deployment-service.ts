@@ -1,7 +1,7 @@
 /**
  * DeploymentService
  *
- * Handles deployment of projects to hosting platforms (Netlify/Vercel).
+ * Handles deployment of projects to Vercel.
  * Serializes files to JSON and creates deployment packages with metadata.
  *
  * Requirements: 14.1
@@ -288,8 +288,8 @@ export class DeploymentService {
       throw new Error("Output directory is required");
     }
 
-    if (!["netlify", "vercel"].includes(config.platform)) {
-      throw new Error("Platform must be either netlify or vercel");
+    if (config.platform !== "vercel") {
+      throw new Error("Platform must be vercel");
     }
   }
 }

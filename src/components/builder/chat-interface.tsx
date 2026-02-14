@@ -52,6 +52,7 @@ interface ChatInterfaceProps {
   modelName?: string;
   onModelChange?: (modelId?: string) => void;
   files?: Record<string, string>;
+  chatModeDropdown?: React.ReactNode;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────
@@ -68,6 +69,7 @@ export function ChatInterface({
   modelName,
   onModelChange,
   files = {},
+  chatModeDropdown,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -175,6 +177,7 @@ export function ChatInterface({
         mentions={mentions}
         onAddMention={handleAddMention}
         onRemoveMention={handleRemoveMention}
+        chatModeDropdown={chatModeDropdown}
       />
     </div>
   );
@@ -369,6 +372,7 @@ interface ChatInputBarProps {
   mentions?: any[];
   onAddMention?: (mention: any) => void;
   onRemoveMention?: (index: number) => void;
+  chatModeDropdown?: React.ReactNode;
 }
 
 function ChatInputBar({
@@ -388,6 +392,7 @@ function ChatInputBar({
   mentions = [],
   onAddMention,
   onRemoveMention,
+  chatModeDropdown,
 }: ChatInputBarProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showMentions, setShowMentions] = useState(false);
@@ -769,8 +774,11 @@ function ChatInputBar({
               </button>
             </div>
 
-            {/* Right side — model selector, mic, send */}
+            {/* Right side — mode dropdown, model selector, mic, send */}
             <div className="flex items-center gap-1">
+              {/* Chat Mode Dropdown (left of model selector) */}
+              {chatModeDropdown}
+
               {/* Model Selector Button */}
               <button
                 onClick={() => setShowModelSelector(!showModelSelector)}

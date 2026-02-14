@@ -1,32 +1,27 @@
 /**
  * Deployment Status API Endpoint
  *
- * Checks the status of a deployment on Netlify/Vercel.
+ * Checks the status of a deployment on Vercel.
  * Used for polling deployment progress.
  *
  * Requirements: 14.5
  */
 
 import { NextRequest, NextResponse } from "next/server";
-
-// Netlify API configuration
-const NETLIFY_API_URL = "https://api.netlify.com/api/v1";
-const NETLIFY_TOKEN = process.env.NETLIFY_ACCESS_TOKEN;
+import { cookies } from "next/headers";
 
 // Vercel API configuration
 const VERCEL_API_URL = "https://api.vercel.com";
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
 
 /**
- * GET /api/builder/deploy/status?deploymentId=xxx&platform=netlify
+ * GET /api/builder/deploy/status?deploymentId=xxx&platform=vercel
  *
- * Checks the status of a deployment
+ * Checks the status of a Vercel deployment
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const deploymentId = searchParams.get("deploymentId");
-    const platform = searchParams.get("platform") || "netlify";
 
     if (!deploymentId) {
       return NextResponse.json(
@@ -35,19 +30,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check status on the specified platform
-    let result;
-    if (platform === "netlify") {
-      result = await checkNetlifyStatus(deploymentId);
-    } else if (platform === "vercel") {
-      result = await checkVercelStatus(deploymentId);
-    } else {
-      return NextResponse.json(
-        { error: "Unsupported platform" },
-        { status: 400 },
-      );
-    }
-
+    const result = await checkVercelStatus(deploymentId);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Status check error:", error);
@@ -63,47 +46,13 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Check Netlify deployment status
- */
-async function checkNetlifyStatus(deploymentId: string): Promise<any> {
-  if (!NETLIFY_TOKEN) {
-    throw new Error("Netlify access token not configured");
-  }
-
-  const response = await fetch(`${NETLIFY_API_URL}/deploys/${deploymentId}`, {
-    headers: {
-      Authorization: `Bearer ${NETLIFY_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error("Failed to check Netlify deployment status");
-  }
-
-  const deployment = await response.json();
-
-  // Map Netlify states to our status format
-  let status = "building";
-  if (deployment.state === "ready") {
-    status = "ready";
-  } else if (deployment.state === "error") {
-    status = "error";
-  }
-
-  return {
-    status,
-    url: deployment.ssl_url || deployment.url,
-    logs: deployment.error_message ? [deployment.error_message] : [],
-    error: deployment.error_message,
-  };
-}
-
-/**
- * Check Vercel deployment status
+ * Check Vercel deployment status using per-user token
  */
 async function checkVercelStatus(deploymentId: string): Promise<any> {
-  if (!VERCEL_TOKEN) {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("vercel_token")?.value;
+
+  if (!token) {
     throw new Error("Vercel token not configured");
   }
 
@@ -111,7 +60,7 @@ async function checkVercelStatus(deploymentId: string): Promise<any> {
     `${VERCEL_API_URL}/v13/deployments/${deploymentId}`,
     {
       headers: {
-        Authorization: `Bearer ${VERCEL_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
     },

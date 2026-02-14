@@ -49,12 +49,6 @@ const TEMPLATES: TemplateOption[] = [
     description: "Simple HTML/CSS/JS website",
     icon: "📄",
   },
-  {
-    id: "httpchain",
-    name: "Workflow Builder",
-    description: "Visual HTTP Chain Builder",
-    icon: "🔗",
-  },
 ];
 
 interface TemplateSelectionDialogProps {
