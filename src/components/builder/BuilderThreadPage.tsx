@@ -40,6 +40,8 @@ import {
   Zap,
   ChevronDown,
   Database,
+  AlertTriangle,
+  Github,
 } from "lucide-react";
 import { BuilderHeader } from "./BuilderHeader";
 import { exportService } from "@/lib/builder/export-service";
@@ -51,7 +53,61 @@ import { DeploymentProgress } from "./deployment-progress";
 import { errorHandler } from "@/lib/builder/error-handlers";
 import type { TemplateType, DeploymentConfig } from "app-types/builder";
 
-// ─── Chat Mode ──────────────────────────────────────────────────────────────
+// ─── Temp Workspace Banner ────────────────────────────────────────────────
+function TempWorkspaceBanner({
+  expiresAt,
+  onUpgrade,
+}: {
+  expiresAt: string;
+  onUpgrade: () => void;
+}) {
+  const [remaining, setRemaining] = useState("");
+  const [isUrgent, setIsUrgent] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setRemaining("Expired");
+        setIsUrgent(true);
+        return;
+      }
+      const h = Math.floor(diff / (60 * 60 * 1000));
+      const m = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+      setRemaining(`${h}h ${m}m`);
+      setIsUrgent(h < 2);
+    };
+    update();
+    const interval = setInterval(update, 60_000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  return (
+    <div
+      className={`flex items-center gap-2 px-3 py-1.5 text-[11px] border-b shrink-0 transition-colors ${
+        isUrgent
+          ? "bg-red-500/10 border-red-500/20 text-red-400"
+          : "bg-amber-500/8 border-amber-500/15 text-amber-400"
+      }`}
+    >
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+      <span className="flex-1">
+        <strong>Temporary Workspace</strong> — auto-deletes in{" "}
+        <strong>{remaining}</strong>. All code, deployments & history will be
+        destroyed.
+      </span>
+      <button
+        onClick={onUpgrade}
+        className="flex items-center gap-1 px-2 py-0.5 rounded bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-[10px] font-medium transition-colors whitespace-nowrap"
+      >
+        <Github className="h-3 w-3" />
+        Connect GitHub to Keep
+      </button>
+    </div>
+  );
+}
+
+// ─── Chat Mode ────────────────────────────────────────────────────────────────
 type ChatMode = "ask" | "plan" | "agent";
 
 const CHAT_MODES: {
@@ -347,8 +403,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     provider: string;
     model: string;
   }>({
-    provider: "openai",
-    model: "gpt-4.1-mini",
+    provider: "glm",
+    model: "glm-4.1v-9b-thinking",
   });
 
   // Git
@@ -373,6 +429,20 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [showChatHistory, setShowChatHistory] = useState(false);
+
+  // Temporary workspace tracking
+  const [isTempWorkspace, setIsTempWorkspace] = useState(false);
+  const [tempExpiresAt, setTempExpiresAt] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`flare_temp_workspace_${threadId}`);
+      if (stored) {
+        setIsTempWorkspace(true);
+        const parsed = JSON.parse(stored);
+        if (parsed.expiresAt) setTempExpiresAt(parsed.expiresAt);
+      }
+    } catch { /* ignore */ }
+  }, [threadId]);
 
   // .flare-sh chat storage
   const storageRef = useRef<FlareChatStorage | null>(null);
@@ -455,36 +525,49 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     }
   }, [threadId]);
 
-  // Initial commit for new repos
+  // Initial commit for new repos — wait for Sandpack template sync
   const initRepoRef = useRef(false);
+  const latestFilesRef = useRef(state.files);
+  latestFilesRef.current = state.files;
+
   useEffect(() => {
     const shouldInit = searchParams.get("initRepo");
+    if (!shouldInit || initRepoRef.current || !gitConfigured || !commitAndPush) return;
+    if (!filesReady) return; // Wait for thread load + Sandpack init
 
-    if (
-      shouldInit &&
-      !initRepoRef.current &&
-      gitConfigured &&
-      commitAndPush &&
-      Object.keys(state.files).length > 0
-    ) {
-      initRepoRef.current = true;
+    // Wait until real template files (not just README) are synced from Sandpack → context
+    const filePaths = Object.keys(state.files);
+    const hasTemplateFiles =
+      filePaths.some(p => p === "/package.json" || p === "/index.html") &&
+      filePaths.length >= 3;
 
-      const filesList = Object.entries(state.files)
+    if (!hasTemplateFiles) return; // Sandpack hasn't synced yet
+
+    initRepoRef.current = true;
+
+    // Wait 4s for Sandpack to finish syncing ALL template files into state.files
+    // Use latestFilesRef to read the most up-to-date files (avoids stale closure)
+    const timer = setTimeout(() => {
+      const currentFiles = latestFilesRef.current;
+      const filesList = Object.entries(currentFiles)
         .filter(([path]) => !path.startsWith("/.flare-sh/"))
         .map(([path, content]) => ({ path, content }));
 
-      toast.promise(commitAndPush(filesList, "Initial commit from Flare IDE"), {
-        loading: "Pushing initial files to GitHub...",
+      if (filesList.length === 0) return;
+
+      toast.promise(commitAndPush(filesList, "Initial project setup"), {
+        loading: `Pushing ${filesList.length} files to GitHub...`,
         success: (res) => {
-          // Clean URL param
           const newUrl = window.location.pathname;
           window.history.replaceState({}, "", newUrl);
-          return `Initial commit pushed: ${res?.sha.slice(0, 7) || "Done"}`;
+          return `Initial commit pushed: ${filesList.length} files (${res?.sha.slice(0, 7) || "Done"})`;
         },
         error: "Failed to push initial files",
       });
-    }
-  }, [searchParams, gitConfigured, commitAndPush, state.files]);
+    }, 4000);
+
+    return () => clearTimeout(timer);
+  }, [searchParams, gitConfigured, commitAndPush, state.files, filesReady]);
 
   // Load thread data
   useEffect(() => {
@@ -603,6 +686,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         config,
         currentThread.template as TemplateType,
         (status) => setDeploymentStatus(status),
+        isTempWorkspace, // Pass temp workspace flag for VERCEL_TEMP_TOKEN fallback
       );
       setDeploymentUrl(result.url);
       toast.success("Deployment successful!");
@@ -612,15 +696,23 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         error instanceof Error ? error.message : "Deployment failed";
 
       if (errorMessage.includes("Vercel token not configured")) {
-        setShowVercelConnect(true);
-        setShowDeploymentProgress(false);
+        // For temp workspaces, show a more helpful message
+        if (isTempWorkspace) {
+          setDeploymentError(
+            "Vercel deployment token not configured on the server. Ask the admin to set VERCEL_TEMP_TOKEN in .env.",
+          );
+          toast.error("Server-side Vercel token missing for temp workspace");
+        } else {
+          setShowVercelConnect(true);
+          setShowDeploymentProgress(false);
+        }
         return;
       }
 
       setDeploymentError(errorMessage);
       toast.error(errorMessage);
     }
-  }, [currentThread, state.files]);
+  }, [currentThread, state.files, isTempWorkspace]);
 
   // ─── Transformed Messages ─────────────────────────────────────────────
   const transformedMessages = useMemo(
@@ -1184,6 +1276,15 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   return (
     <div className="flex flex-col w-full h-screen bg-background overflow-hidden">
+      {/* Temporary workspace warning banner */}
+      {isTempWorkspace && tempExpiresAt && (
+        <TempWorkspaceBanner
+          expiresAt={tempExpiresAt}
+          onUpgrade={() => {
+            window.location.href = "/builder";
+          }}
+        />
+      )}
       {/* Header */}
       <BuilderHeader
         projectName={currentThread?.title || "Untitled Project"}
@@ -1268,8 +1369,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
               onReviewChanges={() => setShowCheckpoints(!showCheckpoints)}
               hasUncommittedChanges={hasUncommittedChanges || isCommitting}
               modelName={
-                selectedModel.model === "gpt-4.1-mini"
-                  ? "GPT-4.1 Mini"
+                selectedModel.model === "glm-4.1v-9b-thinking"
+                  ? "GLM 4.7"
                   : selectedModel.model
               }
               onModelChange={(modelId?: string) => {
@@ -1280,10 +1381,17 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                   setSelectedModel({ provider, model });
                 } else {
                   const nextModel =
-                    selectedModel.model === "gpt-4.1-mini"
+                    selectedModel.model === "glm-4.1v-9b-thinking"
                       ? "gpt-4o"
-                      : "gpt-4.1-mini";
-                  setSelectedModel({ ...selectedModel, model: nextModel });
+                      : "glm-4.1v-9b-thinking";
+                  setSelectedModel({
+                    ...selectedModel,
+                    provider:
+                      nextModel === "glm-4.1v-9b-thinking"
+                        ? "glm"
+                        : "openai",
+                    model: nextModel,
+                  });
                 }
               }}
               files={state.files}

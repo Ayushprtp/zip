@@ -409,10 +409,7 @@ export function VSCodeFileExplorer() {
 
   return (
     <div className="flex flex-col h-full bg-background">
-      <div className="flex items-center justify-between px-2 py-1 border-b shrink-0">
-        <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-          Explorer
-        </span>
+      <div className="flex items-center justify-end px-2 py-1 border-b shrink-0">
         <div className="flex gap-0.5">
           <Button
             size="icon"

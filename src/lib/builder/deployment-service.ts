@@ -47,6 +47,7 @@ export class DeploymentService {
     config: DeploymentConfig,
     template: string,
     onStatusUpdate?: (status: DeploymentStatus) => void,
+    isTemporary?: boolean,
   ): Promise<DeploymentResult> {
     try {
       // Step 1: Prepare deployment package
@@ -72,6 +73,7 @@ export class DeploymentService {
       const uploadResult = await this.uploadToplatform(
         deploymentPackage,
         config,
+        isTemporary,
       );
 
       // Step 3: Trigger build
@@ -183,6 +185,7 @@ export class DeploymentService {
   private async uploadToplatform(
     deploymentPackage: DeploymentPackage,
     config: DeploymentConfig,
+    isTemporary?: boolean,
   ): Promise<{ deploymentId: string }> {
     // Call the deployment API endpoint
     const response = await fetch("/api/builder/deploy", {
@@ -193,6 +196,7 @@ export class DeploymentService {
       body: JSON.stringify({
         package: deploymentPackage,
         config,
+        isTemporary,
       }),
     });
 

@@ -17,15 +17,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getGitHubApp,
-  requireGitHubAuth,
+  requireGitHubAuthOrTemp,
 } from "@/lib/builder/github-app-singleton";
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireGitHubAuth();
     const { searchParams } = request.nextUrl;
     const owner = searchParams.get("owner");
     const repo = searchParams.get("repo");
+    const auth = await requireGitHubAuthOrTemp(owner ?? undefined, repo ?? undefined);
 
     if (!owner || !repo) {
       return NextResponse.json(
@@ -49,9 +49,9 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireGitHubAuth();
     const body = await request.json();
     const { owner, repo, branchName, baseBranch = "main" } = body;
+    const auth = await requireGitHubAuthOrTemp(owner, repo);
 
     if (!owner || !repo || !branchName) {
       return NextResponse.json(
