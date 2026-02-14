@@ -32,7 +32,7 @@ export default async function BuilderLayout({
           }
         />
         <AppSidebar user={session.user} />
-        <main className="relative bg-background w-full flex flex-col h-screen">
+        <main className="relative bg-background w-full flex flex-col h-screen overflow-hidden">
           {children}
         </main>
       </SWRConfigProvider>

@@ -98,6 +98,7 @@ export class DeploymentService {
       const finalResult = await this.waitForDeployment(
         buildResult.deploymentId,
         config,
+        isTemporary,
       );
 
       onStatusUpdate?.({
@@ -237,18 +238,17 @@ export class DeploymentService {
   private async waitForDeployment(
     deploymentId: string,
     config: DeploymentConfig,
+    isTemporary?: boolean,
   ): Promise<{ url: string; logs: string[] }> {
     // Poll the deployment status endpoint
     const maxAttempts = 60; // 5 minutes with 5-second intervals
     let attempts = 0;
 
     while (attempts < maxAttempts) {
-      const response = await fetch(
-        `/api/builder/deploy/status?deploymentId=${deploymentId}&platform=${config.platform}`,
-        {
-          method: "GET",
-        },
-      );
+      const statusUrl = `/api/builder/deploy/status?deploymentId=${deploymentId}&platform=${config.platform}${isTemporary ? "&isTemporary=true" : ""}`;
+      const response = await fetch(statusUrl, {
+        method: "GET",
+      });
 
       if (!response.ok) {
         throw new Error("Failed to check deployment status");
@@ -264,7 +264,9 @@ export class DeploymentService {
       }
 
       if (result.status === "error") {
-        throw new Error(result.error || "Deployment failed");
+        const err = new Error(result.error || "Deployment failed") as any;
+        err.buildLogs = result.logs || [];
+        throw err;
       }
 
       // Wait 5 seconds before next poll
@@ -290,9 +292,8 @@ export class DeploymentService {
       throw new Error("Build command is required");
     }
 
-    if (!config.outputDirectory || config.outputDirectory.trim() === "") {
-      throw new Error("Output directory is required");
-    }
+    // Note: outputDirectory is optional — for Vercel-managed frameworks
+    // (nextjs, nuxtjs, gatsby, etc.) the server-side deploy route omits it.
 
     if (config.platform !== "vercel") {
       throw new Error("Platform must be vercel");

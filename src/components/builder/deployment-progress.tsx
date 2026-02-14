@@ -36,6 +36,7 @@ interface DeploymentProgressProps {
   status: DeploymentStatus | null;
   deploymentUrl?: string;
   error?: string;
+  buildLogs?: string[];
 }
 
 export function DeploymentProgress({
@@ -44,6 +45,7 @@ export function DeploymentProgress({
   status,
   deploymentUrl,
   error,
+  buildLogs,
 }: DeploymentProgressProps) {
   const [copied, setCopied] = React.useState(false);
 
@@ -193,6 +195,31 @@ export function DeploymentProgress({
                 </p>
               </AlertDescription>
             </Alert>
+          )}
+
+          {/* Build Logs (shown on error) */}
+          {hasError && buildLogs && buildLogs.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium text-muted-foreground">
+                Build Logs
+              </p>
+              <div className="max-h-48 overflow-y-auto rounded-lg bg-zinc-950 border border-zinc-800 p-3 font-mono text-[11px] leading-relaxed text-zinc-300">
+                {buildLogs.map((line, i) => (
+                  <div
+                    key={i}
+                    className={`whitespace-pre-wrap break-all ${
+                      line.toLowerCase().includes("error")
+                        ? "text-red-400 font-semibold"
+                        : line.toLowerCase().includes("warn")
+                          ? "text-yellow-400"
+                          : ""
+                    }`}
+                  >
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 
