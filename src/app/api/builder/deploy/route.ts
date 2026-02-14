@@ -32,6 +32,39 @@ interface DeploymentConfig {
 }
 
 /**
+ * Map internal template names to Vercel-recognized framework identifiers.
+ * Vercel uses specific strings — sending an unrecognized framework will cause
+ * a Bad Request error.
+ */
+function mapFramework(template: string): string | null {
+  const map: Record<string, string> = {
+    nextjs: "nextjs",
+    "vite-react": "vite",
+    react: "create-react-app",
+    vue: "vue",
+    svelte: "svelte",
+    nuxt: "nuxtjs",
+    gatsby: "gatsby",
+    angular: "angular",
+  };
+  return map[template] ?? null;
+}
+
+/**
+ * Sanitize project name for Vercel (lowercase, no spaces, only a-z0-9 and hyphens).
+ */
+function sanitizeProjectName(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .replace(/-{2,}/g, "-")
+      .slice(0, 100) || "flare-project"
+  );
+}
+
+/**
  * POST /api/builder/deploy
  *
  * Deploys a project to Vercel
@@ -66,7 +99,11 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Deploy to Vercel using the user's token from cookies
+ * Deploy to Vercel using the user's token from cookies.
+ *
+ * Uses the Vercel v13 deployments API with inline file content.
+ * Each file is base64-encoded and sent with an `encoding: "base64"` field
+ * so Vercel correctly interprets binary/text data.
  */
 async function deployToVercel(
   deploymentPackage: DeploymentPackage,
@@ -82,39 +119,72 @@ async function deployToVercel(
     );
   }
 
-  // Prepare files for Vercel
-  const files: Array<{ file: string; data: string }> = [];
+  // Prepare files for Vercel — each with explicit encoding
+  const files: Array<{ file: string; data: string; encoding: "base64" }> = [];
 
   for (const [path, content] of Object.entries(deploymentPackage.files)) {
+    // Remove leading slash — Vercel expects relative paths
+    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
     files.push({
-      file: path,
-      data: Buffer.from(content).toString("base64"),
+      file: cleanPath,
+      data: Buffer.from(content, "utf-8").toString("base64"),
+      encoding: "base64",
     });
   }
 
+  // Sanitize the project name (Vercel rejects names with spaces/special chars)
+  const projectName = sanitizeProjectName(config.projectName);
+
+  // Map framework to a Vercel-recognized value (or omit if unknown)
+  const framework = mapFramework(deploymentPackage.metadata.template);
+
+  // Build project settings — only include recognized fields
+  const projectSettings: Record<string, string> = {};
+  if (config.buildCommand) projectSettings.buildCommand = config.buildCommand;
+  if (config.outputDirectory)
+    projectSettings.outputDirectory = config.outputDirectory;
+  if (framework) projectSettings.framework = framework;
+
   // Call the Vercel deployment API
+  const deployBody: Record<string, unknown> = {
+    name: projectName,
+    files,
+    projectSettings,
+  };
+
+  console.log(
+    `[Deploy] Sending ${files.length} files to Vercel as "${projectName}" (framework: ${framework || "auto"})`,
+  );
+
   const deployResponse = await fetch(`${VERCEL_API_URL}/v13/deployments`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      name: config.projectName,
-      files,
-      projectSettings: {
-        buildCommand: config.buildCommand,
-        outputDirectory: config.outputDirectory,
-        framework: deploymentPackage.metadata.template,
-      },
-    }),
+    body: JSON.stringify(deployBody),
   });
 
   if (!deployResponse.ok) {
     const error = await deployResponse.json().catch(() => ({}));
-    throw new Error(
-      `Failed to create Vercel deployment: ${error.message || deployResponse.statusText}`,
-    );
+    console.error("[Deploy] Vercel API error:", error);
+
+    // Provide more actionable error messages
+    const vercelMessage =
+      error.error?.message || error.message || deployResponse.statusText;
+
+    if (deployResponse.status === 400) {
+      throw new Error(
+        `Vercel rejected the deployment: ${vercelMessage}. Check your token and project settings.`,
+      );
+    }
+    if (deployResponse.status === 401 || deployResponse.status === 403) {
+      throw new Error(
+        "Vercel authentication failed. Please reconnect your Vercel account with a valid token.",
+      );
+    }
+
+    throw new Error(`Failed to create Vercel deployment: ${vercelMessage}`);
   }
 
   const deployment = await deployResponse.json();

@@ -6,7 +6,6 @@ import {
   UserCreditsTable,
   SubscriptionTable,
   CreditTransactionTable,
-  UsageLogTable,
   PricingPlanTable,
   type ModelPricingEntity,
   type UserCreditsEntity,

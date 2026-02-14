@@ -29,22 +29,22 @@ export function useProjectSync(options: ProjectSyncOptions = {}) {
 
     const storeFilesStr = JSON.stringify(storeFiles);
 
-    // Sync if store has files
-    if (Object.keys(storeFiles).length > 0) {
-      console.log(
-        "[useProjectSync] Initial sync: store → context:",
-        Object.keys(storeFiles).length,
-        "files",
-      );
+    // Sync store files to context (even if empty, to mark initialized)
+    console.log(
+      "[useProjectSync] Initial sync: store → context:",
+      Object.keys(storeFiles).length,
+      "files",
+    );
 
-      // Batch update all files at once
+    // Batch update all files at once (if any)
+    if (Object.keys(storeFiles).length > 0) {
       Object.entries(storeFiles).forEach(([path, content]) => {
         actions.updateFile(path, content);
       });
-
-      lastSyncedFilesRef.current = storeFilesStr;
-      isInitializedRef.current = true;
     }
+
+    lastSyncedFilesRef.current = storeFilesStr;
+    isInitializedRef.current = true;
   }, [currentThreadId, storeFiles, actions]);
 
   // Ongoing sync: ProjectContext → Store (when user makes changes)

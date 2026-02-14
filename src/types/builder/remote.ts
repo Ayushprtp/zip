@@ -508,7 +508,17 @@ export type SSHApiAction =
   | "stop-remote-server"
   | "get-remote-server-status"
   | "setup-port-forwarding"
-  | "remove-port-forwarding";
+  | "remove-port-forwarding"
+  // Remote development actions
+  | "create-terminal"
+  | "send-terminal-input"
+  | "resize-terminal"
+  | "close-terminal"
+  | "run-git-command"
+  | "run-task"
+  | "search-files"
+  | "get-file-tree"
+  | "sync-files";
 
 export interface SSHApiRequest {
   action: SSHApiAction;
@@ -546,6 +556,19 @@ export interface SSHApiRequest {
   serverConfig?: RemoteServerConfig;
   forwardingType?: "dynamic" | "local" | "remote";
   forwardingConfig?: any; // Specific forwarding config
+  // Remote development params
+  terminalId?: string;
+  terminalConfig?: TerminalConfig;
+  input?: string;
+  cols?: number;
+  rows?: number;
+  gitCommand?: string;
+  taskCommand?: string;
+  background?: boolean;
+  query?: string;
+  include?: string;
+  exclude?: string;
+  operations?: any[];
 }
 
 export interface SSHApiResponse {
@@ -568,7 +591,160 @@ export interface SSHApiResponse {
   // Remote server results
   serverInfo?: RemoteServerInfo;
   portForwarding?: ActivePortForwarding;
+  // Remote development features
+  terminalId?: string;
+  terminalConfig?: TerminalConfig;
+  input?: string;
+  cols?: number;
+  rows?: number;
+  gitCommand?: string;
+  taskCommand?: string;
+  background?: boolean;
+  query?: string;
+  include?: string;
+  exclude?: string;
+  matches?: SearchMatch[];
   // General
   message?: string;
   data?: any;
+}
+
+// ============================================================================
+// Remote Development Environment Types
+// ============================================================================
+
+export interface TerminalConfig {
+  id?: string;
+  shell?: string;
+  cols?: number;
+  rows?: number;
+  cwd?: string;
+  env?: Record<string, string>;
+}
+
+export interface TerminalSession {
+  id: string;
+  status: "active" | "closed" | "error";
+  shell: string;
+  cwd: string;
+  pid?: number;
+  cols?: number;
+  rows?: number;
+  createdAt: number;
+  lastActivity: number;
+}
+
+export interface GitOperation {
+  command: string;
+  cwd?: string;
+  output?: string;
+  success: boolean;
+  timestamp: number;
+}
+
+export interface TaskExecution {
+  command: string;
+  cwd?: string;
+  background?: boolean;
+  pid?: number;
+  stdout?: string;
+  stderr?: string;
+  exitCode?: number;
+  status: "running" | "completed" | "failed";
+  startedAt: number;
+  completedAt?: number;
+}
+
+export interface SearchMatch {
+  file: string;
+  line: number;
+  content: string;
+  preview?: string;
+}
+
+export interface SearchResult {
+  query: string;
+  matches: SearchMatch[];
+  totalMatches: number;
+  cwd?: string;
+  timestamp: number;
+}
+
+// Enhanced RemoteServerInfo with development features
+export interface RemoteServerInfo {
+  serverId: string;
+  version: string;
+  installPath: string;
+  listeningPort: number;
+  status: "installing" | "starting" | "running" | "stopped" | "error";
+  pid?: number;
+  startedAt?: number;
+  stoppedAt?: number;
+  lastHealthCheck?: number;
+  healthCheckResult?: any;
+  workspaceRoot?: string;
+  activeTerminals?: number;
+  uptime?: number;
+}
+
+// ============================================================================
+// Remote Development Types
+// ============================================================================
+
+export interface TerminalOutput {
+  terminalId: string;
+  data: string;
+  timestamp: number;
+}
+
+export interface GitResult {
+  command: string;
+  cwd: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  timestamp: number;
+  duration: number;
+}
+
+export interface TaskResult {
+  taskId: string;
+  command: string;
+  cwd: string;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  background: boolean;
+  pid?: number;
+  startedAt: number;
+  completedAt?: number;
+  duration?: number;
+}
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  size?: number;
+  modified?: number;
+  permissions?: string;
+  children?: FileTreeNode[];
+}
+
+export interface FileSyncOperation {
+  type: "create" | "update" | "delete" | "move";
+  localPath: string;
+  remotePath: string;
+  content?: string;
+  timestamp: number;
+}
+
+export interface RemoteDevelopmentState {
+  sessionId: string;
+  serverInfo: RemoteServerInfo;
+  activeTerminals: TerminalSession[];
+  runningTasks: TaskResult[];
+  fileTree: FileTreeNode[];
+  lastSync: number;
+  gitStatus?: GitResult;
 }

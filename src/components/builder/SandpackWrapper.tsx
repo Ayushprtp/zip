@@ -7,13 +7,22 @@ import {
   SandpackConsole,
   useSandpack,
 } from "@codesandbox/sandpack-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { ChevronRight, ChevronLeft } from "lucide-react";
+import {
+  ChevronRight,
+  ChevronLeft,
+  Files,
+  Search,
+  GitBranch,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BuilderErrorBoundary } from "./BuilderErrorBoundary";
 import { getAssetGenerator } from "@/lib/builder/asset-generator";
 import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
+import { SourceControlPanel } from "./SourceControlPanel";
+import { CodeSearchPanel } from "./CodeSearchPanel";
+import { StatusBar } from "./StatusBar";
 import { BuilderTerminal } from "./BuilderTerminal";
 import { BuilderReportPanel } from "./BuilderReportPanel";
 import { RemoteTerminal } from "./RemoteTerminal";
@@ -27,6 +36,17 @@ import { useRemoteDevStore } from "@/stores/remote-dev-store";
 import type { RuntimeError } from "@/types/builder";
 
 type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
+
+function SandpackActiveFileSync() {
+  const { sandpack } = useSandpack();
+  const setActiveFilePath = useBuilderUIStore((s) => s.setActiveFilePath);
+
+  useEffect(() => {
+    setActiveFilePath(sandpack.activeFile);
+  }, [sandpack.activeFile, setActiveFilePath]);
+
+  return null;
+}
 
 type ViewMode = "code" | "preview" | "split";
 
@@ -42,6 +62,13 @@ interface SandpackWrapperProps {
   bottomPanel?: "none" | "console" | "terminal" | "report" | "ssh";
   bottomPanelMaximized?: boolean;
   onToggleBottomPanelMaximized?: () => void;
+  repoOwner?: string;
+  repoName?: string;
+  branch?: string;
+  onCommitAndPush?: (
+    message: string,
+    files?: Array<{ path: string; content: string }>,
+  ) => Promise<void>;
 }
 
 const DEFAULT_FILES: Record<Template, Record<string, string>> = {
@@ -300,6 +327,10 @@ export function SandpackWrapper({
   bottomPanel: externalBottomPanel,
   bottomPanelMaximized,
   onToggleBottomPanelMaximized,
+  repoOwner,
+  repoName,
+  branch = "main",
+  onCommitAndPush,
 }: SandpackWrapperProps) {
   // Use external props if provided, otherwise use local state
   const [localViewMode, _setLocalViewMode] = useState<ViewMode>("split");
@@ -318,6 +349,49 @@ export function SandpackWrapper({
   const remoteConnected = useRemoteDevStore(
     (s) => s.connectionStatus === "connected",
   );
+
+  const setCursorPosition = useBuilderUIStore((s) => s.setCursorPosition);
+  const setSelectionCount = useBuilderUIStore((s) => s.setSelectionCount);
+
+  // DOM-based cursor tracking workaround to avoid EditorView crash
+  const handleCursorUpdate = useCallback(() => {
+    // Delay slightly to let DOM update
+    requestAnimationFrame(() => {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
+
+      // Try to find active line number from gutter (CM6 uses .cm-activeLineGutter)
+      // We look within the document or scoped if possible, but document is easiest
+      const activeGutter = document.querySelector(".cm-activeLineGutter");
+      if (activeGutter && activeGutter.textContent) {
+        const line = parseInt(activeGutter.textContent, 10);
+        let col = 1;
+
+        // Try to calculate column relative to active line
+        const activeLine = document.querySelector(".cm-activeLine");
+        if (activeLine && activeLine.contains(selection.anchorNode)) {
+          try {
+            const range = selection.getRangeAt(0);
+            const preRange = document.createRange();
+            preRange.selectNodeContents(activeLine);
+            preRange.setEnd(range.startContainer, range.startOffset);
+            col = preRange.toString().length + 1;
+          } catch (_e) {
+            // Fallback if range manipulation fails
+          }
+        }
+
+        setCursorPosition({ line, col });
+
+        // Selection count
+        const text = selection.toString();
+        setSelectionCount(text.length);
+      }
+    });
+  }, [setCursorPosition, setSelectionCount]);
+
+  const sidebarPanel = useBuilderUIStore((s) => s.sidebarPanel);
+  const setSidebarPanel = useBuilderUIStore((s) => s.setSidebarPanel);
 
   const currentTheme = theme === "system" ? systemTheme : theme;
   const isDark = currentTheme === "dark";
@@ -342,6 +416,7 @@ export function SandpackWrapper({
 
       {/* File Change Listener - Syncs to ProjectContext */}
       <FileChangeListener />
+      <SandpackActiveFileSync />
 
       <div className="absolute inset-0 flex flex-col bg-background">
         {/* Main Workspace */}
@@ -356,31 +431,91 @@ export function SandpackWrapper({
               {/* Top section: file explorer + editor + preview */}
               <Panel defaultSize={hasBottomPanel ? 70 : 100} minSize={30}>
                 <PanelGroup direction="horizontal">
-                  {/* File Explorer Panel */}
+                  {/* File Explorer / Source Control / Search Panel */}
                   {showFileExplorer &&
                     (viewMode === "code" || viewMode === "split") && (
                       <>
+                        {/* Activity Bar — VS Code icon strip */}
+                        <div className="w-[36px] shrink-0 flex flex-col items-center pt-1 gap-0.5 bg-muted/30 border-r border-border/20">
+                          <button
+                            onClick={() => setSidebarPanel("files")}
+                            className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
+                              sidebarPanel === "files"
+                                ? "text-foreground"
+                                : "text-muted-foreground/50 hover:text-muted-foreground"
+                            }`}
+                            title="Explorer"
+                          >
+                            {sidebarPanel === "files" && (
+                              <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                            )}
+                            <Files className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setSidebarPanel("search")}
+                            className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
+                              sidebarPanel === "search"
+                                ? "text-foreground"
+                                : "text-muted-foreground/50 hover:text-muted-foreground"
+                            }`}
+                            title="Search"
+                          >
+                            {sidebarPanel === "search" && (
+                              <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                            )}
+                            <Search className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setSidebarPanel("source-control")}
+                            className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
+                              sidebarPanel === "source-control"
+                                ? "text-foreground"
+                                : "text-muted-foreground/50 hover:text-muted-foreground"
+                            }`}
+                            title="Source Control"
+                          >
+                            {sidebarPanel === "source-control" && (
+                              <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                            )}
+                            <GitBranch className="h-4 w-4" />
+                          </button>
+                        </div>
                         <Panel defaultSize={15} minSize={8} maxSize={30}>
                           <div className="h-full flex flex-col bg-muted/20">
+                            {/* Panel Header */}
                             <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/50 shrink-0">
-                              {remoteConnected ? (
-                                <div className="flex gap-0.5">
-                                  <button
-                                    className={`px-1.5 py-0.5 text-[10px] rounded ${!showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                                    onClick={() => setShowRemoteFiles(false)}
-                                  >
-                                    Local
-                                  </button>
-                                  <button
-                                    className={`px-1.5 py-0.5 text-[10px] rounded ${showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                                    onClick={() => setShowRemoteFiles(true)}
-                                  >
-                                    Remote
-                                  </button>
-                                </div>
+                              {sidebarPanel === "files" ? (
+                                <>
+                                  {remoteConnected ? (
+                                    <div className="flex gap-0.5">
+                                      <button
+                                        className={`px-1.5 py-0.5 text-[10px] rounded ${!showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                                        onClick={() =>
+                                          setShowRemoteFiles(false)
+                                        }
+                                      >
+                                        Local
+                                      </button>
+                                      <button
+                                        className={`px-1.5 py-0.5 text-[10px] rounded ${showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                                        onClick={() => setShowRemoteFiles(true)}
+                                      >
+                                        Remote
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                      Explorer
+                                    </span>
+                                  )}
+                                </>
+                              ) : sidebarPanel === "search" ? (
+                                <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                  Search
+                                </span>
                               ) : (
                                 <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                                  Files
+                                  Source Control
                                 </span>
                               )}
                               <Button
@@ -392,11 +527,28 @@ export function SandpackWrapper({
                                 <ChevronLeft className="h-2.5 w-2.5" />
                               </Button>
                             </div>
+                            {/* Panel Content */}
                             <div className="flex-1 overflow-auto min-h-0">
-                              {showRemoteFiles && remoteConnected ? (
-                                <RemoteFileBrowser />
-                              ) : (
-                                <VSCodeFileExplorer />
+                              {sidebarPanel === "files" && (
+                                <>
+                                  {showRemoteFiles && remoteConnected ? (
+                                    <RemoteFileBrowser />
+                                  ) : (
+                                    <VSCodeFileExplorer />
+                                  )}
+                                </>
+                              )}
+                              {sidebarPanel === "search" && (
+                                <CodeSearchPanel files={files} />
+                              )}
+                              {sidebarPanel === "source-control" && (
+                                <SourceControlPanel
+                                  files={files}
+                                  repoOwner={repoOwner}
+                                  repoName={repoName}
+                                  branch={branch}
+                                  onCommitAndPush={onCommitAndPush}
+                                />
                               )}
                             </div>
                           </div>
@@ -429,7 +581,12 @@ export function SandpackWrapper({
                       defaultSize={viewMode === "split" ? 50 : 100}
                       minSize={20}
                     >
-                      <div className="h-full w-full relative">
+                      <div
+                        className="h-full w-full relative"
+                        onMouseUp={handleCursorUpdate}
+                        onKeyUp={handleCursorUpdate}
+                        onClick={handleCursorUpdate}
+                      >
                         <SandpackCodeEditor
                           showTabs
                           closableTabs
@@ -580,6 +737,9 @@ export function SandpackWrapper({
             </PanelGroup>
           </BuilderErrorBoundary>
         </div>
+
+        {/* Status Bar */}
+        <StatusBar branch={branch} projectName={repoName || "Flare-SH"} />
       </div>
     </SandpackProvider>
   );

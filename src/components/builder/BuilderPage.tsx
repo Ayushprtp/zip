@@ -276,8 +276,10 @@ function BuilderContent() {
         );
       }
 
-      // Redirect to the new thread
-      window.location.href = `/builder/${thread.id}`;
+      // Redirect to the new thread with initRepo flag if it's a new project
+      const queryParams =
+        _projectConfig?.type === "new" ? "?initRepo=true" : "";
+      window.location.href = `/builder/${thread.id}${queryParams}`;
     } catch (error) {
       console.error("Error creating project:", error);
       toast.error("Failed to create project");
