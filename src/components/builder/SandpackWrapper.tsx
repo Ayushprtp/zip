@@ -8,6 +8,7 @@ import {
   useSandpack,
 } from "@codesandbox/sandpack-react";
 import { useState, useEffect, useRef } from "react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { ChevronRight, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BuilderErrorBoundary } from "./BuilderErrorBoundary";
@@ -343,198 +344,240 @@ export function SandpackWrapper({
       <FileChangeListener />
 
       <div className="absolute inset-0 flex flex-col bg-background">
-        {/* Main Workspace - No separate header, controlled by BuilderHeader */}
+        {/* Main Workspace */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           <BuilderErrorBoundary
             onError={() => {
-              // On error, toggle console via store
               const toggleConsole = useBuilderUIStore.getState().toggleConsole;
               toggleConsole();
             }}
           >
-            {/* File Explorer Sidebar - Collapsible */}
-            {showFileExplorer &&
-              (viewMode === "code" || viewMode === "split") && (
-                <div className="w-40 lg:w-48 xl:w-56 border-r flex flex-col bg-muted/20 shrink-0">
-                  <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/50 shrink-0">
-                    {remoteConnected ? (
-                      <div className="flex gap-0.5">
-                        <button
-                          className={`px-1.5 py-0.5 text-[10px] rounded ${!showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() => setShowRemoteFiles(false)}
+            <PanelGroup direction="vertical">
+              {/* Top section: file explorer + editor + preview */}
+              <Panel defaultSize={hasBottomPanel ? 70 : 100} minSize={30}>
+                <PanelGroup direction="horizontal">
+                  {/* File Explorer Panel */}
+                  {showFileExplorer &&
+                    (viewMode === "code" || viewMode === "split") && (
+                      <>
+                        <Panel defaultSize={15} minSize={8} maxSize={30}>
+                          <div className="h-full flex flex-col bg-muted/20">
+                            <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/50 shrink-0">
+                              {remoteConnected ? (
+                                <div className="flex gap-0.5">
+                                  <button
+                                    className={`px-1.5 py-0.5 text-[10px] rounded ${!showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                                    onClick={() => setShowRemoteFiles(false)}
+                                  >
+                                    Local
+                                  </button>
+                                  <button
+                                    className={`px-1.5 py-0.5 text-[10px] rounded ${showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                                    onClick={() => setShowRemoteFiles(true)}
+                                  >
+                                    Remote
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                  Files
+                                </span>
+                              )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setShowFileExplorer(false)}
+                                className="h-4 w-4"
+                              >
+                                <ChevronLeft className="h-2.5 w-2.5" />
+                              </Button>
+                            </div>
+                            <div className="flex-1 overflow-auto min-h-0">
+                              {showRemoteFiles && remoteConnected ? (
+                                <RemoteFileBrowser />
+                              ) : (
+                                <VSCodeFileExplorer />
+                              )}
+                            </div>
+                          </div>
+                        </Panel>
+                        <PanelResizeHandle className="w-[3px] hover:w-[5px] cursor-col-resize transition-all group flex items-center justify-center">
+                          <div className="w-[1px] h-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
+                        </PanelResizeHandle>
+                      </>
+                    )}
+
+                  {/* Toggle File Explorer Button (when collapsed) */}
+                  {!showFileExplorer &&
+                    (viewMode === "code" || viewMode === "split") && (
+                      <div className="border-r shrink-0 flex">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setShowFileExplorer(true)}
+                          className="h-7 w-7 m-0.5"
+                          title="Show File Explorer"
                         >
-                          Local
-                        </button>
-                        <button
-                          className={`px-1.5 py-0.5 text-[10px] rounded ${showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() => setShowRemoteFiles(true)}
-                        >
-                          Remote
-                        </button>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
-                    ) : (
-                      <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                        Files
-                      </span>
                     )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setShowFileExplorer(false)}
-                      className="h-4 w-4"
+
+                  {/* Code Editor Panel */}
+                  {(viewMode === "code" || viewMode === "split") && (
+                    <Panel
+                      defaultSize={viewMode === "split" ? 50 : 100}
+                      minSize={20}
                     >
-                      <ChevronLeft className="h-2.5 w-2.5" />
-                    </Button>
-                  </div>
-                  <div className="flex-1 overflow-auto min-h-0">
-                    {showRemoteFiles && remoteConnected ? (
-                      <RemoteFileBrowser />
-                    ) : (
-                      <VSCodeFileExplorer />
-                    )}
-                  </div>
-                </div>
-              )}
+                      <div className="h-full w-full relative">
+                        <SandpackCodeEditor
+                          showTabs
+                          closableTabs
+                          showLineNumbers
+                          wrapContent
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            height: "100%",
+                            width: "100%",
+                          }}
+                        />
+                      </div>
+                    </Panel>
+                  )}
 
-            {/* Toggle File Explorer Button (when collapsed) */}
-            {!showFileExplorer &&
-              (viewMode === "code" || viewMode === "split") && (
-                <div className="border-r shrink-0">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setShowFileExplorer(true)}
-                    className="h-7 w-7 m-0.5"
-                    title="Show File Explorer"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              )}
+                  {/* Resize handle between editor and preview */}
+                  {viewMode === "split" && (
+                    <PanelResizeHandle className="w-[3px] hover:w-[5px] cursor-col-resize transition-all group flex items-center justify-center">
+                      <div className="w-[1px] h-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
+                    </PanelResizeHandle>
+                  )}
 
-            {/* Editor and Preview Area - Takes all remaining space */}
-            <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-              <div className="flex-1 flex overflow-hidden min-h-0">
-                {/* Code Editor - Responsive width */}
-                {(viewMode === "code" || viewMode === "split") && (
-                  <div
-                    className={`${viewMode === "split" ? "w-1/2 border-r" : "w-full"} flex flex-col overflow-hidden min-w-0 relative`}
-                  >
-                    <SandpackCodeEditor
-                      showTabs
-                      closableTabs
-                      showLineNumbers
-                      wrapContent
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        height: "100%",
-                        width: "100%",
-                      }}
-                    />
-                  </div>
-                )}
-
-                {/* Preview - Responsive width */}
-                {(viewMode === "preview" || viewMode === "split") && (
-                  <div
-                    className={`${viewMode === "split" ? "w-1/2" : "w-full"} flex flex-col overflow-hidden min-w-0 relative`}
-                  >
-                    <SandpackPreview
-                      showNavigator
-                      showRefreshButton
-                      style={{
-                        position: "absolute",
-                        inset: 0,
-                        height: "100%",
-                        width: "100%",
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+                  {/* Preview Panel */}
+                  {(viewMode === "preview" || viewMode === "split") && (
+                    <Panel
+                      defaultSize={viewMode === "split" ? 50 : 100}
+                      minSize={20}
+                    >
+                      <div className="h-full w-full relative">
+                        <SandpackPreview
+                          showNavigator
+                          showRefreshButton
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            height: "100%",
+                            width: "100%",
+                          }}
+                        />
+                      </div>
+                    </Panel>
+                  )}
+                </PanelGroup>
+              </Panel>
 
               {/* Remote Status Bar */}
               {remoteConnected && <RemoteStatusBar />}
 
-              {/* Bottom Panel - Console / Terminal / Report / Remote */}
+              {/* Bottom Panel — Console / Terminal / Report / Remote (resizable) */}
               {hasBottomPanel && (
-                <div
-                  className={`${bottomPanelMaximized ? "flex-1 min-h-0" : "h-28 md:h-32 lg:h-40"} border-t shrink-0 flex flex-col`}
-                >
-                  {/* Bottom Panel Tabs */}
-                  <div className="flex items-center gap-0.5 px-1 py-0.5 bg-muted/30 border-b shrink-0">
-                    <button
-                      className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "console" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                      onClick={() =>
-                        useBuilderUIStore.getState().setBottomPanel("console")
-                      }
-                    >
-                      Console
-                    </button>
-                    <button
-                      className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "terminal" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                      onClick={() =>
-                        useBuilderUIStore.getState().setBottomPanel("terminal")
-                      }
-                    >
-                      Terminal
-                    </button>
-                    <button
-                      className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "report" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                      onClick={() =>
-                        useBuilderUIStore.getState().setBottomPanel("report")
-                      }
-                    >
-                      Report
-                    </button>
-                    <button
-                      className={`px-2 py-0.5 text-[10px] rounded flex items-center gap-1 ${bottomPanel === "ssh" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                      onClick={() =>
-                        useBuilderUIStore.getState().setBottomPanel("ssh")
-                      }
-                    >
-                      Remote
-                      {remoteConnected && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                      )}
-                    </button>
-                  </div>
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    {bottomPanel === "console" && (
-                      <SandpackConsole
-                        style={{ height: "100%", width: "100%" }}
-                      />
-                    )}
-                    {bottomPanel === "terminal" && (
-                      <BuilderTerminal
-                        onClose={() =>
-                          useBuilderUIStore.getState().setBottomPanel("none")
-                        }
-                        isMaximized={bottomPanelMaximized}
-                        onToggleMaximize={onToggleBottomPanelMaximized}
-                      />
-                    )}
-                    {bottomPanel === "report" && (
-                      <BuilderReportPanel
-                        onClose={() =>
-                          useBuilderUIStore.getState().setBottomPanel("none")
-                        }
-                      />
-                    )}
-                    {bottomPanel === "ssh" && (
-                      <RemoteTerminal
-                        onClose={() =>
-                          useBuilderUIStore.getState().setBottomPanel("none")
-                        }
-                        isMaximized={bottomPanelMaximized}
-                        onToggleMaximize={onToggleBottomPanelMaximized}
-                      />
-                    )}
-                  </div>
-                </div>
+                <>
+                  <PanelResizeHandle className="h-[3px] hover:h-[5px] cursor-row-resize transition-all group flex items-center justify-center">
+                    <div className="h-[1px] w-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
+                  </PanelResizeHandle>
+                  <Panel
+                    defaultSize={30}
+                    minSize={10}
+                    maxSize={bottomPanelMaximized ? 90 : 60}
+                  >
+                    <div className="h-full flex flex-col">
+                      {/* Bottom Panel Tabs */}
+                      <div className="flex items-center gap-0.5 px-1 py-0.5 bg-muted/30 border-b shrink-0">
+                        <button
+                          className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "console" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() =>
+                            useBuilderUIStore
+                              .getState()
+                              .setBottomPanel("console")
+                          }
+                        >
+                          Console
+                        </button>
+                        <button
+                          className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "terminal" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() =>
+                            useBuilderUIStore
+                              .getState()
+                              .setBottomPanel("terminal")
+                          }
+                        >
+                          Terminal
+                        </button>
+                        <button
+                          className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "report" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() =>
+                            useBuilderUIStore
+                              .getState()
+                              .setBottomPanel("report")
+                          }
+                        >
+                          Report
+                        </button>
+                        <button
+                          className={`px-2 py-0.5 text-[10px] rounded flex items-center gap-1 ${bottomPanel === "ssh" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                          onClick={() =>
+                            useBuilderUIStore.getState().setBottomPanel("ssh")
+                          }
+                        >
+                          Remote
+                          {remoteConnected && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          )}
+                        </button>
+                      </div>
+                      <div className="flex-1 min-h-0 overflow-hidden">
+                        {bottomPanel === "console" && (
+                          <SandpackConsole
+                            style={{ height: "100%", width: "100%" }}
+                          />
+                        )}
+                        {bottomPanel === "terminal" && (
+                          <BuilderTerminal
+                            onClose={() =>
+                              useBuilderUIStore
+                                .getState()
+                                .setBottomPanel("none")
+                            }
+                            isMaximized={bottomPanelMaximized}
+                            onToggleMaximize={onToggleBottomPanelMaximized}
+                          />
+                        )}
+                        {bottomPanel === "report" && (
+                          <BuilderReportPanel
+                            onClose={() =>
+                              useBuilderUIStore
+                                .getState()
+                                .setBottomPanel("none")
+                            }
+                          />
+                        )}
+                        {bottomPanel === "ssh" && (
+                          <RemoteTerminal
+                            onClose={() =>
+                              useBuilderUIStore
+                                .getState()
+                                .setBottomPanel("none")
+                            }
+                            isMaximized={bottomPanelMaximized}
+                            onToggleMaximize={onToggleBottomPanelMaximized}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </Panel>
+                </>
               )}
-            </div>
+            </PanelGroup>
           </BuilderErrorBoundary>
         </div>
       </div>
