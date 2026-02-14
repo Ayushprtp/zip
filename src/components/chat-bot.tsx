@@ -463,8 +463,8 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       {particle}
       <div
         className={cn(
-          emptyMessage && "justify-center items-center",
-          "flex flex-col min-w-0 relative h-full z-40",
+          emptyMessage && "justify-center",
+          "flex flex-col min-w-0 w-full relative h-full z-40",
         )}
       >
         {isDragging && (
@@ -481,9 +481,9 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
         )}
         {emptyMessage ? (
           /* Centered greeting + prompt stack */
-          <div className="w-full flex flex-col items-center justify-center flex-1 px-4">
+          <div className="w-full flex flex-col items-center justify-center flex-1">
             <ChatGreeting onSuggestionClick={(prompt) => setInput(prompt)} />
-            <div className="w-full max-w-3xl mt-4">
+            <div className="w-full max-w-3xl mx-auto mt-4 px-4">
               <PromptInput
                 input={input}
                 threadId={threadId}
