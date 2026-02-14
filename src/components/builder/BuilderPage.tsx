@@ -12,12 +12,7 @@ import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { exportService } from "@/lib/builder/export-service";
-import {
-  deploymentService,
-  type DeploymentStatus,
-} from "@/lib/builder/deployment-service";
-import { DeploymentProgress } from "./deployment-progress";
-import type { TemplateType, DeploymentConfig } from "app-types/builder";
+import type { TemplateType } from "app-types/builder";
 
 // Error Boundaries
 import {
@@ -193,12 +188,7 @@ function QRCodeModal({ url, onClose }: { url: string; onClose: () => void }) {
 function BuilderContent() {
   const { files, template, setTemplate } = useBuilderEngine("react");
   const [showQR, setShowQR] = useState(false);
-  const [deploymentStatus, setDeploymentStatus] =
-    useState<DeploymentStatus | null>(null);
-  const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
-  const [deploymentError, setDeploymentError] = useState<string | undefined>();
-  const [deploymentLogs, setDeploymentLogs] = useState<string[]>([]);
-  const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
+
   const [messages, setMessages] = useState<any[]>([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showGitHubSetup, setShowGitHubSetup] = useState(true);
@@ -265,15 +255,7 @@ function BuilderContent() {
       },
       description: "Export project",
     },
-    {
-      key: "d",
-      ctrlKey: true,
-      shiftKey: true,
-      handler: () => {
-        handleDeploy();
-      },
-      description: "Deploy project",
-    },
+
     {
       key: "q",
       ctrlKey: true,
@@ -389,100 +371,6 @@ function BuilderContent() {
     setIsAskAIMode(true);
     setShowTemplateDialog(false);
     setTemplateSelected(false);
-  };
-
-  const handleDeploy = async () => {
-    setShowDeploymentProgress(true);
-    setDeploymentStatus(null);
-    setDeploymentUrl(undefined);
-    setDeploymentError(undefined);
-    setDeploymentLogs([]);
-
-    try {
-      // Convert Template to TemplateType
-      const templateType = template as TemplateType;
-
-      // Create deployment configuration
-      const config: DeploymentConfig = {
-        platform: "vercel",
-        projectName: _projectConfig?.projectName || "project",
-        buildCommand: getBuildCommand(templateType),
-        outputDirectory: getOutputDirectory(templateType),
-        // Pass repo info for git-based deployment (no file upload)
-        repoOwner: _projectConfig?.repo?.owner,
-        repoName: _projectConfig?.repo?.name,
-        repoBranch: _projectConfig?.branch || "main",
-        template: templateType,
-      };
-
-      // Validate configuration
-      deploymentService.validateConfig(config);
-
-      // Deploy using DeploymentService
-      const result = await deploymentService.deploy(
-        files,
-        config,
-        templateType,
-        (status) => {
-          setDeploymentStatus(status);
-          // Capture real-time build logs and URL from status updates
-          if (status.buildLogs && status.buildLogs.length > 0) {
-            setDeploymentLogs(status.buildLogs);
-          }
-          if (status.deploymentUrl) {
-            setDeploymentUrl(status.deploymentUrl);
-          }
-        },
-        isTempWorkspace,
-      );
-
-      // Set deployment URL on success
-      setDeploymentUrl(result.url);
-      toast.success("Deployment successful!");
-    } catch (error: any) {
-      console.error("Deployment failed:", error);
-      errorHandler.handleError(error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Deployment failed";
-      setDeploymentError(errorMessage);
-      // Capture build logs from the error (attached by deployment-service)
-      if (error.buildLogs && Array.isArray(error.buildLogs)) {
-        setDeploymentLogs(error.buildLogs);
-      }
-      toast.error(errorMessage);
-    }
-  };
-
-  // Helper function to get build command based on template
-  const getBuildCommand = (template: TemplateType): string => {
-    switch (template) {
-      case "vite-react":
-        return "npm run build";
-      case "nextjs":
-        return "npm run build";
-      case "node":
-        return "npm install";
-      case "static":
-        return 'echo "No build needed"';
-      default:
-        return "npm run build";
-    }
-  };
-
-  // Helper function to get output directory based on template
-  const getOutputDirectory = (template: TemplateType): string => {
-    switch (template) {
-      case "vite-react":
-        return "dist";
-      case "nextjs":
-        return "out";
-      case "node":
-        return ".";
-      case "static":
-        return ".";
-      default:
-        return "dist";
-    }
   };
 
   const handleSendMessage = (content: string, mentions?: any[]) => {
@@ -667,16 +555,6 @@ function BuilderContent() {
         {showQR && (
           <QRCodeModal url={previewUrl} onClose={() => setShowQR(false)} />
         )}
-
-        {/* Deployment Progress Dialog */}
-        <DeploymentProgress
-          open={showDeploymentProgress}
-          onClose={() => setShowDeploymentProgress(false)}
-          status={deploymentStatus}
-          deploymentUrl={deploymentUrl}
-          error={deploymentError}
-          buildLogs={deploymentLogs}
-        />
       </div>
     </ErrorBoundary>
   );
