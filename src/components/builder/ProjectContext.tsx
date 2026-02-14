@@ -13,7 +13,11 @@ interface Checkpoint {
 
 interface ProjectContextValue {
   checkpoints: Checkpoint[];
-  addCheckpoint: (files: Record<string, string>, template: Template, label?: string) => void;
+  addCheckpoint: (
+    files: Record<string, string>,
+    template: Template,
+    label?: string,
+  ) => void;
   restoreCheckpoint: (id: string) => Checkpoint | undefined;
   clearCheckpoints: () => void;
 }
@@ -23,7 +27,11 @@ const ProjectContext = createContext<ProjectContextValue | null>(null);
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
 
-  const addCheckpoint = (files: Record<string, string>, template: Template, label?: string) => {
+  const addCheckpoint = (
+    files: Record<string, string>,
+    template: Template,
+    label?: string,
+  ) => {
     const checkpoint: Checkpoint = {
       id: crypto.randomUUID(),
       files,
@@ -34,12 +42,20 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
     setCheckpoints((prev) => [...prev, checkpoint].slice(-50));
   };
 
-  const restoreCheckpoint = (id: string) => checkpoints.find((c) => c.id === id);
+  const restoreCheckpoint = (id: string) =>
+    checkpoints.find((c) => c.id === id);
 
   const clearCheckpoints = () => setCheckpoints([]);
 
   return (
-    <ProjectContext.Provider value={{ checkpoints, addCheckpoint, restoreCheckpoint, clearCheckpoints }}>
+    <ProjectContext.Provider
+      value={{
+        checkpoints,
+        addCheckpoint,
+        restoreCheckpoint,
+        clearCheckpoints,
+      }}
+    >
       {children}
     </ProjectContext.Provider>
   );

@@ -132,7 +132,9 @@ export function AppHeader() {
   const showConsole = useBuilderUIStore((state) => state.showConsole);
   const toggleConsole = useBuilderUIStore((state) => state.toggleConsole);
   const mobilePreview = useBuilderUIStore((state) => state.mobilePreview);
-  const toggleMobilePreview = useBuilderUIStore((state) => state.toggleMobilePreview);
+  const toggleMobilePreview = useBuilderUIStore(
+    (state) => state.toggleMobilePreview,
+  );
   const isSynced = useBuilderUIStore((state) => state.isSynced);
 
   // Local state
@@ -182,10 +184,10 @@ export function AppHeader() {
   // Download/Export handler
   const handleDownload = useCallback(async () => {
     if (exporting) return;
-    
+
     setExporting(true);
     toast.info("Preparing export...");
-    
+
     try {
       // Create a simple export of files
       const JSZip = (await import("jszip")).default;
@@ -198,7 +200,7 @@ export function AppHeader() {
 
       // Generate zip file
       const blob = await zip.generateAsync({ type: "blob" });
-      
+
       // Download
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -225,15 +227,15 @@ export function AppHeader() {
       toast.error("No active project");
       return;
     }
-    
+
     if (Object.keys(files).length === 0) {
       toast.error("No files to deploy");
       return;
     }
-    
+
     setDeploying(true);
     toast.info("Preparing deployment...");
-    
+
     try {
       // Export as ZIP first
       const JSZip = (await import("jszip")).default;
@@ -244,18 +246,19 @@ export function AppHeader() {
       });
 
       await zip.generateAsync({ type: "blob" });
-      
+
       // Simulate deployment
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
       toast.success(
         <div>
           <p className="font-semibold">Ready to deploy!</p>
-          <p className="text-xs mt-1">Project exported. Upload to your hosting provider.</p>
+          <p className="text-xs mt-1">
+            Project exported. Upload to your hosting provider.
+          </p>
         </div>,
-        { duration: 5000 }
+        { duration: 5000 },
       );
-      
     } catch (error) {
       console.error("Deployment failed:", error);
       toast.error("Failed to prepare deployment");
@@ -272,7 +275,7 @@ export function AppHeader() {
     }
 
     toast.info("Creating checkpoint...");
-    
+
     try {
       // Create a local checkpoint by saving current state
       const checkpoint = {
@@ -284,14 +287,16 @@ export function AppHeader() {
       };
 
       // Store in localStorage for now
-      const checkpoints = JSON.parse(localStorage.getItem('builder-checkpoints') || '[]');
+      const checkpoints = JSON.parse(
+        localStorage.getItem("builder-checkpoints") || "[]",
+      );
       checkpoints.push(checkpoint);
       // Keep only last 10 checkpoints
       if (checkpoints.length > 10) {
         checkpoints.shift();
       }
-      localStorage.setItem('builder-checkpoints', JSON.stringify(checkpoints));
-      
+      localStorage.setItem("builder-checkpoints", JSON.stringify(checkpoints));
+
       toast.success("Checkpoint created successfully!");
     } catch (error) {
       console.error("Checkpoint failed:", error);
@@ -303,7 +308,10 @@ export function AppHeader() {
   const handleProjectNameClick = useCallback(async () => {
     if (!currentThread?.id) return;
 
-    const newName = prompt("Enter project name:", currentThread?.title || "Project Name");
+    const newName = prompt(
+      "Enter project name:",
+      currentThread?.title || "Project Name",
+    );
     if (newName && newName.trim() && newName !== currentThread.title) {
       toast.success(`Project name updated to: ${newName}`);
       // Note: This would need API integration to persist
@@ -316,7 +324,7 @@ export function AppHeader() {
     if (currentPaths.startsWith("/builder")) {
       return null;
     }
-    
+
     if (currentPaths.startsWith("/chat/")) {
       return <ThreadDropdownComponent />;
     }
@@ -392,13 +400,15 @@ export function AppHeader() {
                 <ChevronDown className="h-2.5 w-2.5 opacity-50 shrink-0" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{currentThread?.title || "Project Name"}</TooltipContent>
+            <TooltipContent>
+              {currentThread?.title || "Project Name"}
+            </TooltipContent>
           </Tooltip>
         </div>
       )}
-      
+
       <div className="flex-1" />
-      
+
       {showActionButtons && (
         <div className="flex items-center gap-0.5 shrink-0">
           {/* Builder Page Buttons */}
@@ -412,7 +422,7 @@ export function AppHeader() {
                 <FileCode className="h-2.5 w-2.5" />
                 <span>{fileCount}</span>
               </Badge>
-              
+
               {isSynced ? (
                 <Badge
                   variant="outline"
@@ -431,7 +441,10 @@ export function AppHeader() {
                 </Badge>
               )}
 
-              <Separator orientation="vertical" className="h-3.5 mx-0.5 hidden sm:block" />
+              <Separator
+                orientation="vertical"
+                className="h-3.5 mx-0.5 hidden sm:block"
+              />
 
               {/* View Mode Tabs - Functional */}
               <div className="gap-0.5 bg-muted/50 border rounded-md p-0.5 shrink-0 hidden lg:flex">
@@ -478,7 +491,10 @@ export function AppHeader() {
                 </Tooltip>
               </div>
 
-              <Separator orientation="vertical" className="h-3.5 mx-0.5 hidden lg:block" />
+              <Separator
+                orientation="vertical"
+                className="h-3.5 mx-0.5 hidden lg:block"
+              />
 
               {/* Server Controls - Redesigned in one rectangle */}
               <div className="flex items-center gap-0.5 bg-muted/50 border rounded-md p-0.5 shrink-0 hidden md:flex">
@@ -527,7 +543,10 @@ export function AppHeader() {
                 </Tooltip>
               </div>
 
-              <Separator orientation="vertical" className="h-3.5 mx-0.5 hidden md:block" />
+              <Separator
+                orientation="vertical"
+                className="h-3.5 mx-0.5 hidden md:block"
+              />
 
               {/* Console Toggle - Functional */}
               <Tooltip>
@@ -711,7 +730,7 @@ export function AppHeader() {
           </Tooltip>
         </div>
       )}
-      
+
       {/* QR Code Modal */}
       {showQR && (
         <QRCodeModal url={previewUrl} onClose={() => setShowQR(false)} />

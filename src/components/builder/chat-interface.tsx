@@ -32,6 +32,8 @@ import {
   Check,
   Server,
   Book,
+  Copy,
+  RefreshCw,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -53,6 +55,7 @@ interface ChatInterfaceProps {
   onModelChange?: (modelId?: string) => void;
   files?: Record<string, string>;
   chatModeDropdown?: React.ReactNode;
+  onRegenerate?: (messageId: string, modelId?: string) => void;
 }
 
 // ─── Main Component ────────────────────────────────────────────────────────
@@ -70,6 +73,7 @@ export function ChatInterface({
   onModelChange,
   files = {},
   chatModeDropdown,
+  onRegenerate,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<File[]>([]);
@@ -144,6 +148,7 @@ export function ChatInterface({
         isStreaming={isStreaming}
         streamingContent={streamingContent}
         condensed={condensed}
+        onRegenerate={onRegenerate}
       />
 
       {/* Review Changes Button (floating above input) */}
@@ -190,6 +195,7 @@ interface MessageListProps {
   isStreaming: boolean;
   streamingContent: string;
   condensed?: boolean;
+  onRegenerate?: (messageId: string, modelId?: string) => void;
 }
 
 const MessageList = memo(function MessageList({
@@ -197,6 +203,7 @@ const MessageList = memo(function MessageList({
   isStreaming,
   streamingContent,
   condensed = false,
+  onRegenerate,
 }: MessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -258,6 +265,7 @@ const MessageList = memo(function MessageList({
             key={message.id}
             message={message}
             condensed={condensed}
+            onRegenerate={onRegenerate}
           />
         ))}
         {isStreaming && streamingContent && (
@@ -296,6 +304,7 @@ interface MessageBubbleProps {
   message: ChatMessage;
   isStreaming?: boolean;
   condensed?: boolean;
+  onRegenerate?: (messageId: string, modelId?: string) => void;
 }
 
 function hasCodeBlocks(content: string): boolean {
@@ -305,16 +314,25 @@ function hasCodeBlocks(content: string): boolean {
 const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
+  onRegenerate,
 }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const [copied, setCopied] = useState(false);
   const containsCode = useMemo(
     () => !isUser && hasCodeBlocks(message.content),
     [isUser, message.content],
   );
 
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(message.content).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [message.content]);
+
   return (
     <div
-      className={`flex gap-2 px-2 py-1.5 rounded-md transition-colors ${isUser ? "bg-transparent" : "bg-muted/30"}`}
+      className={`group/msg flex gap-2 px-2 py-1.5 rounded-md transition-colors ${isUser ? "bg-transparent" : "bg-muted/30"}`}
       data-testid={`message-${message.id}`}
     >
       {/* Avatar */}
@@ -345,6 +363,42 @@ const MessageBubble = memo(function MessageBubble({
         )}
         {isStreaming && (
           <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-violet-400 animate-pulse rounded-sm" />
+        )}
+
+        {/* Action buttons - shown on hover */}
+        {!isStreaming && message.id !== "streaming" && (
+          <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover/msg:opacity-100 transition-opacity duration-200">
+            {/* Copy button */}
+            <button
+              onClick={handleCopy}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+              title="Copy message"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3 w-3 text-emerald-400" />
+                  <span className="text-emerald-400">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3 w-3" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+
+            {/* Regenerate button - only for assistant messages */}
+            {!isUser && onRegenerate && (
+              <button
+                onClick={() => onRegenerate(message.id)}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+                title="Regenerate response"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Regenerate</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
     </div>

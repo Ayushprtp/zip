@@ -94,11 +94,7 @@ export function DeploymentDashboard({
       ERROR: "destructive",
     };
 
-    return (
-      <Badge variant={variants[state] || "secondary"}>
-        {state}
-      </Badge>
-    );
+    return <Badge variant={variants[state] || "secondary"}>{state}</Badge>;
   };
 
   return (
@@ -110,9 +106,7 @@ export function DeploymentDashboard({
               <Rocket className="h-5 w-5" />
               Deployments
             </CardTitle>
-            <CardDescription>
-              Manage your Vercel deployments
-            </CardDescription>
+            <CardDescription>Manage your Vercel deployments</CardDescription>
           </div>
           <div className="flex gap-2">
             <Button

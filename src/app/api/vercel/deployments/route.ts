@@ -16,10 +16,7 @@ export async function GET(request: NextRequest) {
     const token = await getVercelToken();
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const projectId = request.nextUrl.searchParams.get("projectId");
@@ -49,10 +46,7 @@ export async function POST(request: NextRequest) {
     const token = await getVercelToken();
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const { projectId, gitSource } = await request.json();
