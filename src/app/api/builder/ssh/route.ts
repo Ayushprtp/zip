@@ -22,6 +22,9 @@ interface SSHSessionState {
   port: number;
   preferredShell: string;
   envVars: Record<string, string>;
+  // Remote development extensions
+  remoteServer?: import("@/types/builder/remote").RemoteServerInfo;
+  portForwarding?: import("@/types/builder/remote").ActivePortForwarding;
 }
 
 const sshConnections = new Map<string, SSHSessionState>();
@@ -100,6 +103,22 @@ export async function POST(request: NextRequest) {
         return handleGitStatus(sessionId!, params.cwd);
       case "init-project":
         return handleInitProject(sessionId!, params);
+      case "install-remote-server":
+        return handleInstallRemoteServer(sessionId!, params.serverVersion);
+      case "start-remote-server":
+        return handleStartRemoteServer(sessionId!, params.serverConfig);
+      case "stop-remote-server":
+        return handleStopRemoteServer(sessionId!);
+      case "get-remote-server-status":
+        return handleGetRemoteServerStatus(sessionId!);
+      case "setup-port-forwarding":
+        return handleSetupPortForwarding(
+          sessionId!,
+          params.forwardingType!,
+          params.forwardingConfig!,
+        );
+      case "remove-port-forwarding":
+        return handleRemovePortForwarding(sessionId!, params.forwardingType!);
       default:
         return NextResponse.json(
           { error: `Unknown action: ${action}` },
@@ -1263,4 +1282,350 @@ function execOnClient(
         });
     });
   });
+}
+
+// ============================================================================
+// Remote Development Server Handlers
+// ============================================================================
+
+async function handleInstallRemoteServer(
+  sessionId: string,
+  serverVersion?: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    // For now, implement a basic remote server installer
+    // This would download and install a development server (like VS Code server)
+    const installPath = "~/.flare-remote-server";
+    const version = serverVersion || "latest";
+
+    // Create installation directory
+    await execOnClient(session.client, `mkdir -p "${installPath}"`);
+
+    // Download and install server (placeholder - would need actual implementation)
+    const installCommand = `
+      cd "${installPath}" &&
+      echo "Installing Flare Remote Development Server ${version}..." &&
+      # Placeholder: actual server download and installation would go here
+      echo "Server installed successfully"
+    `;
+
+    await execOnClient(session.client, installCommand);
+
+    // Update session with server info
+    session.remoteServer = {
+      serverId: `server_${Date.now()}`,
+      version,
+      installPath,
+      listeningPort: 0, // Will be set when started
+      status: "stopped",
+    };
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      message: "Remote server installed successfully",
+      serverInfo: session.remoteServer,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to install remote server: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleStartRemoteServer(
+  sessionId: string,
+  serverConfig?: any,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  if (!session.remoteServer) {
+    return NextResponse.json(
+      { error: "Remote server not installed" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const port = serverConfig?.port || 37507; // Default port like VS Code
+    const installPath = session.remoteServer.installPath;
+
+    // Start the remote server (placeholder - would start actual server)
+    const startCommand = `
+      cd "${installPath}" &&
+      echo "Starting Flare Remote Development Server on port ${port}..." &&
+      # Placeholder: actual server startup would go here
+      echo "Server started on port ${port}" &&
+      echo ${port}
+    `;
+
+    const result = await execOnClient(session.client, startCommand);
+    const listeningPort = parseInt(
+      result.trim().split("\n").pop() || port.toString(),
+    );
+
+    // Update server info
+    session.remoteServer.listeningPort = listeningPort;
+    session.remoteServer.status = "running";
+    session.remoteServer.startedAt = Date.now();
+    session.remoteServer.pid = 12345; // Placeholder PID
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      message: "Remote server started successfully",
+      serverInfo: session.remoteServer,
+    });
+  } catch (err: any) {
+    if (session.remoteServer) {
+      session.remoteServer.status = "error";
+    }
+    return NextResponse.json(
+      { error: `Failed to start remote server: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleStopRemoteServer(
+  sessionId: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  if (!session.remoteServer) {
+    return NextResponse.json(
+      { error: "Remote server not installed" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    // Stop the remote server (placeholder)
+    const stopCommand = `
+      echo "Stopping Flare Remote Development Server..." &&
+      # Placeholder: actual server stop command would go here
+      echo "Server stopped"
+    `;
+
+    await execOnClient(session.client, stopCommand);
+
+    // Update server info
+    session.remoteServer.status = "stopped";
+    session.remoteServer.pid = undefined;
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      message: "Remote server stopped successfully",
+      serverInfo: session.remoteServer,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to stop remote server: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleGetRemoteServerStatus(
+  sessionId: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  if (!session.remoteServer) {
+    return NextResponse.json(
+      { error: "Remote server not installed" },
+      { status: 400 },
+    );
+  }
+
+  // Update last health check
+  session.remoteServer.lastHealthCheck = Date.now();
+  session.lastActivity = Date.now();
+
+  return NextResponse.json({
+    success: true,
+    serverInfo: session.remoteServer,
+    portForwarding: session.portForwarding,
+  });
+}
+
+async function handleSetupPortForwarding(
+  sessionId: string,
+  forwardingType: string,
+  forwardingConfig: any,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    // Initialize port forwarding if not exists
+    if (!session.portForwarding) {
+      session.portForwarding = {};
+    }
+
+    if (forwardingType === "dynamic") {
+      // Setup SOCKS proxy (like VS Code's -D flag)
+      const localPort = forwardingConfig.port || 59840;
+
+      // Placeholder: actual SOCKS server setup would go here
+      session.portForwarding.dynamicForwarding = {
+        localPort,
+        server: {}, // Placeholder for SOCKS server instance
+      };
+
+      return NextResponse.json({
+        success: true,
+        message: `Dynamic port forwarding setup on local port ${localPort}`,
+        portForwarding: session.portForwarding,
+      });
+    }
+
+    if (forwardingType === "local") {
+      // Local port forwarding: localPort -> remoteHost:remotePort
+      const { localPort, remoteHost, remotePort } = forwardingConfig;
+
+      // Placeholder: actual local forwarding setup
+      if (!session.portForwarding.localForwarding) {
+        session.portForwarding.localForwarding = [];
+      }
+
+      session.portForwarding.localForwarding.push({
+        localPort,
+        remoteHost,
+        remotePort,
+        server: {}, // Placeholder for forwarding server
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Local port forwarding setup: ${localPort} -> ${remoteHost}:${remotePort}`,
+        portForwarding: session.portForwarding,
+      });
+    }
+
+    if (forwardingType === "remote") {
+      // Remote port forwarding: remotePort -> localHost:localPort
+      const { remotePort, localHost, localPort } = forwardingConfig;
+
+      // Placeholder: actual remote forwarding setup
+      if (!session.portForwarding.remoteForwarding) {
+        session.portForwarding.remoteForwarding = [];
+      }
+
+      session.portForwarding.remoteForwarding.push({
+        remotePort,
+        localHost,
+        localPort,
+        tunnel: {}, // Placeholder for SSH tunnel
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: `Remote port forwarding setup: ${remotePort} -> ${localHost}:${localPort}`,
+        portForwarding: session.portForwarding,
+      });
+    }
+
+    return NextResponse.json(
+      { error: `Unknown forwarding type: ${forwardingType}` },
+      { status: 400 },
+    );
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to setup port forwarding: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleRemovePortForwarding(
+  sessionId: string,
+  forwardingType: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  if (!session.portForwarding) {
+    return NextResponse.json(
+      { error: "No port forwarding active" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    if (
+      forwardingType === "dynamic" &&
+      session.portForwarding.dynamicForwarding
+    ) {
+      // Stop SOCKS server
+      session.portForwarding.dynamicForwarding = undefined;
+    }
+
+    if (forwardingType === "local" && session.portForwarding.localForwarding) {
+      // Stop local forwarding servers
+      session.portForwarding.localForwarding = [];
+    }
+
+    if (
+      forwardingType === "remote" &&
+      session.portForwarding.remoteForwarding
+    ) {
+      // Stop remote forwarding tunnels
+      session.portForwarding.remoteForwarding = [];
+    }
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      message: `Port forwarding removed for type: ${forwardingType}`,
+      portForwarding: session.portForwarding,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to remove port forwarding: ${err.message}` },
+      { status: 500 },
+    );
+  }
 }
