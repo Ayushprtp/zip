@@ -24,6 +24,27 @@ export interface SSHConnectionConfig {
   envVars?: Record<string, string>;
   keepAliveInterval?: number;
   readyTimeout?: number;
+  // Port forwarding configuration
+  portForwarding?: PortForwardingConfig;
+}
+
+export interface PortForwardingConfig {
+  // Dynamic port forwarding (SOCKS proxy)
+  dynamicForwarding?: {
+    port: number; // Local port for SOCKS proxy
+  };
+  // Local port forwarding: localPort -> remoteHost:remotePort
+  localForwarding?: Array<{
+    localPort: number;
+    remoteHost: string;
+    remotePort: number;
+  }>;
+  // Remote port forwarding: remotePort -> localHost:localPort
+  remoteForwarding?: Array<{
+    remotePort: number;
+    localHost: string;
+    localPort: number;
+  }>;
 }
 
 export interface JumpHostConfig {
@@ -51,6 +72,51 @@ export interface SSHSession {
   host: string;
   username: string;
   port: number;
+  // Remote development extensions
+  remoteServer?: RemoteServerInfo;
+  portForwarding?: ActivePortForwarding;
+}
+
+// ============================================================================
+// Remote Development Server Types
+// ============================================================================
+
+export interface RemoteServerInfo {
+  serverId: string;
+  version: string;
+  installPath: string;
+  listeningPort: number;
+  status: "installing" | "starting" | "running" | "stopped" | "error";
+  pid?: number;
+  startedAt?: number;
+  lastHealthCheck?: number;
+}
+
+export interface ActivePortForwarding {
+  dynamicForwarding?: {
+    localPort: number;
+    server?: any; // SOCKS server instance
+  };
+  localForwarding?: Array<{
+    localPort: number;
+    remoteHost: string;
+    remotePort: number;
+    server?: any; // Forwarding server instance
+  }>;
+  remoteForwarding?: Array<{
+    remotePort: number;
+    localHost: string;
+    localPort: number;
+    tunnel?: any; // SSH tunnel instance
+  }>;
+}
+
+export interface RemoteServerConfig {
+  version?: string;
+  installPath?: string;
+  autoUpdate?: boolean;
+  healthCheckInterval?: number;
+  maxRestartAttempts?: number;
 }
 
 // ============================================================================
@@ -435,7 +501,14 @@ export type SSHApiAction =
   | "system-info"
   | "git-status"
   | "upload-file"
-  | "init-project";
+  | "init-project"
+  // Remote development server actions
+  | "install-remote-server"
+  | "start-remote-server"
+  | "stop-remote-server"
+  | "get-remote-server-status"
+  | "setup-port-forwarding"
+  | "remove-port-forwarding";
 
 export interface SSHApiRequest {
   action: SSHApiAction;
@@ -452,6 +525,8 @@ export interface SSHApiRequest {
   readyTimeout?: number;
   preferredShell?: string;
   envVars?: Record<string, string>;
+  // Port forwarding params
+  portForwarding?: PortForwardingConfig;
   // Exec params
   command?: string;
   cwd?: string;
@@ -466,6 +541,11 @@ export interface SSHApiRequest {
   // Project init params
   template?: RemoteProjectTemplate;
   projectName?: string;
+  // Remote server params
+  serverVersion?: string;
+  serverConfig?: RemoteServerConfig;
+  forwardingType?: "dynamic" | "local" | "remote";
+  forwardingConfig?: any; // Specific forwarding config
 }
 
 export interface SSHApiResponse {
@@ -485,6 +565,9 @@ export interface SSHApiResponse {
   // System info
   systemInfo?: RemoteSystemInfo;
   gitStatus?: RemoteGitStatus;
+  // Remote server results
+  serverInfo?: RemoteServerInfo;
+  portForwarding?: ActivePortForwarding;
   // General
   message?: string;
   data?: any;
