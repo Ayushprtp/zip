@@ -146,6 +146,61 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * DELETE /api/builder/deploy
+ *
+ * Deletes a Vercel deployment.
+ * Query: ?deploymentId=...&isTemporary=...
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const searchParams = request.nextUrl.searchParams;
+    const deploymentId = searchParams.get("deploymentId");
+    const isTemporary = searchParams.get("isTemporary") === "true";
+
+    if (!deploymentId) {
+      return NextResponse.json(
+        { error: "Deployment ID is required" },
+        { status: 400 },
+      );
+    }
+
+    const token = await resolveToken(isTemporary);
+
+    const response = await fetch(
+      `${VERCEL_API_URL}/v13/deployments/${deploymentId}`,
+      {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      // 404 is fine (already deleted)
+      if (response.status === 404) {
+        return NextResponse.json({ success: true });
+      }
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error?.message || "Failed to delete deployment");
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Delete deployment error:", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete deployment",
+      },
+      { status: 500 },
+    );
+  }
+}
+
 // ── Git-based deployment ───────────────────────────────────────────────
 
 interface GitDeployOpts {
@@ -286,6 +341,18 @@ async function deployViaGit(
     const err = await deployResp.json().catch(() => ({}));
     const msg = err.error?.message || deployResp.statusText;
     console.error("[Deploy] Failed to create deployment:", err);
+
+    // Check for permission/access errors
+    if (
+      deployResp.status === 403 ||
+      deployResp.status === 404 ||
+      err.error?.code === "repo_not_found"
+    ) {
+      throw new Error(
+        `MISSING_GITHUB_APP: Failed to access repository. Please ensure the Vercel GitHub App is installed and has access to ${opts.repoOwner}/${opts.repoName}.`,
+      );
+    }
+
     throw new Error(
       `Failed to trigger deployment: ${msg}. ` +
         `Make sure the Vercel GitHub integration has access to ${opts.repoOwner}/${opts.repoName}.`,
