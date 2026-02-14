@@ -8,6 +8,7 @@ type ServerControl = {
   restart: () => void;
 } | null;
 type BottomPanel = "none" | "console" | "terminal" | "report" | "ssh";
+type SidebarPanel = "files" | "source-control" | "search";
 
 interface BuilderUIStore {
   // View state
@@ -61,6 +62,18 @@ interface BuilderUIStore {
   // File sync status
   isSynced: boolean;
   setIsSynced: (synced: boolean) => void;
+
+  // Sidebar panel state (files / source-control / search)
+  sidebarPanel: SidebarPanel;
+  setSidebarPanel: (panel: SidebarPanel) => void;
+
+  // Active file tracking for status bar
+  activeFilePath: string | null;
+  setActiveFilePath: (path: string | null) => void;
+  cursorPosition: { line: number; col: number };
+  setCursorPosition: (pos: { line: number; col: number }) => void;
+  selectionCount: number;
+  setSelectionCount: (count: number) => void;
 }
 
 export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
@@ -76,6 +89,10 @@ export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
   mobilePreview: false,
   serverControl: null,
   isSynced: true,
+  sidebarPanel: "files",
+  activeFilePath: null,
+  cursorPosition: { line: 1, col: 1 },
+  selectionCount: 0,
 
   // View mode
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -215,4 +232,12 @@ export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
       set({ isSynced: synced });
     }
   },
+
+  // Sidebar panel
+  setSidebarPanel: (panel) => set({ sidebarPanel: panel }),
+
+  // Active file for status bar
+  setActiveFilePath: (path) => set({ activeFilePath: path }),
+  setCursorPosition: (pos) => set({ cursorPosition: pos }),
+  setSelectionCount: (count) => set({ selectionCount: count }),
 }));

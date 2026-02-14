@@ -1,9 +1,13 @@
 import SignUpPage from "@/components/auth/sign-up";
 import { getAuthConfig } from "auth/config";
-import { getIsFirstUser } from "lib/auth/server";
+import { getIsFirstUser, getSession } from "lib/auth/server";
 import { redirect } from "next/navigation";
 
 export default async function SignUp() {
+  const session = await getSession();
+  if (session) {
+    redirect("/");
+  }
   const isFirstUser = await getIsFirstUser();
   const {
     emailAndPasswordEnabled,

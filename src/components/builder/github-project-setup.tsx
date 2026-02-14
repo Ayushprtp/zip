@@ -157,9 +157,19 @@ export function GitHubProjectSetup({
         setGhAvatar(data.avatar_url || "");
         setIsConnected(true);
         setStep("choose");
+      } else if (res.status === 401) {
+        // Not authenticated — stay on connect step
+        setIsConnected(false);
+        setStep("connect");
+      } else {
+        // Server error — let user try manually
+        console.warn("[GitHubSetup] Connection check failed:", res.status);
+        setStep("connect");
       }
-    } catch {
-      // Not connected
+    } catch (err) {
+      // Network error — let user try manually
+      console.warn("[GitHubSetup] Connection check error:", err);
+      setStep("connect");
     }
   };
 
@@ -222,6 +232,18 @@ export function GitHubProjectSetup({
       return;
     }
 
+    // Validate project name format
+    const sanitizedName = projectName
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    if (!sanitizedName) {
+      toast.error("Invalid project name — use letters, numbers, and hyphens");
+      return;
+    }
+
     setLoading(true);
     try {
       // Create the repo via our GitHub API
@@ -229,10 +251,7 @@ export function GitHubProjectSetup({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: projectName
-            .toLowerCase()
-            .replace(/[^a-z0-9-]/g, "-")
-            .replace(/-+/g, "-"),
+          name: sanitizedName,
           description: `Created with Flare IDE${selectedFramework ? ` — ${selectedFramework}` : ""}`,
           private: isPrivate,
           auto_init: true,
@@ -240,7 +259,16 @@ export function GitHubProjectSetup({
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
+        if (res.status === 422) {
+          throw new Error(
+            `Repository "${sanitizedName}" already exists. Please choose a different name.`,
+          );
+        } else if (res.status === 401 || res.status === 403) {
+          throw new Error(
+            "GitHub authentication expired. Please reconnect your GitHub account.",
+          );
+        }
         throw new Error(err.error || "Failed to create repository");
       }
 
@@ -289,27 +317,43 @@ export function GitHubProjectSetup({
         }),
       });
 
-      // Branch creation may fail if it already exists — that's ok
-      if (res.ok || res.status === 422) {
-        onProjectReady({
-          type: "existing",
-          repo: {
-            owner: selectedRepo.owner.login,
-            name: selectedRepo.name,
-            fullName: selectedRepo.full_name,
-            isPrivate: selectedRepo.private,
-            defaultBranch: selectedRepo.default_branch || "main",
-          },
-          branch: branchName,
-          projectName: selectedRepo.name,
-        });
+      let useBranch = branchName;
 
-        toast.success(
-          `Connected to "${selectedRepo.full_name}" on branch "${branchName}"`,
+      if (res.ok) {
+        // Branch created successfully
+        toast.success(`Branch "${branchName}" created`);
+      } else if (res.status === 422) {
+        // Branch already exists — that's fine, use it
+        toast.info(`Branch "${branchName}" already exists — using it`);
+      } else if (res.status === 401 || res.status === 403) {
+        throw new Error(
+          "GitHub authentication expired. Please reconnect your account.",
         );
       } else {
-        throw new Error("Failed to create branch");
+        // Other error — fall back to default branch
+        console.warn(
+          "[GitHubSetup] Branch creation failed, using default branch",
+        );
+        useBranch = selectedRepo.default_branch || "main";
+        toast.warning(`Could not create branch — using "${useBranch}" instead`);
       }
+
+      onProjectReady({
+        type: "existing",
+        repo: {
+          owner: selectedRepo.owner.login,
+          name: selectedRepo.name,
+          fullName: selectedRepo.full_name,
+          isPrivate: selectedRepo.private,
+          defaultBranch: selectedRepo.default_branch || "main",
+        },
+        branch: useBranch,
+        projectName: selectedRepo.name,
+      });
+
+      toast.success(
+        `Connected to "${selectedRepo.full_name}" on branch "${useBranch}"`,
+      );
     } catch (err: any) {
       toast.error(err.message || "Failed to connect repository");
     } finally {

@@ -34,6 +34,9 @@ import {
   Book,
   Copy,
   RefreshCw,
+  Pencil,
+  Plus as PlusIcon,
+  ArrowRight,
 } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -311,6 +314,124 @@ function hasCodeBlocks(content: string): boolean {
   return /```[\w./-]*\n/.test(content);
 }
 
+// ─── Parse file changes from AI response ────────────────────────────────────
+interface FileChange {
+  filepath: string;
+  language: string;
+  content: string;
+  lineCount: number;
+  isNew: boolean;
+}
+
+function parseFileChanges(content: string): {
+  textParts: string[];
+  fileChanges: FileChange[];
+} {
+  const fileChanges: FileChange[] = [];
+  const filepathRegex =
+    /```([\w.*+-]*)\s+filepath:([^\n`]+\.[a-zA-Z0-9]+)\n([\s\S]*?)```/g;
+  let lastIndex = 0;
+  const textParts: string[] = [];
+  let match;
+
+  while ((match = filepathRegex.exec(content)) !== null) {
+    // Text before this code block
+    const textBefore = content.slice(lastIndex, match.index).trim();
+    if (textBefore) textParts.push(textBefore);
+
+    const lang = match[1] || "text";
+    let filepath = match[2].trim();
+    const code = match[3];
+    if (!filepath.startsWith("/")) filepath = "/" + filepath;
+
+    const lines = code.split("\n");
+    fileChanges.push({
+      filepath,
+      language: lang,
+      content: code,
+      lineCount: lines.length,
+      isNew: true, // Will be determined by parent context
+    });
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Remaining text after last code block
+  const remaining = content.slice(lastIndex).trim();
+  if (remaining) textParts.push(remaining);
+
+  return { textParts, fileChanges };
+}
+
+// ─── File Change Card ─────────────────────────────────────────────────────
+function FileChangeCard({ change }: { change: FileChange }) {
+  const [expanded, setExpanded] = useState(false);
+  const filename = change.filepath.split("/").pop() || change.filepath;
+  const dir = change.filepath.split("/").slice(0, -1).join("/");
+
+  return (
+    <div className="my-1.5 rounded-lg border border-border/40 bg-muted/20 overflow-hidden transition-all duration-200 hover:border-violet-500/30">
+      {/* Header */}
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/30 transition-colors"
+      >
+        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+          <div
+            className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+              change.isNew
+                ? "bg-emerald-500/20 text-emerald-400"
+                : "bg-amber-500/20 text-amber-400"
+            }`}
+          >
+            {change.isNew ? (
+              <PlusIcon className="h-2.5 w-2.5" />
+            ) : (
+              <Pencil className="h-2.5 w-2.5" />
+            )}
+          </div>
+          <span className="text-[10px] font-medium text-foreground/80 truncate">
+            {change.isNew ? "Created" : "Modified"}
+          </span>
+          <ArrowRight className="h-2.5 w-2.5 text-muted-foreground/50 shrink-0" />
+          <code className="text-[10px] font-mono text-violet-400 truncate">
+            {filename}
+          </code>
+          {dir && (
+            <span className="text-[9px] text-muted-foreground/50 truncate hidden sm:inline">
+              {dir}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted/50 text-muted-foreground font-mono">
+            {change.lineCount} lines
+          </span>
+          <span className="text-[9px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 font-mono">
+            {change.language}
+          </span>
+        </div>
+      </button>
+
+      {/* Expanded code preview */}
+      {expanded && (
+        <div className="border-t border-border/30">
+          <pre className="text-[10px] leading-relaxed p-3 overflow-x-auto max-h-[200px] overflow-y-auto bg-muted/10 font-mono text-foreground/70">
+            {change.content.split("\n").map((line, i) => (
+              <div key={i} className="flex">
+                <span className="select-none text-muted-foreground/30 w-8 text-right pr-3 shrink-0">
+                  {i + 1}
+                </span>
+                <span className="flex-1">{line}</span>
+              </div>
+            ))}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const MessageBubble = memo(function MessageBubble({
   message,
   isStreaming = false,
@@ -322,6 +443,12 @@ const MessageBubble = memo(function MessageBubble({
     () => !isUser && hasCodeBlocks(message.content),
     [isUser, message.content],
   );
+
+  // Parse file changes from the AI response
+  const parsed = useMemo(() => {
+    if (isUser || !containsCode) return null;
+    return parseFileChanges(message.content);
+  }, [isUser, containsCode, message.content]);
 
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(message.content).then(() => {
@@ -352,15 +479,40 @@ const MessageBubble = memo(function MessageBubble({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="text-[11px] leading-relaxed break-words whitespace-pre-wrap text-foreground/90">
-          {message.content}
-        </div>
-        {containsCode && !isStreaming && (
-          <div className="flex items-center gap-1 mt-1 text-[10px] text-emerald-500/70">
-            <FileCode2 className="h-3 w-3" />
-            <span>Files updated</span>
+        {/* If AI response has file changes, show compact format */}
+        {parsed && parsed.fileChanges.length > 0 ? (
+          <div>
+            {/* Explanation text (non-code parts) */}
+            {parsed.textParts.map((text, i) => (
+              <div
+                key={i}
+                className="text-[11px] leading-relaxed break-words whitespace-pre-wrap text-foreground/90 mb-1"
+              >
+                {text}
+              </div>
+            ))}
+
+            {/* File change cards */}
+            <div className="mt-2">
+              <div className="flex items-center gap-1.5 mb-1">
+                <FileCode2 className="h-3 w-3 text-emerald-400" />
+                <span className="text-[10px] font-semibold text-emerald-400">
+                  Doing Changes — {parsed.fileChanges.length}{" "}
+                  {parsed.fileChanges.length === 1 ? "file" : "files"}
+                </span>
+              </div>
+              {parsed.fileChanges.map((change, i) => (
+                <FileChangeCard key={i} change={change} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* Standard text rendering for user messages or non-code AI messages */
+          <div className="text-[11px] leading-relaxed break-words whitespace-pre-wrap text-foreground/90">
+            {message.content}
           </div>
         )}
+
         {isStreaming && (
           <span className="inline-block w-1.5 h-3.5 ml-0.5 bg-violet-400 animate-pulse rounded-sm" />
         )}

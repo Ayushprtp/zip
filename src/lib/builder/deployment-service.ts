@@ -198,7 +198,9 @@ export class DeploymentService {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.message || "Failed to upload deployment package");
+      throw new Error(
+        error.error || error.message || "Failed to upload deployment package",
+      );
     }
 
     const result = await response.json();

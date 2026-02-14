@@ -119,6 +119,48 @@ export async function POST(request: NextRequest) {
         );
       case "remove-port-forwarding":
         return handleRemovePortForwarding(sessionId!, params.forwardingType!);
+      case "create-terminal":
+        return handleCreateTerminal(
+          sessionId!,
+          params.terminalId!,
+          params.terminalConfig,
+        );
+      case "send-terminal-input":
+        return handleSendTerminalInput(
+          sessionId!,
+          params.terminalId!,
+          params.input!,
+        );
+      case "resize-terminal":
+        return handleResizeTerminal(
+          sessionId!,
+          params.terminalId!,
+          params.cols!,
+          params.rows!,
+        );
+      case "close-terminal":
+        return handleCloseTerminal(sessionId!, params.terminalId!);
+      case "run-git-command":
+        return handleRunGitCommand(sessionId!, params.gitCommand!, params.cwd);
+      case "run-task":
+        return handleRunTask(
+          sessionId!,
+          params.taskCommand!,
+          params.cwd,
+          params.background,
+        );
+      case "search-files":
+        return handleSearchFiles(
+          sessionId!,
+          params.query!,
+          params.cwd,
+          params.include,
+          params.exclude,
+        );
+      case "get-file-tree":
+        return handleGetFileTree(sessionId!, params.path);
+      case "sync-files":
+        return handleSyncFiles(sessionId!, params.operations || []);
       default:
         return NextResponse.json(
           { error: `Unknown action: ${action}` },
@@ -529,6 +571,51 @@ async function handleHeartbeat(sessionId: string): Promise<NextResponse> {
 // ============================================================================
 // Command execution
 // ============================================================================
+
+async function execCommand(
+  client: Client,
+  command: string,
+  options?: { cwd?: string; timeout?: number },
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve, reject) => {
+    const timeout = options?.timeout || 30000;
+    const timer = setTimeout(() => {
+      reject(new Error("Command timed out"));
+    }, timeout);
+
+    const wrappedCommand = options?.cwd
+      ? `cd "${options.cwd}" && ${command}`
+      : command;
+
+    client.exec(wrappedCommand, (err, stream) => {
+      if (err) {
+        clearTimeout(timer);
+        return reject(err);
+      }
+
+      let stdout = "";
+      let stderr = "";
+
+      stream.on("data", (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      stream.stderr?.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      stream.on("close", (code: number) => {
+        clearTimeout(timer);
+        resolve({ stdout, stderr, exitCode: code });
+      });
+
+      stream.on("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    });
+  });
+}
 
 async function handleExec(
   sessionId: string,
@@ -1301,23 +1388,301 @@ async function handleInstallRemoteServer(
   }
 
   try {
-    // For now, implement a basic remote server installer
-    // This would download and install a development server (like VS Code server)
     const installPath = "~/.flare-remote-server";
     const version = serverVersion || "latest";
 
     // Create installation directory
     await execOnClient(session.client, `mkdir -p "${installPath}"`);
 
-    // Download and install server (placeholder - would need actual implementation)
-    const installCommand = `
-      cd "${installPath}" &&
-      echo "Installing Flare Remote Development Server ${version}..." &&
-      # Placeholder: actual server download and installation would go here
-      echo "Server installed successfully"
-    `;
+    // Download the installation script from the local server
+    // In a real deployment, this would be from a CDN or GitHub release
+    // For development, we'll embed the script content directly
+    const installScriptContent = `#!/bin/bash
 
-    await execOnClient(session.client, installCommand);
+# Flare Remote Development Server Installation Script
+
+set -e
+
+echo "🚀 Installing Flare Remote Development Server..."
+
+# Check if Node.js is installed
+if ! command -v node &> /dev/null; then
+    echo "❌ Node.js is not installed. Please install Node.js 16+ first."
+    exit 1
+fi
+
+# Check Node.js version
+NODE_VERSION=$(node -v | sed 's/v//')
+REQUIRED_VERSION="16.0.0"
+
+if ! [ "$(printf '%s\\n' "$REQUIRED_VERSION" "$NODE_VERSION" | sort -V | head -n1)" = "$REQUIRED_VERSION" ]; then
+    echo "❌ Node.js version $NODE_VERSION is too old. Please upgrade to Node.js 16+."
+    exit 1
+fi
+
+echo "✅ Node.js $NODE_VERSION detected"
+
+# Check if npm is installed
+if ! command -v npm &> /dev/null; then
+    echo "❌ npm is not installed. Please install npm."
+    exit 1
+fi
+
+echo "✅ npm detected"
+
+# Create installation directory
+INSTALL_DIR="$HOME/.flare-remote-server"
+echo "📁 Installing to: $INSTALL_DIR"
+
+mkdir -p "$INSTALL_DIR"
+cd "$INSTALL_DIR"
+
+# Create package.json
+cat > package.json << 'EOL'
+{
+  "name": "flare-remote-server-instance",
+  "version": "1.0.0",
+  "description": "Flare Remote Development Server Instance",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "chokidar": "^3.5.3",
+    "ws": "^8.14.2"
+  }
+}
+EOL
+
+# Install dependencies
+echo "📦 Installing dependencies..."
+npm install --production
+
+# Download server code
+echo "⬇️ Downloading server code..."
+
+# For now, we'll embed the server code directly
+cat > index.js << 'EOL'
+const express = require('express');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+const chokidar = require('chokidar');
+const { WebSocketServer } = require('ws');
+const fs = require('fs');
+const path = require('path');
+
+const PORT = process.env.PORT || 37507;
+const HOST = process.env.HOST || '127.0.0.1';
+const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || process.cwd();
+
+class FlareRemoteServer {
+  constructor() {
+    this.workspaceRoot = WORKSPACE_ROOT;
+    this.app = express();
+    this.server = createServer(this.app);
+    this.io = new Server(this.server, {
+      cors: { origin: "*", methods: ["GET", "POST"] }
+    });
+    this.wss = new WebSocketServer({ server: this.server });
+    this.watcher = chokidar.watch(this.workspaceRoot, {
+      ignored: /(^|[\\\\/\\\\])\\../,
+      persistent: true,
+      ignoreInitial: true
+    });
+
+    this.setupMiddleware();
+    this.setupWebSocket();
+    this.setupFileWatcher();
+    this.setupRoutes();
+  }
+
+  setupMiddleware() {
+    this.app.use(express.json());
+    this.app.use(express.static(path.join(__dirname, 'public')));
+  }
+
+  setupWebSocket() {
+    this.io.on('connection', (socket) => {
+      console.log('Client connected:', socket.id);
+
+      socket.on('disconnect', () => {
+        console.log('Client disconnected:', socket.id);
+      });
+
+      socket.on('read-file', async (data) => {
+        try {
+          const filePath = path.resolve(this.workspaceRoot, data.path);
+          if (!filePath.startsWith(this.workspaceRoot)) {
+            socket.emit('error', { message: 'Access denied' });
+            return;
+          }
+          const content = fs.readFileSync(filePath, 'utf8');
+          socket.emit('file-content', { path: data.path, content });
+        } catch (error) {
+          socket.emit('error', { message: error.message });
+        }
+      });
+
+      socket.on('write-file', async (data) => {
+        try {
+          const filePath = path.resolve(this.workspaceRoot, data.path);
+          if (!filePath.startsWith(this.workspaceRoot)) {
+            socket.emit('error', { message: 'Access denied' });
+            return;
+          }
+          fs.writeFileSync(filePath, data.content, 'utf8');
+          socket.emit('file-saved', { path: data.path });
+        } catch (error) {
+          socket.emit('error', { message: error.message });
+        }
+      });
+
+      socket.on('list-directory', async (data) => {
+        try {
+          const dirPath = path.resolve(this.workspaceRoot, data.path || '');
+          if (!dirPath.startsWith(this.workspaceRoot)) {
+            socket.emit('error', { message: 'Access denied' });
+            return;
+          }
+          const items = fs.readdirSync(dirPath).map(item => {
+            const itemPath = path.join(dirPath, item);
+            const stats = fs.statSync(itemPath);
+            return {
+              name: item,
+              path: path.relative(this.workspaceRoot, itemPath),
+              type: stats.isDirectory() ? 'directory' : 'file',
+              size: stats.size,
+              modifiedAt: stats.mtime.toISOString()
+            };
+          });
+          socket.emit('directory-listing', { path: data.path, items });
+        } catch (error) {
+          socket.emit('error', { message: error.message });
+        }
+      });
+    });
+  }
+
+  setupFileWatcher() {
+    this.watcher.on('all', (event, filePath) => {
+      const relativePath = path.relative(this.workspaceRoot, filePath);
+      this.io.emit('file-change', {
+        event,
+        path: relativePath,
+        timestamp: new Date().toISOString()
+      });
+    });
+  }
+
+  setupRoutes() {
+    this.app.get('/health', (req, res) => {
+      res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        workspace: this.workspaceRoot,
+        port: PORT
+      });
+    });
+
+    this.app.get('/files/*', (req, res) => {
+      const filePath = path.resolve(this.workspaceRoot, req.params[0]);
+      if (!filePath.startsWith(this.workspaceRoot)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      if (fs.existsSync(filePath)) {
+        res.sendFile(filePath);
+      } else {
+        res.status(404).json({ error: 'File not found' });
+      }
+    });
+
+    this.app.get('/api/files', (req, res) => {
+      try {
+        const dirPath = req.query.path || '';
+        const fullPath = path.resolve(this.workspaceRoot, dirPath);
+        if (!fullPath.startsWith(this.workspaceRoot)) {
+          return res.status(403).json({ error: 'Access denied' });
+        }
+        const items = fs.readdirSync(fullPath).map(item => {
+          const itemPath = path.join(fullPath, item);
+          const stats = fs.statSync(itemPath);
+          return {
+            name: item,
+            path: path.relative(this.workspaceRoot, itemPath),
+            type: stats.isDirectory() ? 'directory' : 'file',
+            size: stats.size,
+            modifiedAt: stats.mtime.toISOString()
+          };
+        });
+        res.json({ items });
+      } catch (error) {
+        res.status(500).json({ error: error.message });
+      }
+    });
+  }
+
+  start() {
+    this.server.listen(PORT, HOST, () => {
+      console.log(\`🚀 Flare Remote Development Server running on \${HOST}:\${PORT}\`);
+      console.log(\`📁 Workspace: \${this.workspaceRoot}\`);
+      console.log(\`🔗 WebSocket endpoint: ws://\${HOST}:\${PORT}\`);
+      console.log(\`💻 Health check: http://\${HOST}:\${PORT}/health\`);
+    });
+
+    process.on('SIGINT', () => this.stop());
+    process.on('SIGTERM', () => this.stop());
+  }
+
+  stop() {
+    console.log('🛑 Shutting down Flare Remote Development Server...');
+    this.watcher.close();
+    this.io.close();
+    this.wss.close();
+    this.server.close(() => {
+      console.log('✅ Server stopped');
+      process.exit(0);
+    });
+  }
+}
+
+if (require.main === module) {
+  const server = new FlareRemoteServer();
+  server.start();
+}
+
+module.exports = FlareRemoteServer;
+EOL
+
+echo "✅ Server code installed"
+echo "🎉 Installation complete!"
+echo ""
+echo "To start the server, run:"
+echo "  cd $INSTALL_DIR && npm start"
+echo ""
+echo "Or with custom port:"
+echo "  PORT=8080 WORKSPACE_ROOT=/path/to/workspace npm start"
+`;
+
+    // Write the installation script to the remote machine
+    const tempScriptPath = "/tmp/flare-install.sh";
+    await execOnClient(
+      session.client,
+      `cat > ${tempScriptPath} << 'EOF'
+${installScriptContent}
+EOF`,
+    );
+
+    // Make it executable and run it
+    await execOnClient(session.client, `chmod +x ${tempScriptPath}`);
+    const installOutput = await execOnClient(
+      session.client,
+      `bash ${tempScriptPath}`,
+    );
+
+    // Clean up the temp script
+    await execOnClient(session.client, `rm ${tempScriptPath}`);
 
     // Update session with server info
     session.remoteServer = {
@@ -1334,6 +1699,7 @@ async function handleInstallRemoteServer(
       success: true,
       message: "Remote server installed successfully",
       serverInfo: session.remoteServer,
+      installOutput,
     });
   } catch (err: any) {
     return NextResponse.json(
@@ -1364,27 +1730,62 @@ async function handleStartRemoteServer(
 
   try {
     const port = serverConfig?.port || 37507; // Default port like VS Code
+    const workspaceRoot = serverConfig?.workspaceRoot || session.cwd || "~";
     const installPath = session.remoteServer.installPath;
 
-    // Start the remote server (placeholder - would start actual server)
+    // Check if server is already running
+    const checkCommand = `lsof -ti:${port} | wc -l`;
+    const runningCount = parseInt(
+      await execOnClient(session.client, checkCommand),
+    );
+
+    if (runningCount > 0) {
+      return NextResponse.json(
+        { error: `Port ${port} is already in use` },
+        { status: 409 },
+      );
+    }
+
+    // Start the remote server in background
     const startCommand = `
       cd "${installPath}" &&
       echo "Starting Flare Remote Development Server on port ${port}..." &&
-      # Placeholder: actual server startup would go here
-      echo "Server started on port ${port}" &&
-      echo ${port}
+      PORT=${port} WORKSPACE_ROOT="${workspaceRoot}" nohup npm start > server.log 2>&1 &
+      echo $! > server.pid
+      sleep 2
+      if kill -0 $(cat server.pid) 2>/dev/null; then
+        echo "Server started successfully on port ${port}"
+        echo ${port}
+      else
+        echo "Failed to start server"
+        cat server.log
+        exit 1
+      fi
     `;
 
     const result = await execOnClient(session.client, startCommand);
-    const listeningPort = parseInt(
-      result.trim().split("\n").pop() || port.toString(),
+    const lines = result.trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+
+    if (lastLine.includes("Failed to start server")) {
+      throw new Error(`Server startup failed: ${result}`);
+    }
+
+    const listeningPort = parseInt(lastLine) || port;
+
+    // Get the actual PID
+    const pidResult = await execOnClient(
+      session.client,
+      `cat "${installPath}/server.pid"`,
     );
+    const pid = parseInt(pidResult.trim());
 
     // Update server info
     session.remoteServer.listeningPort = listeningPort;
     session.remoteServer.status = "running";
     session.remoteServer.startedAt = Date.now();
-    session.remoteServer.pid = 12345; // Placeholder PID
+    session.remoteServer.pid = pid;
+    session.remoteServer.workspaceRoot = workspaceRoot;
 
     session.lastActivity = Date.now();
 
@@ -1423,10 +1824,34 @@ async function handleStopRemoteServer(
   }
 
   try {
-    // Stop the remote server (placeholder)
+    const installPath = session.remoteServer.installPath;
+    // Stop the remote server
     const stopCommand = `
-      echo "Stopping Flare Remote Development Server..." &&
-      # Placeholder: actual server stop command would go here
+      if [ -f "${installPath}/server.pid" ]; then
+        SERVER_PID=$(cat "${installPath}/server.pid")
+        if kill -0 $SERVER_PID 2>/dev/null; then
+          echo "Stopping Flare Remote Development Server (PID: $SERVER_PID)..."
+          kill $SERVER_PID
+          sleep 2
+          if kill -0 $SERVER_PID 2>/dev/null; then
+            echo "Force killing server..."
+            kill -9 $SERVER_PID
+          fi
+        else
+          echo "Server process not running"
+        fi
+        rm -f "${installPath}/server.pid"
+      else
+        echo "No PID file found, attempting to kill by port..."
+        PORT=${session.remoteServer.listeningPort}
+        if [ -n "$PORT" ]; then
+          PIDS=$(lsof -ti:$PORT)
+          if [ -n "$PIDS" ]; then
+            echo "Killing processes on port $PORT: $PIDS"
+            kill $PIDS
+          fi
+        fi
+      fi
       echo "Server stopped"
     `;
 
@@ -1435,6 +1860,7 @@ async function handleStopRemoteServer(
     // Update server info
     session.remoteServer.status = "stopped";
     session.remoteServer.pid = undefined;
+    session.remoteServer.stoppedAt = Date.now();
 
     session.lastActivity = Date.now();
 
@@ -1469,15 +1895,65 @@ async function handleGetRemoteServerStatus(
     );
   }
 
-  // Update last health check
-  session.remoteServer.lastHealthCheck = Date.now();
-  session.lastActivity = Date.now();
+  try {
+    const port = session.remoteServer.listeningPort;
 
-  return NextResponse.json({
-    success: true,
-    serverInfo: session.remoteServer,
-    portForwarding: session.portForwarding,
-  });
+    // Check if server process is running
+    let isRunning = false;
+    let healthCheckResult = null;
+
+    if (session.remoteServer.pid) {
+      const pidCheck = await execOnClient(
+        session.client,
+        `kill -0 ${session.remoteServer.pid} 2>/dev/null && echo "running" || echo "stopped"`,
+      );
+      isRunning = pidCheck.trim() === "running";
+    }
+
+    // Also check if port is listening
+    if (port) {
+      const portCheck = await execOnClient(
+        session.client,
+        `lsof -ti:${port} | wc -l`,
+      );
+      const portCount = parseInt(portCheck.trim());
+      isRunning = isRunning || portCount > 0;
+    }
+
+    // Try to get health check from server
+    if (isRunning && port) {
+      try {
+        const healthCommand = `curl -s -m 5 http://localhost:${port}/health`;
+        const healthResponse = await execOnClient(
+          session.client,
+          healthCommand,
+        );
+        healthCheckResult = JSON.parse(healthResponse);
+      } catch (err) {
+        // Health check failed, but server might still be running
+        console.log("Health check failed:", err);
+      }
+    }
+
+    // Update server status
+    session.remoteServer.status = isRunning ? "running" : "stopped";
+    session.remoteServer.lastHealthCheck = Date.now();
+    session.remoteServer.healthCheckResult = healthCheckResult;
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      serverInfo: session.remoteServer,
+      portForwarding: session.portForwarding,
+      healthCheck: healthCheckResult,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to check server status: ${err.message}` },
+      { status: 500 },
+    );
+  }
 }
 
 async function handleSetupPortForwarding(
@@ -1503,62 +1979,218 @@ async function handleSetupPortForwarding(
       // Setup SOCKS proxy (like VS Code's -D flag)
       const localPort = forwardingConfig.port || 59840;
 
-      // Placeholder: actual SOCKS server setup would go here
-      session.portForwarding.dynamicForwarding = {
-        localPort,
-        server: {}, // Placeholder for SOCKS server instance
-      };
+      // Check if port is available
+      try {
+        const portCheck = await execOnClient(
+          session.client,
+          `lsof -ti:${localPort} | wc -l`,
+        );
+        if (parseInt(portCheck.trim()) > 0) {
+          return NextResponse.json(
+            { error: `Local port ${localPort} is already in use` },
+            { status: 409 },
+          );
+        }
+      } catch (_err) {
+        // Port check failed, assume it's available
+      }
 
-      return NextResponse.json({
-        success: true,
-        message: `Dynamic port forwarding setup on local port ${localPort}`,
-        portForwarding: session.portForwarding,
+      // Setup dynamic (SOCKS) port forwarding
+      return new Promise((resolve) => {
+        session.client.forwardOut(
+          "127.0.0.1",
+          localPort,
+          "127.0.0.1",
+          0, // Dynamic forwarding
+          (err, stream) => {
+            if (err) {
+              resolve(
+                NextResponse.json(
+                  {
+                    error: `Failed to setup dynamic forwarding: ${err.message}`,
+                  },
+                  { status: 500 },
+                ),
+              );
+              return;
+            }
+
+            session.portForwarding!.dynamicForwarding = {
+              localPort,
+              server: stream, // Store the stream for cleanup
+            };
+
+            resolve(
+              NextResponse.json({
+                success: true,
+                message: `Dynamic port forwarding setup on local port ${localPort}`,
+                portForwarding: session.portForwarding,
+              }),
+            );
+          },
+        );
       });
     }
 
     if (forwardingType === "local") {
       // Local port forwarding: localPort -> remoteHost:remotePort
-      const { localPort, remoteHost, remotePort } = forwardingConfig;
+      const {
+        localPort,
+        remoteHost = "127.0.0.1",
+        remotePort,
+      } = forwardingConfig;
 
-      // Placeholder: actual local forwarding setup
-      if (!session.portForwarding.localForwarding) {
-        session.portForwarding.localForwarding = [];
+      if (!localPort || !remotePort) {
+        return NextResponse.json(
+          {
+            error: "localPort and remotePort are required for local forwarding",
+          },
+          { status: 400 },
+        );
       }
 
-      session.portForwarding.localForwarding.push({
-        localPort,
-        remoteHost,
-        remotePort,
-        server: {}, // Placeholder for forwarding server
-      });
+      // Check if local port is available
+      try {
+        const portCheck = await execOnClient(
+          session.client,
+          `lsof -ti:${localPort} | wc -l`,
+        );
+        if (parseInt(portCheck.trim()) > 0) {
+          return NextResponse.json(
+            { error: `Local port ${localPort} is already in use` },
+            { status: 409 },
+          );
+        }
+      } catch (_err) {
+        // Port check failed, assume it's available
+      }
 
-      return NextResponse.json({
-        success: true,
-        message: `Local port forwarding setup: ${localPort} -> ${remoteHost}:${remotePort}`,
-        portForwarding: session.portForwarding,
+      // Setup local port forwarding
+      return new Promise((resolve) => {
+        session.client.forwardIn("127.0.0.1", localPort, (err) => {
+          if (err) {
+            resolve(
+              NextResponse.json(
+                { error: `Failed to setup local forwarding: ${err.message}` },
+                { status: 500 },
+              ),
+            );
+            return;
+          }
+
+          // Listen for connections on the forwarded port
+          session.client.on("tcp connection", (info, accept, reject) => {
+            if (info.destPort === localPort) {
+              const stream = accept();
+              // Forward to remote host/port
+              session.client.forwardOut(
+                info.srcIP,
+                info.srcPort,
+                remoteHost,
+                remotePort,
+                (err, upstream) => {
+                  if (err) {
+                    stream.end();
+                    return;
+                  }
+                  stream.pipe(upstream).pipe(stream);
+                },
+              );
+            } else {
+              reject();
+            }
+          });
+
+          if (!session.portForwarding!.localForwarding) {
+            session.portForwarding!.localForwarding = [];
+          }
+
+          session.portForwarding!.localForwarding.push({
+            localPort,
+            remoteHost,
+            remotePort,
+            server: "active", // Mark as active
+          });
+
+          resolve(
+            NextResponse.json({
+              success: true,
+              message: `Local port forwarding setup: ${localPort} -> ${remoteHost}:${remotePort}`,
+              portForwarding: session.portForwarding,
+            }),
+          );
+        });
       });
     }
 
     if (forwardingType === "remote") {
       // Remote port forwarding: remotePort -> localHost:localPort
-      const { remotePort, localHost, localPort } = forwardingConfig;
+      const {
+        remotePort,
+        localHost = "127.0.0.1",
+        localPort,
+      } = forwardingConfig;
 
-      // Placeholder: actual remote forwarding setup
-      if (!session.portForwarding.remoteForwarding) {
-        session.portForwarding.remoteForwarding = [];
+      if (!remotePort || !localPort) {
+        return NextResponse.json(
+          {
+            error:
+              "remotePort and localPort are required for remote forwarding",
+          },
+          { status: 400 },
+        );
       }
 
-      session.portForwarding.remoteForwarding.push({
-        remotePort,
-        localHost,
-        localPort,
-        tunnel: {}, // Placeholder for SSH tunnel
-      });
+      // Setup remote port forwarding
+      return new Promise((resolve) => {
+        session.client.forwardIn("127.0.0.1", remotePort, (err) => {
+          if (err) {
+            resolve(
+              NextResponse.json(
+                { error: `Failed to setup remote forwarding: ${err.message}` },
+                { status: 500 },
+              ),
+            );
+            return;
+          }
 
-      return NextResponse.json({
-        success: true,
-        message: `Remote port forwarding setup: ${remotePort} -> ${localHost}:${localPort}`,
-        portForwarding: session.portForwarding,
+          // Listen for connections on the remote forwarded port
+          session.client.on("tcp connection", (info, accept, reject) => {
+            if (info.destPort === remotePort) {
+              const remoteStream = accept();
+              // Connect to local host/port
+              const net = require("net");
+              const localSocket = net.connect(localPort, localHost, () => {
+                remoteStream.pipe(localSocket).pipe(remoteStream);
+              });
+
+              localSocket.on("error", () => {
+                remoteStream.end();
+              });
+            } else {
+              reject();
+            }
+          });
+
+          if (!session.portForwarding!.remoteForwarding) {
+            session.portForwarding!.remoteForwarding = [];
+          }
+
+          session.portForwarding!.remoteForwarding.push({
+            remotePort,
+            localHost,
+            localPort,
+            tunnel: "active", // Mark as active
+          });
+
+          resolve(
+            NextResponse.json({
+              success: true,
+              message: `Remote port forwarding setup: ${remotePort} -> ${localHost}:${localPort}`,
+              portForwarding: session.portForwarding,
+            }),
+          );
+        });
       });
     }
 
@@ -1598,12 +2230,29 @@ async function handleRemovePortForwarding(
       forwardingType === "dynamic" &&
       session.portForwarding.dynamicForwarding
     ) {
-      // Stop SOCKS server
+      // For dynamic forwarding, we can't explicitly close the SOCKS server
+      // but we can mark it as inactive
+      const { localPort } = session.portForwarding.dynamicForwarding;
+
+      // Try to unforward the port
+      try {
+        session.client.unforwardIn("127.0.0.1", localPort);
+      } catch (_err) {
+        // Ignore errors during cleanup
+      }
+
       session.portForwarding.dynamicForwarding = undefined;
     }
 
     if (forwardingType === "local" && session.portForwarding.localForwarding) {
-      // Stop local forwarding servers
+      // Stop local forwarding by unforwarding each port
+      for (const forwarding of session.portForwarding.localForwarding) {
+        try {
+          session.client.unforwardIn("127.0.0.1", forwarding.localPort);
+        } catch (_err) {
+          // Ignore errors during cleanup
+        }
+      }
       session.portForwarding.localForwarding = [];
     }
 
@@ -1611,7 +2260,14 @@ async function handleRemovePortForwarding(
       forwardingType === "remote" &&
       session.portForwarding.remoteForwarding
     ) {
-      // Stop remote forwarding tunnels
+      // Stop remote forwarding by unforwarding each port
+      for (const forwarding of session.portForwarding.remoteForwarding) {
+        try {
+          session.client.unforwardIn("127.0.0.1", forwarding.remotePort);
+        } catch (_err) {
+          // Ignore errors during cleanup
+        }
+      }
       session.portForwarding.remoteForwarding = [];
     }
 
@@ -1625,6 +2281,443 @@ async function handleRemovePortForwarding(
   } catch (err: any) {
     return NextResponse.json(
       { error: `Failed to remove port forwarding: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+// ============================================================================
+// Remote Development Environment Handlers
+// ============================================================================
+
+async function handleCreateTerminal(
+  sessionId: string,
+  terminalId: string,
+  terminalConfig?: any,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  if (!session.remoteServer || session.remoteServer.status !== "running") {
+    return NextResponse.json(
+      { error: "Remote server not running" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    // For now, create terminal directly via SSH
+    // In a full implementation, this would proxy to the remote server
+    const shell = terminalConfig?.shell || "/bin/bash";
+    const cwd = terminalConfig?.cwd || session.cwd || "~";
+
+    // This is a placeholder - in a real implementation, we'd use a proper
+    // PTY library or proxy to the remote server
+    await execOnClient(
+      session.client,
+      `echo "Terminal ${terminalId} created with shell: ${shell}"`,
+    );
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      terminalId,
+      message: "Terminal created successfully",
+      shell,
+      cwd,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to create terminal: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleSendTerminalInput(
+  sessionId: string,
+  terminalId: string,
+  input: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    // This is a placeholder - in a real implementation, we'd send input to the PTY
+    // For now, just execute the input as a command
+    const result = await execOnClient(session.client, input);
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      terminalId,
+      output: result,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to send terminal input: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleResizeTerminal(
+  sessionId: string,
+  terminalId: string,
+  cols: number,
+  rows: number,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    // This is a placeholder - in a real implementation, we'd resize the PTY
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      terminalId,
+      cols,
+      rows,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to resize terminal: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleCloseTerminal(
+  sessionId: string,
+  terminalId: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    // This is a placeholder - in a real implementation, we'd close the PTY
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      terminalId,
+      message: "Terminal closed",
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to close terminal: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleRunGitCommand(
+  sessionId: string,
+  gitCommand: string,
+  cwd?: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    const workDir = cwd || session.cwd || "~";
+    const fullCommand = `cd "${workDir}" && git ${gitCommand}`;
+
+    const result = await execOnClient(session.client, fullCommand);
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      command: gitCommand,
+      output: result,
+      cwd: workDir,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to run git command: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleRunTask(
+  sessionId: string,
+  taskCommand: string,
+  cwd?: string,
+  background?: boolean,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    const workDir = cwd || session.cwd || "~";
+
+    if (background) {
+      // Run in background
+      const bgCommand = `cd "${workDir}" && nohup ${taskCommand} > /dev/null 2>&1 & echo $!`;
+      const result = await execOnClient(session.client, bgCommand);
+
+      session.lastActivity = Date.now();
+
+      return NextResponse.json({
+        success: true,
+        command: taskCommand,
+        background: true,
+        pid: result.trim(),
+        cwd: workDir,
+      });
+    } else {
+      // Run synchronously
+      const fullCommand = `cd "${workDir}" && ${taskCommand}`;
+      const result = await execOnClient(session.client, fullCommand);
+
+      session.lastActivity = Date.now();
+
+      return NextResponse.json({
+        success: true,
+        command: taskCommand,
+        output: result,
+        cwd: workDir,
+      });
+    }
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to run task: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleSearchFiles(
+  sessionId: string,
+  query: string,
+  cwd?: string,
+  include?: string,
+  exclude?: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    const workDir = cwd || session.cwd || "~";
+
+    // Use grep for searching
+    let grepCommand = `cd "${workDir}" && grep -r -n "${query}" .`;
+
+    if (include) {
+      grepCommand += ` --include="${include}"`;
+    }
+
+    if (exclude) {
+      grepCommand += ` --exclude="${exclude}"`;
+    }
+
+    grepCommand += ` 2>/dev/null || true`; // Don't fail if no matches
+
+    const result = await execOnClient(session.client, grepCommand);
+
+    // Parse grep output
+    const lines = result.split("\n").filter((line) => line.trim());
+    const matches = lines
+      .map((line) => {
+        const match = line.match(/^([^:]+):(\d+):(.*)$/);
+        if (match) {
+          return {
+            file: match[1],
+            line: parseInt(match[2]),
+            content: match[3],
+          };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      query,
+      matches,
+      cwd: workDir,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to search files: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+// ============================================================================
+// File Tree Handler
+// ============================================================================
+
+async function handleGetFileTree(
+  sessionId: string,
+  path?: string,
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    const workDir = path || session.cwd || "~";
+
+    // Use find command to get file tree
+    const { stdout } = await execCommand(
+      session.client,
+      `find "${workDir}" -maxdepth 3 -type f -o -type d | head -100`,
+      { cwd: workDir },
+    );
+
+    const files = stdout
+      .trim()
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => {
+        const isDir = line.endsWith("/");
+        return {
+          name: line.split("/").pop() || line,
+          path: line,
+          type: isDir ? "directory" : "file",
+        };
+      });
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      files,
+      cwd: workDir,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to get file tree: ${err.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+// ============================================================================
+// File Sync Handler
+// ============================================================================
+
+async function handleSyncFiles(
+  sessionId: string,
+  operations: any[],
+): Promise<NextResponse> {
+  const session = getSession(sessionId);
+  if (!session) {
+    return NextResponse.json(
+      { error: "No active SSH session" },
+      { status: 404 },
+    );
+  }
+
+  try {
+    const results: Array<{
+      type: string;
+      path: string;
+      dest?: string;
+      success: boolean;
+      error?: string;
+    }> = [];
+
+    for (const op of operations) {
+      switch (op.type) {
+        case "create":
+        case "update":
+          await execCommand(
+            session.client,
+            `echo '${op.content?.replace(/'/g, "'\"'\"'")}' > "${op.remotePath}"`,
+            { cwd: session.cwd },
+          );
+          results.push({ type: op.type, path: op.remotePath, success: true });
+          break;
+
+        case "delete":
+          await execCommand(session.client, `rm -f "${op.remotePath}"`, {
+            cwd: session.cwd,
+          });
+          results.push({ type: op.type, path: op.remotePath, success: true });
+          break;
+
+        case "move":
+          await execCommand(
+            session.client,
+            `mv "${op.remotePath}" "${op.destPath}"`,
+            { cwd: session.cwd },
+          );
+          results.push({
+            type: op.type,
+            path: op.remotePath,
+            dest: op.destPath,
+            success: true,
+          });
+          break;
+
+        default:
+          results.push({
+            type: op.type,
+            path: op.remotePath,
+            success: false,
+            error: "Unknown operation type",
+          });
+      }
+    }
+
+    session.lastActivity = Date.now();
+
+    return NextResponse.json({
+      success: true,
+      results,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: `Failed to sync files: ${err.message}` },
       { status: 500 },
     );
   }

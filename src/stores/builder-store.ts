@@ -210,7 +210,12 @@ export const useBuilderStore = create<BuilderStore>((set, _get) => ({
         },
       );
 
-      if (!response.ok) throw new Error("Failed to add message");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(
+          `Failed to add message: ${response.status} ${response.statusText} - ${errorText}`,
+        );
+      }
 
       const data = await response.json();
 

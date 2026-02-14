@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useBuilderStore } from "@/stores/builder-store";
 import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { SandpackWrapper } from "./SandpackWrapper";
 import { ChatInterface } from "./chat-interface";
 import { CheckpointHistory } from "./checkpoint-history";
+import { ChatHistoryModal } from "./ChatHistoryModal";
 import { ProjectProvider, useProject } from "@/lib/builder/project-context";
 import { useProjectSync } from "@/lib/builder/use-project-sync";
 import { useGitAutoCommit } from "@/lib/builder/git-auto-commit";
 import { toast } from "sonner";
+import { VercelConnectModal } from "./VercelConnectModal";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -37,6 +39,7 @@ import {
   Map,
   Zap,
   ChevronDown,
+  Database,
 } from "lucide-react";
 import { BuilderHeader } from "./BuilderHeader";
 import { exportService } from "@/lib/builder/export-service";
@@ -278,6 +281,7 @@ interface BuilderThreadPageProps {
 // ─── Inner Component ────────────────────────────────────────────────────────
 function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const currentThread = useBuilderStore((s) => s.currentThread);
   const files = useBuilderStore((s) => s.files);
@@ -335,6 +339,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
   const [deploymentError, setDeploymentError] = useState<string | undefined>();
   const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
+  const [showVercelConnect, setShowVercelConnect] = useState(false);
 
   // Chat mode
   const [chatMode, setChatMode] = useState<ChatMode>("agent");
@@ -367,6 +372,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
+  const [showChatHistory, setShowChatHistory] = useState(false);
 
   // .flare-sh chat storage
   const storageRef = useRef<FlareChatStorage | null>(null);
@@ -448,6 +454,37 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       /* Config not available */
     }
   }, [threadId]);
+
+  // Initial commit for new repos
+  const initRepoRef = useRef(false);
+  useEffect(() => {
+    const shouldInit = searchParams.get("initRepo");
+
+    if (
+      shouldInit &&
+      !initRepoRef.current &&
+      gitConfigured &&
+      commitAndPush &&
+      Object.keys(state.files).length > 0
+    ) {
+      initRepoRef.current = true;
+
+      const filesList = Object.entries(state.files)
+        .filter(([path]) => !path.startsWith("/.flare-sh/"))
+        .map(([path, content]) => ({ path, content }));
+
+      toast.promise(commitAndPush(filesList, "Initial commit from Flare IDE"), {
+        loading: "Pushing initial files to GitHub...",
+        success: (res) => {
+          // Clean URL param
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, "", newUrl);
+          return `Initial commit pushed: ${res?.sha.slice(0, 7) || "Done"}`;
+        },
+        error: "Failed to push initial files",
+      });
+    }
+  }, [searchParams, gitConfigured, commitAndPush, state.files]);
 
   // Load thread data
   useEffect(() => {
@@ -573,6 +610,13 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       console.error("Deployment failed:", error);
       const errorMessage =
         error instanceof Error ? error.message : "Deployment failed";
+
+      if (errorMessage.includes("Vercel token not configured")) {
+        setShowVercelConnect(true);
+        setShowDeploymentProgress(false);
+        return;
+      }
+
       setDeploymentError(errorMessage);
       toast.error(errorMessage);
     }
@@ -599,17 +643,118 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         path: string;
         content: string;
       }> = [];
-      const codeBlockRegex =
-        /```(?:[\w.*+-]*\s+)?(?:filepath:)?([^\n`]+\.[a-zA-Z0-9]+)\n([\s\S]*?)```/g;
+      const seen = new Set<string>();
+
+      // Pass 1: Match code blocks WITH filepath: prefix (preferred)
+      const filepathRegex =
+        /```(?:[\w.*+-]*)\s+filepath:([^\n`]+\.[a-zA-Z0-9]+)\n([\s\S]*?)```/g;
       let match;
-      while ((match = codeBlockRegex.exec(response)) !== null) {
+      while ((match = filepathRegex.exec(response)) !== null) {
         let path = match[1].trim().replace(/\s+$/, "");
         const content = match[2].trimEnd();
         if (!path.includes(".")) continue;
         if (!path.startsWith("/")) path = "/" + path;
+        if (seen.has(path)) continue;
+        seen.add(path);
         const type = state.files[path] ? "update" : "create";
         operations.push({ type, path, content });
       }
+
+      // Pass 2 (fallback): Match ALL code blocks, try to infer filename
+      // from "Save as `filename`" text nearby or language extension
+      if (operations.length === 0) {
+        const langExtMap: Record<string, string> = {
+          python: ".py",
+          javascript: ".js",
+          typescript: ".ts",
+          jsx: ".jsx",
+          tsx: ".tsx",
+          java: ".java",
+          cpp: ".cpp",
+          c: ".c",
+          csharp: ".cs",
+          html: ".html",
+          css: ".css",
+          json: ".json",
+          yaml: ".yml",
+          sh: ".sh",
+          bash: ".sh",
+          rust: ".rs",
+          go: ".go",
+          ruby: ".rb",
+          php: ".php",
+          sql: ".sql",
+          swift: ".swift",
+          kotlin: ".kt",
+          scss: ".scss",
+          less: ".less",
+          xml: ".xml",
+          markdown: ".md",
+          md: ".md",
+        };
+
+        // Match all code blocks: ```lang\n(code)\n```
+        const allBlocksRegex = /```([\w.*+-]*)\n([\s\S]*?)```/g;
+        let blockMatch;
+        let blockIndex = 0;
+        while ((blockMatch = allBlocksRegex.exec(response)) !== null) {
+          const lang = blockMatch[1].trim().toLowerCase();
+          const content = blockMatch[2].trimEnd();
+          const blockEnd = blockMatch.index + blockMatch[0].length;
+
+          // Skip empty or very short blocks (likely not file content)
+          if (content.length < 5) continue;
+
+          // Try to find "Save as `filename`" or "File: filename" after block
+          const afterText = response.slice(blockEnd, blockEnd + 200);
+          const saveAsMatch = afterText.match(
+            /(?:save\s+(?:as|to)|file(?:name)?\s*:|create\s+(?:as|file))\s*[`'"]?([\w./-]+\.[a-zA-Z0-9]+)[`'"]?/i,
+          );
+
+          // Also try before the block for headers like "## filename.ext"
+          const beforeText = response.slice(
+            Math.max(0, blockMatch.index - 150),
+            blockMatch.index,
+          );
+          const headerMatch = beforeText.match(
+            /(?:#+\s*|\*\*)?(?:File:\s*|filename:\s*)?[`'"]?([\w./-]+\.[a-zA-Z0-9]+)[`'"]?\s*(?:\*\*)?\s*$/im,
+          );
+
+          let path: string | null = null;
+
+          if (saveAsMatch) {
+            path = saveAsMatch[1];
+          } else if (headerMatch && headerMatch[1].includes(".")) {
+            // Only use header match if it looks like a real filename
+            const candidate = headerMatch[1];
+            // Filter out common non-filenames
+            if (
+              !candidate.match(/^(Hello|Creating|Programs|Languages|Various)/i)
+            ) {
+              path = candidate;
+            }
+          }
+
+          // Last resort: generate filename from language
+          if (!path && lang && langExtMap[lang]) {
+            const ext = langExtMap[lang];
+            path = `/untitled_${blockIndex}${ext}`;
+          }
+
+          if (path) {
+            if (!path.startsWith("/")) path = "/" + path;
+            if (seen.has(path)) {
+              blockIndex++;
+              continue;
+            }
+            seen.add(path);
+            const type = state.files[path] ? "update" : "create";
+            operations.push({ type, path, content });
+          }
+          blockIndex++;
+        }
+      }
+
       return operations;
     },
     [state.files],
@@ -671,7 +816,6 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     },
     [activeChatId, activeTaskPlan],
   );
-
   // ─── Start All Tasks Sequentially ─────────────────────────────────────
   const handleStartAllTasks = useCallback(async () => {
     if (!activeTaskPlan) return;
@@ -682,6 +826,68 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       await handleStartTask(task);
     }
   }, [activeTaskPlan, handleStartTask]);
+
+  const handleManualCommit = useCallback(
+    async (
+      message: string,
+      overrideFiles?: Array<{ path: string; content: string }>,
+    ) => {
+      if (!commitAndPush) {
+        toast.error(
+          "Git integration not configured. Connect a GitHub repo first.",
+        );
+        return;
+      }
+
+      if (!repoConfig) {
+        toast.error(
+          "No repository configured. Create or connect a repo from the project setup.",
+        );
+        return;
+      }
+
+      // Prepare files — strip leading / for GitHub
+      let fileList = overrideFiles;
+
+      if (!fileList) {
+        fileList = Object.entries(state.files)
+          .filter(([path]) => !path.startsWith("/.flare-sh/"))
+          .map(([path, content]) => ({
+            path: path.replace(/^\//, ""),
+            content,
+          }));
+      } else {
+        fileList = fileList.map((f) => ({
+          path: f.path.replace(/^\//, ""),
+          content: f.content,
+        }));
+      }
+
+      if (fileList.length === 0) {
+        toast.warning("No files to commit");
+        return;
+      }
+
+      try {
+        const result = await commitAndPush(fileList, message);
+        if (result) {
+          setHasUncommittedChanges(false);
+          toast.success(`Committed ${fileList.length} files`, {
+            description: `${result.sha.slice(0, 7)} — ${message}`,
+            duration: 5000,
+          });
+        } else {
+          toast.error(
+            "Commit failed. Check your GitHub App configuration and repo access.",
+          );
+        }
+      } catch (err: any) {
+        console.error("Manual commit error:", err);
+        toast.error(err.message || "Commit failed unexpectedly");
+      }
+    },
+    [state.files, commitAndPush, repoConfig],
+  );
 
   const handleStopStreaming = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -731,10 +937,10 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         } else if (chatMode === "plan") {
           modeInstructions = `\n\nMODE: PLAN\nCreate a detailed, hierarchical implementation plan using markdown headers and bullet points.\n\nFormat your plan using:\n## Major Phase/Section (e.g., "## Core Features", "## User Authentication")\n### Sub-section (e.g., "### Login System", "### Video Upload")\n- Specific task items as bullet points under each section\n- Each bullet should be a concrete, actionable task\n\nMake the plan thorough with clear phases, sections, and detailed tasks.\nDo NOT output code blocks with file paths. Just plan the work.`;
         } else {
-          modeInstructions = `\n\nMODE: AGENT\nActively modify the codebase. Generate complete, working code wrapped in code blocks with file paths using format: \`\`\`language filepath:/path/to/file.ext`;
+          modeInstructions = `\n\nMODE: AGENT\nActively modify the codebase. You MUST generate complete, working code files.\n\nCRITICAL — OUTPUT FORMAT:\nEvery code block MUST start with the filepath on the first line after the language identifier.\nUse this EXACT format (no exceptions):\n\n\`\`\`tsx filepath:/src/App.tsx\nimport React from 'react';\n// ... complete file content\nexport default App;\n\`\`\`\n\nAnother example:\n\`\`\`css filepath:/src/styles.css\nbody { margin: 0; }\n\`\`\`\n\nDo NOT output code blocks without \"filepath:\". Every code block MUST have filepath.`;
         }
 
-        const systemPrompt = `You are Builder AI — an expert code generator for a web-based IDE.\n\nPROJECT TEMPLATE: ${currentThread?.template || "react"}\n${templateGuide}${modeInstructions}\n\nRULES:\n1. Wrap each file in a code block with filepath: \`\`\`language filepath:/path/to/file.ext\n2. Always include complete, working code.\n3. Follow modern best practices and use TypeScript where applicable.\n4. When modifying existing code, output the COMPLETE file content.\n\nCurrent project files:\n${
+        const systemPrompt = `You are Builder AI — an expert code generator for a web-based IDE.\n\nPROJECT TEMPLATE: ${currentThread?.template || "react"}\n${templateGuide}${modeInstructions}\n\nRULES:\n1. EVERY code block MUST use: \`\`\`language filepath:/path/to/file.ext — this is MANDATORY, no exceptions.\n2. Always include complete, working code — never partial snippets.\n3. Follow modern best practices, use TypeScript where applicable.\n4. When modifying existing code, output the COMPLETE file content.\n5. Do NOT use "Save as" instructions — use the filepath: syntax instead.\n\nCurrent project files:\n${
           Object.keys(state.files)
             .filter((f) => !f.startsWith("/.flare-sh/"))
             .join(", ") || "No files yet"
@@ -785,6 +991,82 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         if (aiMsg) setLocalMessages((prev) => [...prev, aiMsg]);
         await addMessage(threadId, "assistant", fullText, []).catch(() => {});
 
+        // Apply generated code changes
+        if (chatMode === "agent") {
+          const operations = parseAIResponse(fullText);
+          if (operations.length > 0) {
+            const changedNames: string[] = [];
+            const changedFiles: Array<{ path: string; content: string }> = [];
+
+            operations.forEach((op) => {
+              if (op.type === "delete") {
+                actions.deleteFile(op.path);
+                changedNames.push(op.path.split("/").pop() || op.path);
+              } else if (op.content) {
+                const safePath = op.path.startsWith("/")
+                  ? op.path
+                  : "/" + op.path;
+                actions.updateFile(safePath, op.content);
+                changedNames.push(safePath.split("/").pop() || safePath);
+                changedFiles.push({
+                  path: safePath.replace(/^\//, ""),
+                  content: op.content,
+                });
+              }
+            });
+
+            if (changedNames.length > 0) {
+              const fileLabel =
+                changedNames.length === 1
+                  ? changedNames[0]
+                  : `${changedNames.length} files`;
+              const description =
+                changedNames.length > 1
+                  ? changedNames.join(", ")
+                  : operations[0]?.path || "";
+              toast.success(`✅ Updated: ${fileLabel}`, {
+                description,
+                duration: 5000,
+              });
+
+              // ── Auto Git Commit & Push ──────────────────────────────
+              if (gitConfigured && changedFiles.length > 0) {
+                const commitMsg = `feat(ai): update ${changedNames.join(", ")}`;
+                try {
+                  const checkpoint = await commitAndPush(
+                    changedFiles,
+                    commitMsg,
+                  );
+                  if (checkpoint) {
+                    setHasUncommittedChanges(false);
+                    toast.success(`🔀 Git: committed & pushed`, {
+                      description: `${changedFiles.length} ${changedFiles.length === 1 ? "file" : "files"} → ${checkpoint.sha.slice(0, 7)}`,
+                      duration: 4000,
+                    });
+                  }
+                } catch (gitErr: any) {
+                  console.error("[AutoCommit] Failed:", gitErr);
+                  setHasUncommittedChanges(true);
+                  toast.warning("Changes applied but git push failed", {
+                    description: gitErr.message || "Will retry on next change",
+                    duration: 5000,
+                  });
+                }
+              } else {
+                setHasUncommittedChanges(true);
+              }
+            }
+          } else {
+            // No file operations found — warn the user
+            toast.warning(
+              "AI response didn't include file changes. Try asking again in Agent mode.",
+              {
+                duration: 4000,
+              },
+            );
+          }
+        }
+
         // Refresh chat list to keep tabs in sync
         const updatedList = storageRef.current.listChats();
         setChatList(updatedList);
@@ -824,62 +1106,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         }
 
         // Handle mode-specific post-processing
-        if (chatMode === "agent") {
-          const fileOperations = parseAIResponse(fullText);
-          if (fileOperations.length > 0) {
-            const changedPaths: string[] = [];
-            for (const op of fileOperations) {
-              if (op.type === "create" || op.type === "update") {
-                actions.updateFile(op.path, op.content);
-                changedPaths.push(op.path);
-              } else if (op.type === "delete") {
-                actions.deleteFile(op.path);
-                changedPaths.push(op.path);
-              }
-            }
-            toast.success(
-              `${fileOperations.length} file${fileOperations.length > 1 ? "s" : ""} updated!`,
-            );
-
-            // Auto-commit
-            if (gitConfigured && commitAndPush) {
-              try {
-                const filesToCommit = fileOperations
-                  .filter((op) => op.type !== "delete")
-                  .map((op) => ({
-                    path: op.path.replace(/^\//, ""),
-                    content: op.content,
-                  }));
-                const commitMessage = `AI: ${content.slice(0, 60)}${content.length > 60 ? "..." : ""}`;
-                const result = await commitAndPush(
-                  filesToCommit,
-                  commitMessage,
-                );
-                if (result)
-                  toast.success(`Committed: ${result.sha.slice(0, 7)}`, {
-                    description: "Changes pushed to GitHub",
-                  });
-              } catch (commitError) {
-                console.error("Auto-commit failed:", commitError);
-                setHasUncommittedChanges(true);
-              }
-            } else {
-              setHasUncommittedChanges(true);
-            }
-
-            // Generate inline suggestions for Ask mode view
-            const suggestions: CodeSuggestion[] = fileOperations
-              .filter((op) => op.type === "update")
-              .map((op) => ({
-                id: `sug-${Date.now()}-${op.path}`,
-                filePath: op.path,
-                originalCode: state.files[op.path] || "",
-                suggestedCode: op.content,
-                description: `AI update to ${op.path.split("/").pop()}`,
-              }));
-            if (suggestions.length > 0) setCodeSuggestions(suggestions);
-          }
-        } else if (chatMode === "plan") {
+        if (chatMode === "plan") {
           // Parse the plan into a task file
           const plan = parsePlanToTaskPlan(fullText, content.slice(0, 50));
           if (plan.tasks.length > 0) {
@@ -1005,8 +1232,17 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                   variant="ghost"
                   size="icon"
                   className="h-6 w-6"
+                  onClick={() => setShowChatHistory(true)}
+                  title="Chat History"
+                >
+                  <Database className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
                   onClick={() => setShowCheckpoints(!showCheckpoints)}
-                  title="History"
+                  title="Checkpoints"
                 >
                   <History className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
@@ -1126,6 +1362,10 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                         onToggleBottomPanelMaximized={
                           toggleBottomPanelMaximized
                         }
+                        repoOwner={repoConfig?.owner}
+                        repoName={repoConfig?.repo}
+                        branch={repoConfig?.branch || "main"}
+                        onCommitAndPush={handleManualCommit}
                       />
                     )}
                   </div>
@@ -1193,6 +1433,21 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
           error={deploymentError}
         />
       )}
+      {showChatHistory && (
+        <ChatHistoryModal
+          chats={chatList}
+          activeChatId={activeChatId}
+          onSelectChat={handleSelectChat}
+          onDeleteChat={handleDeleteChat}
+          onNewChat={handleNewChat}
+          onClose={() => setShowChatHistory(false)}
+        />
+      )}
+      <VercelConnectModal
+        open={showVercelConnect}
+        onOpenChange={setShowVercelConnect}
+        onConnected={() => handleDeploy()}
+      />
     </div>
   );
 }

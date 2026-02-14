@@ -4,9 +4,9 @@ import { useChat } from "@ai-sdk/react";
 import { toast } from "sonner";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PromptInput from "./prompt-input";
-import clsx from "clsx";
+
 import { appStore } from "@/app/store";
-import { cn, createDebounce, generateUUID, truncateString } from "lib/utils";
+import { cn, generateUUID, truncateString } from "lib/utils";
 import { ErrorMessage, PreviewMessage } from "./message";
 import { ChatGreeting } from "./chat-greeting";
 
@@ -53,7 +53,6 @@ import {
   useAutonomousAgent,
   AutonomousRouteResult,
 } from "@/hooks/use-autonomous-agent";
-import { UserIntent } from "lib/ai/agent/intent-classifier";
 
 type Props = {
   threadId: string;
@@ -68,8 +67,6 @@ const LightRays = dynamic(() => import("ui/light-rays"), {
 const Particles = dynamic(() => import("ui/particles"), {
   ssr: false,
 });
-
-const _debounce = createDebounce();
 
 const firstTimeStorage = getStorageManager("IS_FIRST");
 const isFirstTime = firstTimeStorage.get() ?? true;
@@ -466,7 +463,7 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
       {particle}
       <div
         className={cn(
-          emptyMessage && "justify-center pb-24",
+          emptyMessage && "justify-center items-center",
           "flex flex-col min-w-0 relative h-full z-40",
         )}
       >
@@ -483,7 +480,24 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
           </div>
         )}
         {emptyMessage ? (
-          <ChatGreeting />
+          /* Centered greeting + prompt stack */
+          <div className="w-full flex flex-col items-center justify-center flex-1 px-4">
+            <ChatGreeting onSuggestionClick={(prompt) => setInput(prompt)} />
+            <div className="w-full max-w-3xl mt-4">
+              <PromptInput
+                input={input}
+                threadId={threadId}
+                sendMessage={autonomousSendMessage}
+                setInput={setInput}
+                isLoading={isLoading || isPendingToolCall}
+                onStop={stop}
+                onFocus={isFirstTime ? undefined : handleFocus}
+                autonomousMode={autonomousMode}
+                webAgentMode={webAgentMode}
+                lastClassification={lastClassification}
+              />
+            </div>
+          </div>
         ) : (
           <>
             <div
@@ -531,35 +545,30 @@ export default function ChatBot({ threadId, initialMessages }: Props) {
               {error && <ErrorMessage error={error} />}
               <div className="min-w-0 min-h-52" />
             </div>
+
+            <div className="absolute bottom-14 w-full z-10">
+              <div className="max-w-3xl mx-auto relative flex justify-center items-center -top-2">
+                <ScrollToBottomButton
+                  show={!isAtBottom && messages.length > 0}
+                  onClick={scrollToBottom}
+                />
+              </div>
+
+              <PromptInput
+                input={input}
+                threadId={threadId}
+                sendMessage={autonomousSendMessage}
+                setInput={setInput}
+                isLoading={isLoading || isPendingToolCall}
+                onStop={stop}
+                onFocus={isFirstTime ? undefined : handleFocus}
+                autonomousMode={autonomousMode}
+                webAgentMode={webAgentMode}
+                lastClassification={lastClassification}
+              />
+            </div>
           </>
         )}
-
-        <div
-          className={clsx(
-            messages.length && "absolute bottom-14",
-            "w-full z-10",
-          )}
-        >
-          <div className="max-w-3xl mx-auto relative flex justify-center items-center -top-2">
-            <ScrollToBottomButton
-              show={!isAtBottom && messages.length > 0}
-              onClick={scrollToBottom}
-            />
-          </div>
-
-          <PromptInput
-            input={input}
-            threadId={threadId}
-            sendMessage={autonomousSendMessage}
-            setInput={setInput}
-            isLoading={isLoading || isPendingToolCall}
-            onStop={stop}
-            onFocus={isFirstTime ? undefined : handleFocus}
-            autonomousMode={autonomousMode}
-            webAgentMode={webAgentMode}
-            lastClassification={lastClassification}
-          />
-        </div>
         <DeleteThreadPopup
           threadId={threadId}
           onClose={() => setIsDeleteThreadPopupOpen(false)}

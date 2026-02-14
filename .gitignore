@@ -62,3 +62,4 @@ public/uploads.env
 
 # Generated image cache
 .data/
+packages/remote-server/node_modules/

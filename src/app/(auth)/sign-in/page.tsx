@@ -1,8 +1,13 @@
 import SignIn from "@/components/auth/sign-in";
 import { getAuthConfig } from "lib/auth/config";
-import { getIsFirstUser } from "lib/auth/server";
+import { getIsFirstUser, getSession } from "lib/auth/server";
+import { redirect } from "next/navigation";
 
 export default async function SignInPage() {
+  const session = await getSession();
+  if (session) {
+    redirect("/");
+  }
   const isFirstUser = await getIsFirstUser();
   const {
     emailAndPasswordEnabled,
