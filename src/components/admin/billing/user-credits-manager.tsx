@@ -13,7 +13,7 @@ import {
 import { Badge } from "ui/badge";
 import { Button } from "ui/button";
 import { Input } from "ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "ui/card";
+import { Card, CardContent } from "ui/card";
 import {
   Dialog,
   DialogContent,
@@ -39,10 +39,8 @@ import {
   ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
-import {
   grantCreditsAction,
-  adjustCreditsAction,
-  updateSubscriptionAction,
+  updateSubscriptionAction
 } from "@/app/api/admin/billing/actions";
 import type { AdminUserCredits } from "lib/admin/billing-repository";
 

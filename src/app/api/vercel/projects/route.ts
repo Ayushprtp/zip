@@ -16,10 +16,7 @@ export async function GET() {
     const token = await getVercelToken();
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const vercel = new VercelService(token);
@@ -40,10 +37,7 @@ export async function POST(request: NextRequest) {
     const token = await getVercelToken();
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Not authenticated" },
-        { status: 401 },
-      );
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
     const {

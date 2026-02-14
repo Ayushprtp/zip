@@ -23,7 +23,9 @@ export async function POST(request: NextRequest) {
     const response = await fetch(url, {
       method: "POST",
       headers: {
-        "Content-Type": request.headers.get("content-type") || "application/x-git-upload-pack-request",
+        "Content-Type":
+          request.headers.get("content-type") ||
+          "application/x-git-upload-pack-request",
         Authorization: request.headers.get("authorization") || "",
         "User-Agent": "git/isomorphic-git",
       },
@@ -37,7 +39,9 @@ export async function POST(request: NextRequest) {
     return new NextResponse(data, {
       status: response.status,
       headers: {
-        "Content-Type": response.headers.get("content-type") || "application/x-git-upload-pack-result",
+        "Content-Type":
+          response.headers.get("content-type") ||
+          "application/x-git-upload-pack-result",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
@@ -79,7 +83,9 @@ export async function GET(request: NextRequest) {
     return new NextResponse(data, {
       status: response.status,
       headers: {
-        "Content-Type": response.headers.get("content-type") || "application/x-git-upload-pack-advertisement",
+        "Content-Type":
+          response.headers.get("content-type") ||
+          "application/x-git-upload-pack-advertisement",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",

@@ -45,9 +45,7 @@ const envPath = join(process.cwd(), ".env");
 if (existsSync(envPath)) {
   const envContent = readFileSync(envPath, "utf-8");
 
-  const requiredVars = [
-    "NEXT_PUBLIC_APP_URL",
-  ];
+  const requiredVars = ["NEXT_PUBLIC_APP_URL"];
 
   const optionalVars = [
     "GITHUB_CLIENT_ID",
@@ -55,12 +53,8 @@ if (existsSync(envPath)) {
     "GITHUB_REDIRECT_URI",
   ];
 
-  const missingRequired = requiredVars.filter(
-    (v) => !envContent.includes(v),
-  );
-  const missingOptional = optionalVars.filter(
-    (v) => !envContent.includes(v),
-  );
+  const missingRequired = requiredVars.filter((v) => !envContent.includes(v));
+  const missingOptional = optionalVars.filter((v) => !envContent.includes(v));
 
   if (missingRequired.length > 0) {
     console.log("⚠️  Missing required environment variables:");
@@ -108,12 +102,16 @@ console.log("2. Get your tokens:");
 console.log("   GitHub: https://github.com/settings/tokens");
 console.log("   Vercel: https://vercel.com/account/tokens\n");
 console.log("3. Add the integration to your builder:");
-console.log('   import { GitHubVercelButton } from "@/components/builder/github-vercel-button";');
+console.log(
+  '   import { GitHubVercelButton } from "@/components/builder/github-vercel-button";',
+);
 console.log("   <GitHubVercelButton />\n");
 console.log("4. Start your app:");
 console.log("   npm run dev\n");
 console.log("📚 Documentation:");
 console.log("   Quick Start: src/lib/builder/GITHUB_VERCEL_QUICK_START.md");
-console.log("   Full Guide: src/lib/builder/GITHUB_VERCEL_INTEGRATION_GUIDE.md");
+console.log(
+  "   Full Guide: src/lib/builder/GITHUB_VERCEL_INTEGRATION_GUIDE.md",
+);
 console.log("   README: src/lib/builder/GITHUB_VERCEL_README.md\n");
 console.log("🎉 Ready to build with GitHub & Vercel integration!");

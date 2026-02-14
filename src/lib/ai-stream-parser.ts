@@ -19,21 +19,32 @@ export function parseFilesFromStream(text: string): ParsedFile[] {
 }
 
 // Convert parsed files to Sandpack format
-export function filesToSandpackFormat(files: ParsedFile[]): Record<string, string> {
+export function filesToSandpackFormat(
+  files: ParsedFile[],
+): Record<string, string> {
   return files.reduce(
     (acc, file) => {
       const path = file.path.startsWith("/") ? file.path : `/${file.path}`;
       acc[path] = file.content;
       return acc;
     },
-    {} as Record<string, string>
+    {} as Record<string, string>,
   );
 }
 
 // Auto-detect template from file paths
-export function detectTemplateFromFiles(files: Record<string, string>): Template {
+export function detectTemplateFromFiles(
+  files: Record<string, string>,
+): Template {
   const paths = Object.keys(files);
-  if (paths.some((p) => p.includes("next.config") || p.includes("/pages/") || p.includes("/app/"))) {
+  if (
+    paths.some(
+      (p) =>
+        p.includes("next.config") ||
+        p.includes("/pages/") ||
+        p.includes("/app/"),
+    )
+  ) {
     return "nextjs";
   }
   if (paths.some((p) => p.includes("vite.config"))) {

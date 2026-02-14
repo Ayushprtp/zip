@@ -179,11 +179,7 @@ export function useGitHubIntegration() {
   );
 
   const syncToGitHub = useCallback(
-    async (
-      files: Record<string, string>,
-      message: string,
-      token: string,
-    ) => {
+    async (files: Record<string, string>, message: string, token: string) => {
       setLoading(true);
       setError(null);
 

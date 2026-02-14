@@ -10,10 +10,7 @@ export async function POST(request: NextRequest) {
     const { token } = await request.json();
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Token is required" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Token is required" }, { status: 400 });
     }
 
     // Store token in httpOnly cookie

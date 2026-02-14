@@ -180,12 +180,9 @@ export class VercelService {
     projectId: string,
     deploymentId: string,
   ): Promise<void> {
-    await this.fetch(
-      `/v9/projects/${projectId}/promote/${deploymentId}`,
-      {
-        method: "PATCH",
-      },
-    );
+    await this.fetch(`/v9/projects/${projectId}/promote/${deploymentId}`, {
+      method: "PATCH",
+    });
   }
 
   async cancelDeployment(deploymentId: string): Promise<void> {
@@ -195,9 +192,7 @@ export class VercelService {
   }
 
   async getDeploymentLogs(deploymentId: string): Promise<any[]> {
-    const response = await this.fetch(
-      `/v2/deployments/${deploymentId}/events`,
-    );
+    const response = await this.fetch(`/v2/deployments/${deploymentId}/events`);
     return response;
   }
 

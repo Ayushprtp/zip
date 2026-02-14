@@ -660,7 +660,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       if (activeTaskPlan) {
         markTaskCompleted(activeTaskPlan, task.id);
         if (storageRef.current) {
-          storageRef.current.saveTaskPlan(activeTaskPlan);
+          storageRef.current.saveTaskList(activeTaskPlan);
           setActiveTaskPlan({ ...activeTaskPlan });
         }
       }
@@ -729,7 +729,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         if (chatMode === "ask") {
           modeInstructions = `\n\nMODE: ASK\nAnswer questions about the codebase. Do NOT modify files or generate code blocks with file paths.`;
         } else if (chatMode === "plan") {
-          modeInstructions = `\n\nMODE: PLAN\nCreate a detailed implementation plan using numbered tasks:\n\nFormat EXACTLY like this:\n1. First major task description\n1.1 Sub-task under task 1\n1.1.1 Detailed sub-sub-task\n2. Second major task\n2.1 Sub-task\n3. Third major task\n\nDo NOT output code blocks with file paths. Just plan the work with numbered tasks and subtasks.`;
+          modeInstructions = `\n\nMODE: PLAN\nCreate a detailed, hierarchical implementation plan using markdown headers and bullet points.\n\nFormat your plan using:\n## Major Phase/Section (e.g., "## Core Features", "## User Authentication")\n### Sub-section (e.g., "### Login System", "### Video Upload")\n- Specific task items as bullet points under each section\n- Each bullet should be a concrete, actionable task\n\nMake the plan thorough with clear phases, sections, and detailed tasks.\nDo NOT output code blocks with file paths. Just plan the work.`;
         } else {
           modeInstructions = `\n\nMODE: AGENT\nActively modify the codebase. Generate complete, working code wrapped in code blocks with file paths using format: \`\`\`language filepath:/path/to/file.ext`;
         }
@@ -785,8 +785,43 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         if (aiMsg) setLocalMessages((prev) => [...prev, aiMsg]);
         await addMessage(threadId, "assistant", fullText, []).catch(() => {});
 
-        // Refresh chat list
-        setChatList(storageRef.current.listChats());
+        // Refresh chat list to keep tabs in sync
+        const updatedList = storageRef.current.listChats();
+        setChatList(updatedList);
+
+        // Auto-rename chat after first user message (if title is still default)
+        const currentChat = storageRef.current.getChat(activeChatId);
+        if (
+          currentChat &&
+          currentChat.messages.length <= 2 &&
+          (currentChat.title.startsWith("Chat ") ||
+            currentChat.title === "New Chat")
+        ) {
+          // Summarize the prompt to create a short title (async, fire and forget)
+          fetch("/api/builder/ai/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              system:
+                "Generate a very short title (3-6 words) summarizing this chat. Return ONLY the title, no quotes, no punctuation, no explanation.",
+              messages: [{ role: "user", content }],
+              provider: selectedModel.provider,
+              model: selectedModel.model,
+            }),
+          })
+            .then((r) => r.text())
+            .then((title) => {
+              const cleanTitle = title
+                .trim()
+                .replace(/^["']|["']$/g, "")
+                .slice(0, 40);
+              if (cleanTitle && storageRef.current) {
+                storageRef.current.renameChat(activeChatId, cleanTitle);
+                setChatList(storageRef.current.listChats());
+              }
+            })
+            .catch(() => {});
+        }
 
         // Handle mode-specific post-processing
         if (chatMode === "agent") {
@@ -848,9 +883,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
           // Parse the plan into a task file
           const plan = parsePlanToTaskPlan(fullText, content.slice(0, 50));
           if (plan.tasks.length > 0) {
-            storageRef.current.saveTaskPlan(plan);
+            storageRef.current.saveTaskList(plan);
             setActiveTaskPlan(plan);
-            toast.success("Task plan created! View it in the editor.", {
+            toast.success("Task plan created! View it below.", {
               description: `${flattenTasks(plan.tasks).length} tasks identified`,
             });
           }
