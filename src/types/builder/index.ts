@@ -226,6 +226,14 @@ export interface DeploymentConfig {
   projectName: string;
   buildCommand: string;
   outputDirectory: string;
+  /** GitHub repo owner (for git-based deployment) */
+  repoOwner?: string;
+  /** GitHub repo name (for git-based deployment) */
+  repoName?: string;
+  /** Git branch to deploy from */
+  repoBranch?: string;
+  /** Internal template name (e.g. "react", "nextjs") */
+  template?: string;
 }
 
 export interface DeploymentResult {

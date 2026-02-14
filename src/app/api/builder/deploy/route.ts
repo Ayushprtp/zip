@@ -1,8 +1,9 @@
 /**
  * Deployment API Endpoint
  *
- * Handles deployment requests to Vercel.
- * Receives project files and configuration, triggers deployment, and returns status.
+ * Deploys a project by connecting its GitHub repo to Vercel.
+ * Since every project (user-owned or temporary) has a GitHub repo,
+ * we always deploy via Git — no file uploading needed.
  *
  * Requirements: 14.2, 14.3, 14.4
  */
@@ -13,24 +14,6 @@ import { cookies } from "next/headers";
 // Vercel API configuration
 const VERCEL_API_URL = "https://api.vercel.com";
 
-interface DeploymentPackage {
-  files: Record<string, string>;
-  metadata: {
-    projectName: string;
-    template: string;
-    timestamp: number;
-    buildCommand: string;
-    outputDirectory: string;
-  };
-}
-
-interface DeploymentConfig {
-  platform: string;
-  projectName: string;
-  buildCommand: string;
-  outputDirectory: string;
-}
-
 /**
  * Token used for deploying temporary workspace projects.
  * Set this in .env so temp-workspace users can deploy without
@@ -38,10 +21,10 @@ interface DeploymentConfig {
  */
 const VERCEL_TEMP_TOKEN = process.env.VERCEL_TEMP_TOKEN;
 
+// ── Helpers ────────────────────────────────────────────────────────────
+
 /**
  * Map internal template names to Vercel-recognized framework identifiers.
- * Vercel uses specific strings — sending an unrecognized framework will cause
- * a Bad Request error.
  */
 function mapFramework(template: string): string | null {
   const map: Record<string, string> = {
@@ -58,7 +41,7 @@ function mapFramework(template: string): string | null {
 }
 
 /**
- * Sanitize project name for Vercel (lowercase, no spaces, only a-z0-9 and hyphens).
+ * Sanitize project name for Vercel (lowercase, a-z0-9 and hyphens only).
  */
 function sanitizeProjectName(name: string): string {
   return (
@@ -72,31 +55,84 @@ function sanitizeProjectName(name: string): string {
 }
 
 /**
+ * Resolve the Vercel token from cookies or env.
+ */
+async function resolveToken(isTemporary?: boolean): Promise<string> {
+  const cookieStore = await cookies();
+  let token = cookieStore.get("vercel_token")?.value;
+
+  if (!token && isTemporary && VERCEL_TEMP_TOKEN) {
+    token = VERCEL_TEMP_TOKEN;
+    console.log(
+      "[Deploy] Using VERCEL_TEMP_TOKEN for temporary workspace deployment",
+    );
+  }
+
+  if (!token) {
+    throw new Error(
+      "Vercel token not configured. Please connect your Vercel account first.",
+    );
+  }
+  return token;
+}
+
+// ── POST Handler ───────────────────────────────────────────────────────
+
+/**
  * POST /api/builder/deploy
  *
- * Deploys a project to Vercel
+ * Body: {
+ *   repoOwner: string,   — GitHub repo owner
+ *   repoName: string,    — GitHub repo name
+ *   branch?: string,     — Git branch (default: "main")
+ *   projectName: string, — Display name / Vercel project name
+ *   framework?: string,  — Internal template name (e.g. "react", "nextjs")
+ *   buildCommand?: string,
+ *   outputDirectory?: string,
+ *   isTemporary?: boolean — true for temp-workspace projects
+ * }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      package: deploymentPackage,
-      config,
+      repoOwner,
+      repoName,
+      branch,
+      projectName,
+      framework,
+      buildCommand,
+      outputDirectory,
       isTemporary,
     } = body as {
-      package: DeploymentPackage;
-      config: DeploymentConfig;
+      repoOwner: string;
+      repoName: string;
+      branch?: string;
+      projectName: string;
+      framework?: string;
+      buildCommand?: string;
+      outputDirectory?: string;
       isTemporary?: boolean;
     };
 
-    if (!deploymentPackage || !config) {
+    if (!repoOwner || !repoName) {
       return NextResponse.json(
-        { error: "Missing deployment package or config" },
+        { error: "Repository owner and name are required" },
         { status: 400 },
       );
     }
 
-    const result = await deployToVercel(deploymentPackage, config, isTemporary);
+    const token = await resolveToken(isTemporary);
+
+    const result = await deployViaGit(token, {
+      repoOwner,
+      repoName,
+      branch: branch || "main",
+      projectName: projectName || repoName,
+      framework,
+      buildCommand,
+      outputDirectory,
+    });
 
     return NextResponse.json(result);
   } catch (error) {
@@ -110,93 +146,134 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// ── Git-based deployment ───────────────────────────────────────────────
+
+interface GitDeployOpts {
+  repoOwner: string;
+  repoName: string;
+  branch: string;
+  projectName: string;
+  framework?: string;
+  buildCommand?: string;
+  outputDirectory?: string;
+}
+
 /**
- * Deploy to Vercel.
+ * Deploy by connecting the GitHub repo to a Vercel project.
  *
- * Token resolution order:
- *   1. User's Vercel token from cookies (personal account)
- *   2. For temporary-workspace projects: VERCEL_TEMP_TOKEN env var
- *   3. If neither is available → error
- *
- * Uses the Vercel v13 deployments API with inline file content.
- * Each file is base64-encoded and sent with an `encoding: "base64"` field
- * so Vercel correctly interprets binary/text data.
+ * 1. Check if a Vercel project with this name already exists.
+ * 2. If not, create one linked to the GitHub repo → Vercel auto-deploys.
+ * 3. Find the latest deployment for the project.
+ * 4. Return the deployment ID + predicted production URL.
  */
-async function deployToVercel(
-  deploymentPackage: DeploymentPackage,
-  config: DeploymentConfig,
-  isTemporary?: boolean,
-): Promise<{ deploymentId: string; status: string }> {
-  // Get per-user Vercel token from cookies
-  const cookieStore = await cookies();
-  let token = cookieStore.get("vercel_token")?.value;
+async function deployViaGit(
+  token: string,
+  opts: GitDeployOpts,
+): Promise<{
+  deploymentId: string;
+  status: string;
+  url: string | null;
+  projectUrl: string;
+}> {
+  const sanitizedName = sanitizeProjectName(opts.projectName);
+  const framework = mapFramework(opts.framework || "");
 
-  // For temporary workspace projects, fall back to the server-side env token
-  if (!token && isTemporary && VERCEL_TEMP_TOKEN) {
-    token = VERCEL_TEMP_TOKEN;
-    console.log(
-      "[Deploy] Using VERCEL_TEMP_TOKEN for temporary workspace deployment",
-    );
-  }
+  // ── 1. Check if Vercel project already exists ──────────────────
+  let project: any = null;
 
-  if (!token) {
-    throw new Error(
-      "Vercel token not configured. Please connect your Vercel account first.",
-    );
-  }
-
-  // Prepare files for Vercel — each with explicit encoding
-  const files: Array<{ file: string; data: string; encoding: "base64" }> = [];
-
-  for (const [path, content] of Object.entries(deploymentPackage.files)) {
-    // Remove leading slash — Vercel expects relative paths
-    const cleanPath = path.startsWith("/") ? path.slice(1) : path;
-    files.push({
-      file: cleanPath,
-      data: Buffer.from(content, "utf-8").toString("base64"),
-      encoding: "base64",
-    });
-  }
-
-  // Sanitize the project name (Vercel rejects names with spaces/special chars)
-  const projectName = sanitizeProjectName(config.projectName);
-
-  // Map framework to a Vercel-recognized value (or omit if unknown)
-  const framework = mapFramework(deploymentPackage.metadata.template);
-
-  // Build project settings — only include recognized fields
-  // For frameworks that Vercel auto-manages (nextjs, nuxtjs, gatsby, etc.),
-  // do NOT send outputDirectory — Vercel knows where the output goes and
-  // sending an incorrect value (e.g., "dist") will cause build failures.
-  const VERCEL_MANAGED_FRAMEWORKS = new Set([
-    "nextjs",
-    "nuxtjs",
-    "gatsby",
-    "sveltekit",
-  ]);
-
-  const projectSettings: Record<string, string> = {};
-  if (config.buildCommand) projectSettings.buildCommand = config.buildCommand;
-  if (
-    config.outputDirectory &&
-    !VERCEL_MANAGED_FRAMEWORKS.has(framework || "")
-  ) {
-    projectSettings.outputDirectory = config.outputDirectory;
-  }
-  if (framework) projectSettings.framework = framework;
-
-  // Call the Vercel deployment API
-  const deployBody: Record<string, unknown> = {
-    name: projectName,
-    files,
-    projectSettings,
-  };
-
-  console.log(
-    `[Deploy] Sending ${files.length} files to Vercel as "${projectName}" (framework: ${framework || "auto"})`,
+  const checkResp = await fetch(
+    `${VERCEL_API_URL}/v9/projects/${sanitizedName}`,
+    { headers: { Authorization: `Bearer ${token}` } },
   );
 
-  const deployResponse = await fetch(`${VERCEL_API_URL}/v13/deployments`, {
+  if (checkResp.ok) {
+    project = await checkResp.json();
+    console.log(
+      `[Deploy] Found existing Vercel project: ${project.id} (${project.name})`,
+    );
+  }
+
+  // ── 2. Create project if it doesn't exist ──────────────────────
+  if (!project) {
+    const projectBody: Record<string, unknown> = {
+      name: sanitizedName,
+      gitRepository: {
+        type: "github",
+        repo: `${opts.repoOwner}/${opts.repoName}`,
+      },
+    };
+
+    if (framework) {
+      // When Vercel recognizes the framework, it auto-detects the correct
+      // build command and output directory. Don't override them — doing so
+      // with e.g. "npm run build" can break frameworks that use custom
+      // build pipelines (Next.js, Nuxt, Gatsby, etc.).
+      projectBody.framework = framework;
+    } else {
+      // Unknown framework — pass explicit build settings
+      if (opts.buildCommand) projectBody.buildCommand = opts.buildCommand;
+      if (opts.outputDirectory) {
+        projectBody.outputDirectory = opts.outputDirectory;
+      }
+    }
+
+    console.log(
+      `[Deploy] Creating Vercel project "${sanitizedName}" connected to ${opts.repoOwner}/${opts.repoName}`,
+    );
+
+    const createResp = await fetch(`${VERCEL_API_URL}/v10/projects`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(projectBody),
+    });
+
+    if (!createResp.ok) {
+      const err = await createResp.json().catch(() => ({}));
+      const msg = err.error?.message || createResp.statusText;
+
+      if (createResp.status === 409) {
+        console.warn(`[Deploy] Project name "${sanitizedName}" is taken.`);
+        throw new Error(
+          `A Vercel project named "${sanitizedName}" already exists on another account. Try a different project name.`,
+        );
+      }
+      if (createResp.status === 401 || createResp.status === 403) {
+        throw new Error(
+          "Vercel authentication failed. Please reconnect your Vercel account.",
+        );
+      }
+
+      throw new Error(
+        `Failed to create Vercel project: ${msg}. ` +
+          `Make sure your Vercel account has GitHub integration and access to ${opts.repoOwner}/${opts.repoName}.`,
+      );
+    }
+
+    project = await createResp.json();
+    console.log(`[Deploy] Created Vercel project: ${project.id}`);
+  }
+
+  // ── 3. Explicitly trigger a deployment ──────────────────────────
+  // Don't rely on auto-deployment (webhook-based) — it can take 30+ seconds.
+  // Instead, explicitly create a deployment from the repo's branch.
+  console.log(
+    `[Deploy] Triggering deployment for project "${sanitizedName}" from ${opts.repoOwner}/${opts.repoName}@${opts.branch}`,
+  );
+
+  const deployBody: Record<string, unknown> = {
+    name: sanitizedName,
+    gitSource: {
+      type: "github",
+      org: opts.repoOwner,
+      repo: opts.repoName,
+      ref: opts.branch,
+    },
+  };
+
+  const deployResp = await fetch(`${VERCEL_API_URL}/v13/deployments`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -205,32 +282,26 @@ async function deployToVercel(
     body: JSON.stringify(deployBody),
   });
 
-  if (!deployResponse.ok) {
-    const error = await deployResponse.json().catch(() => ({}));
-    console.error("[Deploy] Vercel API error:", error);
-
-    // Provide more actionable error messages
-    const vercelMessage =
-      error.error?.message || error.message || deployResponse.statusText;
-
-    if (deployResponse.status === 400) {
-      throw new Error(
-        `Vercel rejected the deployment: ${vercelMessage}. Check your token and project settings.`,
-      );
-    }
-    if (deployResponse.status === 401 || deployResponse.status === 403) {
-      throw new Error(
-        "Vercel authentication failed. Please reconnect your Vercel account with a valid token.",
-      );
-    }
-
-    throw new Error(`Failed to create Vercel deployment: ${vercelMessage}`);
+  if (!deployResp.ok) {
+    const err = await deployResp.json().catch(() => ({}));
+    const msg = err.error?.message || deployResp.statusText;
+    console.error("[Deploy] Failed to create deployment:", err);
+    throw new Error(
+      `Failed to trigger deployment: ${msg}. ` +
+        `Make sure the Vercel GitHub integration has access to ${opts.repoOwner}/${opts.repoName}.`,
+    );
   }
 
-  const deployment = await deployResponse.json();
+  const deployment = await deployResp.json();
+  const deploymentId = deployment.id || deployment.uid;
+  const predictedUrl = `https://${sanitizedName}.vercel.app`;
+
+  console.log(`[Deploy] Deployment created: ${deploymentId} → ${predictedUrl}`);
 
   return {
-    deploymentId: deployment.id,
-    status: deployment.readyState,
+    deploymentId,
+    status: "building",
+    url: predictedUrl,
+    projectUrl: `https://vercel.com/${project.name}`,
   };
 }
