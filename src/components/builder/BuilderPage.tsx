@@ -405,9 +405,14 @@ function BuilderContent() {
       // Create deployment configuration
       const config: DeploymentConfig = {
         platform: "vercel",
-        projectName: "project",
+        projectName: _projectConfig?.projectName || "project",
         buildCommand: getBuildCommand(templateType),
         outputDirectory: getOutputDirectory(templateType),
+        // Pass repo info for git-based deployment (no file upload)
+        repoOwner: _projectConfig?.repo?.owner,
+        repoName: _projectConfig?.repo?.name,
+        repoBranch: _projectConfig?.branch || "main",
+        template: templateType,
       };
 
       // Validate configuration
@@ -420,6 +425,13 @@ function BuilderContent() {
         templateType,
         (status) => {
           setDeploymentStatus(status);
+          // Capture real-time build logs and URL from status updates
+          if (status.buildLogs && status.buildLogs.length > 0) {
+            setDeploymentLogs(status.buildLogs);
+          }
+          if (status.deploymentUrl) {
+            setDeploymentUrl(status.deploymentUrl);
+          }
         },
         isTempWorkspace,
       );

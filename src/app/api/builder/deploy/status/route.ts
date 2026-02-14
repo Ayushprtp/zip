@@ -3,6 +3,7 @@
  *
  * Checks the status of a deployment on Vercel.
  * Used for polling deployment progress.
+ * Returns build logs for both building and error states.
  *
  * Requirements: 14.5
  */
@@ -61,6 +62,8 @@ export async function GET(request: NextRequest) {
  *   1. User's Vercel token from cookies (personal account)
  *   2. For temporary-workspace projects: VERCEL_TEMP_TOKEN env var
  *   3. If neither is available → error
+ *
+ * Returns build logs for both "building" and "error" states.
  */
 async function checkVercelStatus(
   deploymentId: string,
@@ -102,9 +105,9 @@ async function checkVercelStatus(
     status = "error";
   }
 
-  // Fetch build logs when deployment is errored (or optionally building)
+  // Fetch build logs for both "building" and "error" states
   let logs: string[] = [];
-  if (status === "error") {
+  if (status === "building" || status === "error") {
     try {
       const eventsResponse = await fetch(
         `${VERCEL_API_URL}/v3/deployments/${deploymentId}/events`,
@@ -127,8 +130,8 @@ async function checkVercelStatus(
           )
           .map((e: any) => e.text || e.payload?.text || "")
           .filter(Boolean)
-          // Keep only the last 80 lines to avoid overwhelming the UI
-          .slice(-80);
+          // Keep last 100 lines to avoid overwhelming the UI
+          .slice(-100);
       }
     } catch (logErr) {
       console.warn("[DeployStatus] Failed to fetch build logs:", logErr);
@@ -138,7 +141,6 @@ async function checkVercelStatus(
   // Build a detailed error message from the deployment + logs
   let errorMessage = deployment.error?.message || undefined;
   if (status === "error" && !errorMessage && logs.length > 0) {
-    // Try to find the most relevant error line from the logs
     const errorLines = logs.filter(
       (l) =>
         l.toLowerCase().includes("error") || l.toLowerCase().includes("failed"),

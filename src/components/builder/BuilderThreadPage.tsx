@@ -679,26 +679,36 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     setDeploymentError(undefined);
     setDeploymentLogs([]);
     try {
-      // Determine output directory based on template — for frameworks
-      // Vercel manages (nextjs, nuxtjs, etc.), leave it empty
       const templateType = (currentThread.template as TemplateType) || "react";
-      const vercelManaged = ["nextjs", "nuxtjs", "gatsby"];
-      const outputDirectory = vercelManaged.includes(templateType)
-        ? ""
-        : "dist";
 
       const config: DeploymentConfig = {
         platform: "vercel",
         projectName: currentThread.title,
+        // Vercel auto-detects buildCommand and outputDirectory from the
+        // framework — only pass them as fallbacks for unknown frameworks.
         buildCommand: "npm run build",
-        outputDirectory,
+        outputDirectory: "dist",
+        // Repo info for git-based deployment
+        repoOwner: repoConfig?.owner,
+        repoName: repoConfig?.repo,
+        repoBranch: repoConfig?.branch || "main",
+        template: templateType,
       };
       deploymentService.validateConfig(config);
       const result = await deploymentService.deploy(
         state.files,
         config,
         currentThread.template as TemplateType,
-        (status) => setDeploymentStatus(status),
+        (status) => {
+          setDeploymentStatus(status);
+          // Capture real-time build logs and URL from status updates
+          if (status.buildLogs && status.buildLogs.length > 0) {
+            setDeploymentLogs(status.buildLogs);
+          }
+          if (status.deploymentUrl) {
+            setDeploymentUrl(status.deploymentUrl);
+          }
+        },
         isTempWorkspace, // Pass temp workspace flag for VERCEL_TEMP_TOKEN fallback
       );
       setDeploymentUrl(result.url);
@@ -729,7 +739,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       }
       toast.error(errorMessage);
     }
-  }, [currentThread, state.files, isTempWorkspace]);
+  }, [currentThread, state.files, isTempWorkspace, repoConfig]);
 
   // ─── Transformed Messages ─────────────────────────────────────────────
   const transformedMessages = useMemo(
