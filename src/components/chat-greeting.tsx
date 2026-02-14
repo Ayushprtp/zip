@@ -198,11 +198,11 @@ export const ChatGreeting = ({
             onClick={() => scroll("left")}
             className="absolute left-0 top-1/2 -translate-y-1/2 z-20 h-full px-1.5 flex items-center
                        bg-gradient-to-r from-background via-background/80 to-transparent
-                       opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                       transition-opacity duration-200"
             aria-label="Scroll left"
           >
-            <div className="rounded-full p-1 bg-muted/60 backdrop-blur border border-border/40 hover:bg-muted transition-colors">
-              <ChevronLeft className="size-4 text-muted-foreground" />
+            <div className="rounded-full p-1.5 bg-muted/80 backdrop-blur border border-border/50 hover:bg-muted transition-colors shadow-sm">
+              <ChevronLeft className="size-4 text-foreground/70" />
             </div>
           </button>
         )}
@@ -259,11 +259,11 @@ export const ChatGreeting = ({
             onClick={() => scroll("right")}
             className="absolute right-0 top-1/2 -translate-y-1/2 z-20 h-full px-1.5 flex items-center
                        bg-gradient-to-l from-background via-background/80 to-transparent
-                       opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                       transition-opacity duration-200"
             aria-label="Scroll right"
           >
-            <div className="rounded-full p-1 bg-muted/60 backdrop-blur border border-border/40 hover:bg-muted transition-colors">
-              <ChevronRight className="size-4 text-muted-foreground" />
+            <div className="rounded-full p-1.5 bg-muted/80 backdrop-blur border border-border/50 hover:bg-muted transition-colors shadow-sm">
+              <ChevronRight className="size-4 text-foreground/70" />
             </div>
           </button>
         )}
