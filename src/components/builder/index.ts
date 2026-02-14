@@ -7,7 +7,7 @@ export { BuilderErrorBoundary } from "./BuilderErrorBoundary";
 export { TemplateSelectionDialog } from "./TemplateSelectionDialog";
 export { VSCodeFileExplorer } from "./VSCodeFileExplorer";
 export { BuilderHeader } from "./BuilderHeader";
-export { DeploymentProgress } from "./deployment-progress";
+
 export { ChatInterface } from "./chat-interface";
 export { MonacoEditor } from "./monaco-editor";
 export { FileTree } from "./file-tree";
