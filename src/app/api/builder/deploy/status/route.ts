@@ -150,9 +150,27 @@ async function checkVercelStatus(
     }
   }
 
+  // Resolve the best URL — prefer production alias over per-deployment URL
+  // The `alias` array contains production URLs like "project-name.vercel.app"
+  // The `url` field is the per-deployment URL like "project-abc123.vercel.app"
+  let resolvedUrl: string | null = null;
+  if (
+    deployment.alias &&
+    Array.isArray(deployment.alias) &&
+    deployment.alias.length > 0
+  ) {
+    // Pick the shortest alias (usually the .vercel.app one)
+    const bestAlias = deployment.alias.sort(
+      (a: string, b: string) => a.length - b.length,
+    )[0];
+    resolvedUrl = `https://${bestAlias}`;
+  } else if (deployment.url) {
+    resolvedUrl = `https://${deployment.url}`;
+  }
+
   return {
     status,
-    url: deployment.url ? `https://${deployment.url}` : null,
+    url: resolvedUrl,
     logs,
     error: errorMessage,
   };

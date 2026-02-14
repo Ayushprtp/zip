@@ -63,6 +63,10 @@ interface BuilderHeaderProps {
   bottomPanel?: "none" | "console" | "terminal" | "report" | "ssh";
   builderMode?: "default";
   onBuilderModeChange?: (mode: "default") => void;
+  /** Whether the deployment panel is open */
+  showDeployPanel?: boolean;
+  /** Toggle the deployment panel open/closed */
+  onToggleDeployPanel?: () => void;
 }
 
 export function BuilderHeader({
@@ -74,7 +78,6 @@ export function BuilderHeader({
   onToggleMobilePreview,
   onCreateCheckpoint,
   mobilePreview,
-  deploying,
   isExporting,
   onProjectNameClick,
   fileCount = 0,
@@ -94,6 +97,8 @@ export function BuilderHeader({
   showSSH: _showSSH,
   onToggleSSH,
   bottomPanel,
+  showDeployPanel,
+  onToggleDeployPanel,
 }: BuilderHeaderProps) {
   const { toggleSidebar, open } = useSidebar();
   const remoteConnected = useRemoteDevStore(
@@ -361,13 +366,12 @@ export function BuilderHeader({
         )}
       </Button>
 
-      {/* Deploy */}
+      {/* Deploy Panel Toggle */}
 
       <Button
         size="icon"
-        variant="default"
-        onClick={onDeploy}
-        disabled={deploying}
+        variant={showDeployPanel ? "secondary" : "default"}
+        onClick={onToggleDeployPanel || onDeploy}
         className="h-7 w-7 shrink-0"
       >
         <Rocket className="h-3 w-3" />
