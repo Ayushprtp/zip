@@ -35,8 +35,7 @@ export type TemplateType =
   | "nextjs"
   | "vanilla"
   | "node"
-  | "static"
-  | "httpchain";
+  | "static";
 
 export interface TemplateConfig {
   entry: string;
@@ -223,7 +222,7 @@ export interface FileDiff {
 // ============================================================================
 
 export interface DeploymentConfig {
-  platform: "netlify" | "vercel";
+  platform: "vercel";
   projectName: string;
   buildCommand: string;
   outputDirectory: string;

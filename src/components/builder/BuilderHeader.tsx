@@ -61,8 +61,8 @@ interface BuilderHeaderProps {
   showSSH?: boolean;
   onToggleSSH?: () => void;
   bottomPanel?: "none" | "console" | "terminal" | "report" | "ssh";
-  builderMode?: "default" | "httpchain";
-  onBuilderModeChange?: (mode: "default" | "httpchain") => void;
+  builderMode?: "default";
+  onBuilderModeChange?: (mode: "default") => void;
 }
 
 export function BuilderHeader({
@@ -94,8 +94,6 @@ export function BuilderHeader({
   showSSH: _showSSH,
   onToggleSSH,
   bottomPanel,
-  builderMode,
-  onBuilderModeChange,
 }: BuilderHeaderProps) {
   const { toggleSidebar, open } = useSidebar();
   const remoteConnected = useRemoteDevStore(
@@ -156,31 +154,6 @@ export function BuilderHeader({
         <FileCode className="h-2.5 w-2.5" />
         {fileCount}
       </Badge>
-
-      {/* Builder Mode Toggle */}
-      {onBuilderModeChange && (
-        <>
-          <div className="h-4 w-px bg-border shrink-0" />
-          <div className="flex gap-0.5 bg-muted/50 border rounded-md p-0.5 shrink-0">
-            <Button
-              size="sm"
-              variant={builderMode === "default" ? "secondary" : "ghost"}
-              onClick={() => onBuilderModeChange("default")}
-              className="h-6 px-1.5 text-[10px]"
-            >
-              Code
-            </Button>
-            <Button
-              size="sm"
-              variant={builderMode === "httpchain" ? "secondary" : "ghost"}
-              onClick={() => onBuilderModeChange("httpchain")}
-              className="h-6 px-1.5 text-[10px]"
-            >
-              Chain
-            </Button>
-          </div>
-        </>
-      )}
 
       {/* Sync Status */}
       {isSynced && (

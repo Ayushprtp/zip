@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useBuilderStore } from "@/stores/builder-store";
 import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { SandpackWrapper } from "./SandpackWrapper";
-import { HttpChainWrapper } from "./HttpChainWrapper";
 import { ChatInterface } from "./chat-interface";
 import { CheckpointHistory } from "./checkpoint-history";
 import { ProjectProvider, useProject } from "@/lib/builder/project-context";
@@ -14,8 +13,31 @@ import { useGitAutoCommit } from "@/lib/builder/git-auto-commit";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "@/components/ui/button";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { TaskPlanViewer } from "./TaskPlanViewer";
+import {
+  InlineSuggestionsPanel,
+  type CodeSuggestion,
+} from "./InlineDiffEditor";
+import {
+  FlareChatStorage,
+  type StoredMessage,
+  type TaskPlan,
+  type TaskItem,
+} from "@/lib/builder/flare-chat-storage";
 
-import { X, Copy, Check, History, Plus, MessageSquare } from "lucide-react";
+import {
+  X,
+  Copy,
+  Check,
+  History,
+  Plus,
+  MessageSquare,
+  Search,
+  Map,
+  Zap,
+  ChevronDown,
+} from "lucide-react";
 import { BuilderHeader } from "./BuilderHeader";
 import { exportService } from "@/lib/builder/export-service";
 import {
@@ -26,20 +48,48 @@ import { DeploymentProgress } from "./deployment-progress";
 import { errorHandler } from "@/lib/builder/error-handlers";
 import type { TemplateType, DeploymentConfig } from "app-types/builder";
 
+// ─── Chat Mode ──────────────────────────────────────────────────────────────
+type ChatMode = "ask" | "plan" | "agent";
+
+const CHAT_MODES: {
+  id: ChatMode;
+  label: string;
+  icon: React.ReactNode;
+  desc: string;
+}[] = [
+  {
+    id: "ask",
+    label: "Ask",
+    icon: <Search className="h-3 w-3" />,
+    desc: "Ask questions about your code",
+  },
+  {
+    id: "plan",
+    label: "Plan",
+    icon: <Map className="h-3 w-3" />,
+    desc: "Plan changes with task files",
+  },
+  {
+    id: "agent",
+    label: "Agent",
+    icon: <Zap className="h-3 w-3" />,
+    desc: "Modify code directly",
+  },
+];
+
+// ─── QR Modal ───────────────────────────────────────────────────────────────
 function QRCodeModal({ url, onClose }: { url: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
-
   const handleCopyUrl = async () => {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
       toast.success("URL copied to clipboard");
       setTimeout(() => setCopied(false), 2000);
-    } catch (_error) {
+    } catch {
       toast.error("Failed to copy URL");
     }
   };
-
   return (
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
@@ -55,18 +105,15 @@ function QRCodeModal({ url, onClose }: { url: string; onClose: () => void }) {
             <X className="h-4 w-4" />
           </Button>
         </div>
-
         <div className="flex justify-center mb-4 bg-white p-4 rounded">
           <QRCodeSVG value={url} size={200} level="M" />
         </div>
-
         <div className="mb-4">
           <p className="text-xs text-muted-foreground mb-2">Preview URL:</p>
           <div className="flex items-center gap-2 p-2 bg-muted rounded text-xs break-all">
             <span className="flex-1">{url}</span>
           </div>
         </div>
-
         <Button onClick={handleCopyUrl} className="w-full" variant="outline">
           {copied ? (
             <>
@@ -85,31 +132,166 @@ function QRCodeModal({ url, onClose }: { url: string; onClose: () => void }) {
   );
 }
 
+// ─── Resize Handle ──────────────────────────────────────────────────────────
+function ResizeHandle({
+  direction = "horizontal",
+}: { direction?: "horizontal" | "vertical" }) {
+  return (
+    <PanelResizeHandle
+      className={`group relative flex items-center justify-center ${
+        direction === "horizontal"
+          ? "w-[4px] hover:w-[6px] cursor-col-resize"
+          : "h-[4px] hover:h-[6px] cursor-row-resize"
+      } transition-all`}
+    >
+      <div
+        className={`${
+          direction === "horizontal" ? "w-[2px] h-8" : "h-[2px] w-8"
+        } rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors`}
+      />
+    </PanelResizeHandle>
+  );
+}
+
+// ─── Chat Mode Dropdown ─────────────────────────────────────────────────────
+function ChatModeDropdown({
+  mode,
+  onModeChange,
+}: {
+  mode: ChatMode;
+  onModeChange: (mode: ChatMode) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const current = CHAT_MODES.find((m) => m.id === mode)!;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium bg-muted/40 hover:bg-muted/60 border border-border/30 transition-colors"
+      >
+        {current.icon}
+        <span>{current.label}</span>
+        <ChevronDown className="h-2.5 w-2.5 text-muted-foreground" />
+      </button>
+
+      {open && (
+        <div className="absolute bottom-full left-0 mb-1 w-48 py-1 bg-popover border border-border rounded-lg shadow-xl z-50 animate-in slide-in-from-bottom-2 duration-150">
+          {CHAT_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => {
+                onModeChange(m.id);
+                setOpen(false);
+              }}
+              className={`flex items-center gap-2 w-full px-3 py-2 text-left text-[11px] hover:bg-muted/60 transition-colors ${
+                mode === m.id
+                  ? "bg-violet-500/10 text-violet-400"
+                  : "text-foreground"
+              }`}
+            >
+              {m.icon}
+              <div className="flex-1">
+                <div className="font-medium">{m.label}</div>
+                <div className="text-[9px] text-muted-foreground">{m.desc}</div>
+              </div>
+              {mode === m.id && <Check className="h-3 w-3 text-violet-400" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Chat Tabs Bar ──────────────────────────────────────────────────────────
+function ChatTabsBar({
+  chats,
+  activeChatId,
+  onSelectChat,
+  onNewChat,
+  onDeleteChat,
+}: {
+  chats: Array<{ id: string; title: string; messageCount: number }>;
+  activeChatId: string | null;
+  onSelectChat: (id: string) => void;
+  onNewChat: () => void;
+  onDeleteChat: (id: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 px-1 py-0.5 border-b border-border/30 bg-muted/10 overflow-x-auto shrink-0 scrollbar-none">
+      {chats.map((chat) => (
+        <div
+          key={chat.id}
+          className={`group flex items-center gap-1 px-2 py-1 rounded-md text-[10px] cursor-pointer transition-all shrink-0 ${
+            activeChatId === chat.id
+              ? "bg-violet-500/15 text-violet-400 border border-violet-500/20"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+          }`}
+          onClick={() => onSelectChat(chat.id)}
+        >
+          <MessageSquare className="h-2.5 w-2.5 shrink-0" />
+          <span className="max-w-[80px] truncate font-medium">
+            {chat.title}
+          </span>
+          {chats.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteChat(chat.id);
+              }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-red-500/20 rounded transition-all"
+            >
+              <X className="h-2.5 w-2.5 text-red-400" />
+            </button>
+          )}
+        </div>
+      ))}
+
+      <button
+        onClick={onNewChat}
+        className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors shrink-0"
+        title="New Chat"
+      >
+        <Plus className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+// ─── Main Page Props ────────────────────────────────────────────────────────
 interface BuilderThreadPageProps {
   threadId: string;
 }
 
-// Inner component that uses ProjectContext
+// ─── Inner Component ────────────────────────────────────────────────────────
 function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const router = useRouter();
 
-  // Use selective store subscriptions
   const currentThread = useBuilderStore((s) => s.currentThread);
-  const messages = useBuilderStore((s) => s.messages);
   const files = useBuilderStore((s) => s.files);
   const loadThread = useBuilderStore((s) => s.loadThread);
   const addMessage = useBuilderStore((s) => s.addMessage);
-  const setMessages = useBuilderStore((s) => s.setMessages);
 
   const { state, actions } = useProject();
 
-  // Auto-save integration
   const { isSaving, hasPendingSaves } = useProjectSync({
     autoSaveEnabled: true,
     debounceMs: 1000,
   });
 
-  // UI store selectors
+  // UI store
   const mobilePreview = useBuilderUIStore((s) => s.mobilePreview);
   const viewMode = useBuilderUIStore((s) => s.viewMode);
   const setViewMode = useBuilderUIStore((s) => s.setViewMode);
@@ -131,6 +313,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const startServer = useBuilderUIStore((s) => s.startServer);
   const stopServer = useBuilderUIStore((s) => s.stopServer);
   const restartServer = useBuilderUIStore((s) => s.restartServer);
+  const toggleMobilePreview = useBuilderUIStore((s) => s.toggleMobilePreview);
 
   // Sync save status
   const isSyncedRef = useRef(!isSaving && !hasPendingSaves);
@@ -146,17 +329,15 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [filesReady, setFilesReady] = useState(false);
-  const [builderMode, setBuilderMode] = useState<"default" | "httpchain">(
-    "default",
-  );
   const [isExporting, setIsExporting] = useState(false);
   const [deploymentStatus, setDeploymentStatus] =
     useState<DeploymentStatus | null>(null);
   const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
   const [deploymentError, setDeploymentError] = useState<string | undefined>();
   const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
-  const toggleMobilePreview = useBuilderUIStore((s) => s.toggleMobilePreview);
 
+  // Chat mode
+  const [chatMode, setChatMode] = useState<ChatMode>("agent");
   const [selectedModel, setSelectedModel] = useState<{
     provider: string;
     model: string;
@@ -165,8 +346,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     model: "gpt-4.1-mini",
   });
 
-  // Git auto-commit integration
-  // Stores the linked repo info (owner/repo/branch) — no tokens on the client
+  // Git
   const [repoConfig, setRepoConfig] = useState<{
     owner: string;
     repo: string;
@@ -188,22 +368,86 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [hasUncommittedChanges, setHasUncommittedChanges] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
 
-  // Load repo config from localStorage (saved when project was set up)
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(`flare_repo_config_${threadId}`);
-      if (stored) {
-        setRepoConfig(JSON.parse(stored));
-      }
-    } catch {
-      // Config not available
-    }
-  }, [threadId]);
+  // .flare-sh chat storage
+  const storageRef = useRef<FlareChatStorage | null>(null);
+  const [chatList, setChatList] = useState<
+    Array<{
+      id: string;
+      title: string;
+      messageCount: number;
+      mode: string;
+      createdAt: number;
+      updatedAt: number;
+    }>
+  >([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [localMessages, setLocalMessages] = useState<StoredMessage[]>([]);
 
-  // --- Streaming state ---
+  // Task plan
+  const [activeTaskPlan, setActiveTaskPlan] = useState<TaskPlan | null>(null);
+  const [isExecutingTask, setIsExecutingTask] = useState(false);
+  const [executingTaskId, setExecutingTaskId] = useState<string | null>(null);
+
+  // Inline suggestions
+  const [codeSuggestions, setCodeSuggestions] = useState<CodeSuggestion[]>([]);
+
+  // Streaming
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Init storage and load chats
+  useEffect(() => {
+    if (!state.files || !actions) return;
+    const storage = new FlareChatStorage(
+      state.files,
+      actions.updateFile,
+      actions.deleteFile,
+    );
+    storageRef.current = storage;
+
+    const index = storage.getIndex();
+    setChatList(index.chats);
+
+    if (index.activeChat) {
+      setActiveChatId(index.activeChat);
+      const chat = storage.getChat(index.activeChat);
+      if (chat) setLocalMessages(chat.messages);
+    } else if (index.chats.length === 0) {
+      // Create first chat
+      const chat = storage.createChat("agent", "Chat 1");
+      setChatList([
+        {
+          id: chat.id,
+          title: chat.title,
+          messageCount: 0,
+          mode: chat.mode,
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+        },
+      ]);
+      setActiveChatId(chat.id);
+      setLocalMessages([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!state.files, !!actions]);
+
+  // Keep storage files in sync
+  useEffect(() => {
+    if (storageRef.current) {
+      storageRef.current.updateFiles(state.files);
+    }
+  }, [state.files]);
+
+  // Load repo config
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`flare_repo_config_${threadId}`);
+      if (stored) setRepoConfig(JSON.parse(stored));
+    } catch {
+      /* Config not available */
+    }
+  }, [threadId]);
 
   // Load thread data
   useEffect(() => {
@@ -224,28 +468,62 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threadId]);
 
-  const handleBuilderModeChange = useCallback(
-    (mode: "default" | "httpchain") => setBuilderMode(mode),
-    [],
-  );
-
-  const currentTemplate = currentThread?.template;
   useEffect(() => {
-    setBuilderMode(currentTemplate === "httpchain" ? "httpchain" : "default");
-  }, [currentTemplate]);
-
-  useEffect(() => {
-    if (!isLoading && Object.keys(state.files).length > 0) {
-      setFilesReady(true);
-    } else if (!isLoading && Object.keys(files).length === 0) {
-      setFilesReady(true);
-    }
+    if (!isLoading && Object.keys(state.files).length > 0) setFilesReady(true);
+    else if (!isLoading && Object.keys(files).length === 0) setFilesReady(true);
   }, [isLoading, state.files, files]);
 
   useEffect(() => {
     if (typeof window !== "undefined") setPreviewUrl(window.location.href);
   }, []);
 
+  // ─── Chat Tab Actions ─────────────────────────────────────────────────
+  const handleNewChat = useCallback(() => {
+    if (!storageRef.current) return;
+    const chat = storageRef.current.createChat(
+      chatMode,
+      `Chat ${chatList.length + 1}`,
+    );
+    const newList = storageRef.current.listChats();
+    setChatList(newList);
+    setActiveChatId(chat.id);
+    setLocalMessages([]);
+    setActiveTaskPlan(null);
+  }, [chatMode, chatList.length]);
+
+  const handleSelectChat = useCallback((chatId: string) => {
+    if (!storageRef.current) return;
+    storageRef.current.setActiveChat(chatId);
+    setActiveChatId(chatId);
+    const chat = storageRef.current.getChat(chatId);
+    if (chat) {
+      setLocalMessages(chat.messages);
+      setChatMode(chat.mode as ChatMode);
+    }
+    setActiveTaskPlan(null);
+  }, []);
+
+  const handleDeleteChat = useCallback(
+    (chatId: string) => {
+      if (!storageRef.current) return;
+      if (chatList.length <= 1) {
+        toast.error("Cannot delete the last chat");
+        return;
+      }
+      storageRef.current.deleteChat(chatId);
+      const newList = storageRef.current.listChats();
+      setChatList(newList);
+      const index = storageRef.current.getIndex();
+      if (index.activeChat) {
+        setActiveChatId(index.activeChat);
+        const chat = storageRef.current.getChat(index.activeChat);
+        if (chat) setLocalMessages(chat.messages);
+      }
+    },
+    [chatList.length],
+  );
+
+  // ─── Export / Deploy ──────────────────────────────────────────────────
   const handleExportZip = useCallback(async () => {
     if (!currentThread) return;
     setIsExporting(true);
@@ -275,7 +553,6 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     setDeploymentStatus(null);
     setDeploymentUrl(undefined);
     setDeploymentError(undefined);
-
     try {
       const config: DeploymentConfig = {
         platform: "vercel",
@@ -284,14 +561,12 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         outputDirectory: "dist",
       };
       deploymentService.validateConfig(config);
-
       const result = await deploymentService.deploy(
         state.files,
         config,
         currentThread.template as TemplateType,
         (status) => setDeploymentStatus(status),
       );
-
       setDeploymentUrl(result.url);
       toast.success("Deployment successful!");
     } catch (error) {
@@ -303,31 +578,20 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     }
   }, [currentThread, state.files]);
 
-  const handleShowQR = useCallback(() => setShowQR(true), []);
-
-  // Transform store messages to ChatMessage format
+  // ─── Transformed Messages ─────────────────────────────────────────────
   const transformedMessages = useMemo(
     () =>
-      messages.map((m) => ({
+      localMessages.map((m) => ({
         id: m.id,
         role: m.role as "user" | "assistant",
         content: m.content,
-        mentions: (m.mentions as any[]) || [],
-        timestamp: new Date(m.createdAt).getTime(),
+        mentions: m.mentions || [],
+        timestamp: m.timestamp,
       })),
-    [messages],
+    [localMessages],
   );
 
-  /**
-   * Smart code parser: extracts file operations from AI responses.
-   * Supports formats:
-   *   ```filepath:/path/to/file.ext     (direct filepath prefix)
-   *   ```language filepath:/path/to/file.ext  (language + filepath)
-   *   ```language /path/to/file.ext     (language + absolute path)
-   *   ```/path/to/file.ext              (just the path)
-   *   ```language src/file.ext          (language + relative path)
-   *   ```filepath:src/file.ext          (relative filepath prefix)
-   */
+  // ─── Parse AI Response ────────────────────────────────────────────────
   const parseAIResponse = useCallback(
     (response: string) => {
       const operations: Array<{
@@ -335,31 +599,89 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         path: string;
         content: string;
       }> = [];
-
-      // Match code blocks with various filepath patterns (absolute or relative)
       const codeBlockRegex =
         /```(?:[\w.*+-]*\s+)?(?:filepath:)?([^\n`]+\.[a-zA-Z0-9]+)\n([\s\S]*?)```/g;
       let match;
-
       while ((match = codeBlockRegex.exec(response)) !== null) {
-        let path = match[1].trim();
+        let path = match[1].trim().replace(/\s+$/, "");
         const content = match[2].trimEnd();
-
-        // Clean trailing whitespace and language suffixes
-        path = path.replace(/\s+$/, "");
-
-        // Must look like a file path
         if (!path.includes(".")) continue;
         if (!path.startsWith("/")) path = "/" + path;
-
         const type = state.files[path] ? "update" : "create";
         operations.push({ type, path, content });
       }
-
       return operations;
     },
     [state.files],
   );
+
+  // ─── Parse Plan to Task File ──────────────────────────────────────────
+  const parsePlanToTaskPlan = useCallback(
+    (planText: string, title: string): TaskPlan => {
+      const tasks = FlareChatStorage.parsePlanToTasks(planText);
+      return {
+        id: `plan-${Date.now().toString(36)}`,
+        chatId: activeChatId || "",
+        title,
+        createdAt: Date.now(),
+        status: "pending",
+        tasks:
+          tasks.length > 0
+            ? tasks
+            : [
+                {
+                  id: "task-1",
+                  label: "1",
+                  description: "Review and implement the plan above",
+                  status: "pending",
+                },
+              ],
+      };
+    },
+    [activeChatId],
+  );
+
+  // ─── Start Individual Task ────────────────────────────────────────────
+  const handleStartTask = useCallback(
+    async (task: TaskItem) => {
+      if (!activeChatId || !storageRef.current) return;
+      setIsExecutingTask(true);
+      setExecutingTaskId(task.id);
+
+      // Switch to agent mode for execution
+      setChatMode("agent");
+
+      const taskPrompt = `Execute this specific task:\n\nTask ${task.label}: ${task.description}\n\nImplement this task now. Generate the necessary code changes.`;
+
+      // Trigger send via the same flow
+      await handleSendMessage(taskPrompt);
+
+      // Mark task completed
+      if (activeTaskPlan) {
+        markTaskCompleted(activeTaskPlan, task.id);
+        if (storageRef.current) {
+          storageRef.current.saveTaskPlan(activeTaskPlan);
+          setActiveTaskPlan({ ...activeTaskPlan });
+        }
+      }
+
+      setIsExecutingTask(false);
+      setExecutingTaskId(null);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [activeChatId, activeTaskPlan],
+  );
+
+  // ─── Start All Tasks Sequentially ─────────────────────────────────────
+  const handleStartAllTasks = useCallback(async () => {
+    if (!activeTaskPlan) return;
+    const allTasks = flattenTasks(activeTaskPlan.tasks).filter(
+      (t) => t.status === "pending",
+    );
+    for (const task of allTasks) {
+      await handleStartTask(task);
+    }
+  }, [activeTaskPlan, handleStartTask]);
 
   const handleStopStreaming = useCallback(() => {
     abortControllerRef.current?.abort();
@@ -367,38 +689,23 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     setStreamingContent("");
   }, []);
 
-  const handleResetChat = useCallback(async () => {
-    if (!threadId) return;
-
-    // Optional: Ask for confirmation
-    if (!confirm("Are you sure you want to clear the chat history?")) return;
-
-    try {
-      // Clear local state immediately
-      setMessages([]);
-
-      // Clear server state
-      const response = await fetch(
-        `/api/builder/threads/${threadId}/messages`,
-        { method: "DELETE" },
-      );
-
-      if (!response.ok) throw new Error("Failed to clear messages");
-
-      toast.success("Chat history cleared");
-    } catch (error) {
-      console.error("Failed to reset chat:", error);
-      toast.error("Failed to clear chat history");
-    }
-  }, [threadId, setMessages]);
-
+  // ─── Send Message ─────────────────────────────────────────────────────
   const handleSendMessage = useCallback(
     async (content: string) => {
-      if (!threadId || isStreaming) return;
+      if (!activeChatId || isStreaming || !storageRef.current) return;
 
       try {
-        // Add user message
-        await addMessage(threadId, "user", content, []);
+        // Add user message to storage
+        const userMsg = storageRef.current.addMessage(
+          activeChatId,
+          "user",
+          content,
+        );
+        if (userMsg) setLocalMessages((prev) => [...prev, userMsg]);
+
+        // Also save to DB
+        if (threadId)
+          await addMessage(threadId, "user", content, []).catch(() => {});
 
         setIsStreaming(true);
         setStreamingContent("");
@@ -406,65 +713,38 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         const abortController = new AbortController();
         abortControllerRef.current = abortController;
 
-        // Build prompt with template-specific context
         const templateGuidelines: Record<string, string> = {
-          react: `This is a React (Vite) project.
-- Use functional components with hooks.
-- Entry file is /App.jsx or /App.tsx.
-- Use JSX syntax. Import React only if needed (React 18+ auto-imports).
-- Use CSS modules, inline styles, or a /styles.css file for styling.`,
-          "vite-react": `This is a Vite + React project.
-- Use functional components with hooks.
-- Entry file is /src/App.tsx, mounted in /src/main.tsx.
-- Use TypeScript (.tsx files).
-- Use CSS modules or Tailwind CSS for styling.`,
-          nextjs: `This is a Next.js App Router project.
-- ALWAYS use the App Router pattern (files under /app/ directory).
-- NEVER use Pages Router patterns (no /pages/ directory, no getServerSideProps, no getStaticProps).
-- Use "use client" directive for client components with hooks/state/effects.
-- Server Components are the default — only add "use client" when needed.
-- Main page is /app/page.tsx, layout is /app/layout.tsx.
-- Use TypeScript (.tsx files).`,
-          vanilla: `This is a vanilla JavaScript project.
-- Entry file is /index.js.
-- Use /index.html for markup.
-- No frameworks — plain JS/HTML/CSS only.`,
-          static: `This is a static HTML project.
-- Entry file is /index.html.
-- Use plain HTML, CSS, and JavaScript.
-- Include styles in /style.css and scripts in /script.js.`,
-          httpchain: `This is an HTTP Chain (API workflow) project built with Vite + React.
-- Entry file is /src/App.tsx.
-- Use TypeScript and React components.`,
+          react: `This is a React (Vite) project. Use functional components with hooks. Entry file is /App.jsx or /App.tsx.`,
+          "vite-react": `This is a Vite + React project. Entry file is /src/App.tsx, mounted in /src/main.tsx. Use TypeScript.`,
+          nextjs: `This is a Next.js App Router project. Use App Router pattern. Files under /app/. Use "use client" for client components.`,
+          vanilla: `This is a vanilla JavaScript project. Entry file is /index.js. No frameworks.`,
+          static: `This is a static HTML project. Entry file is /index.html. Plain HTML/CSS/JS.`,
         };
 
         const templateGuide =
           templateGuidelines[currentThread?.template || "react"] ||
           templateGuidelines.react;
 
-        const systemPrompt = `You are an expert code generator for a web-based IDE.
+        let modeInstructions = "";
+        if (chatMode === "ask") {
+          modeInstructions = `\n\nMODE: ASK\nAnswer questions about the codebase. Do NOT modify files or generate code blocks with file paths.`;
+        } else if (chatMode === "plan") {
+          modeInstructions = `\n\nMODE: PLAN\nCreate a detailed implementation plan using numbered tasks:\n\nFormat EXACTLY like this:\n1. First major task description\n1.1 Sub-task under task 1\n1.1.1 Detailed sub-sub-task\n2. Second major task\n2.1 Sub-task\n3. Third major task\n\nDo NOT output code blocks with file paths. Just plan the work with numbered tasks and subtasks.`;
+        } else {
+          modeInstructions = `\n\nMODE: AGENT\nActively modify the codebase. Generate complete, working code wrapped in code blocks with file paths using format: \`\`\`language filepath:/path/to/file.ext`;
+        }
 
-PROJECT TEMPLATE: ${currentThread?.template || "react"}
-${templateGuide}
+        const systemPrompt = `You are Builder AI — an expert code generator for a web-based IDE.\n\nPROJECT TEMPLATE: ${currentThread?.template || "react"}\n${templateGuide}${modeInstructions}\n\nRULES:\n1. Wrap each file in a code block with filepath: \`\`\`language filepath:/path/to/file.ext\n2. Always include complete, working code.\n3. Follow modern best practices and use TypeScript where applicable.\n4. When modifying existing code, output the COMPLETE file content.\n\nCurrent project files:\n${
+          Object.keys(state.files)
+            .filter((f) => !f.startsWith("/.flare-sh/"))
+            .join(", ") || "No files yet"
+        }`;
 
-RULES:
-1. Wrap each file in a code block with the filepath using this format:
-   \`\`\`language filepath:/path/to/file.ext
-2. Always include complete, working code — no placeholders or "// rest of code here".
-3. Follow modern best practices and use TypeScript where applicable.
-4. Ensure code is production-ready and well-commented.
-5. When modifying existing code, output the COMPLETE file content.
-
-Current project files:
-${Object.keys(state.files).join(", ") || "No files yet"}`;
-
-        // Build conversation history for context (last 10 messages)
-        const recentMessages = transformedMessages.slice(-10).map((m) => ({
+        const recentMessages = localMessages.slice(-10).map((m) => ({
           role: m.role,
           content: m.content,
         }));
 
-        // Call builder AI endpoint with separated system/user prompts + history
         const response = await fetch("/api/builder/ai/generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -477,15 +757,10 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
           signal: abortController.signal,
         });
 
-        if (!response.ok) {
+        if (!response.ok)
           throw new Error(`API request failed: ${response.statusText}`);
-        }
+        if (!response.body) throw new Error("No response body");
 
-        if (!response.body) {
-          throw new Error("No response body");
-        }
-
-        // Stream the response
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = "";
@@ -493,7 +768,6 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
-
           const chunk = decoder.decode(value, { stream: true });
           fullText += chunk;
           setStreamingContent(fullText);
@@ -502,61 +776,83 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
         setIsStreaming(false);
         setStreamingContent("");
 
-        // Save the complete AI response
-        await addMessage(threadId, "assistant", fullText, []);
+        // Save AI response
+        const aiMsg = storageRef.current.addMessage(
+          activeChatId,
+          "assistant",
+          fullText,
+        );
+        if (aiMsg) setLocalMessages((prev) => [...prev, aiMsg]);
+        await addMessage(threadId, "assistant", fullText, []).catch(() => {});
 
-        // Parse & apply file operations → triggers Sandpack hot reload via FileChangeListener
-        const fileOperations = parseAIResponse(fullText);
+        // Refresh chat list
+        setChatList(storageRef.current.listChats());
 
-        if (fileOperations.length > 0) {
-          const changedPaths: string[] = [];
-          for (const op of fileOperations) {
-            if (op.type === "create" || op.type === "update") {
-              console.log(
-                `[AI] ${op.type === "create" ? "Creating" : "Updating"} file:`,
-                op.path,
-              );
-              actions.updateFile(op.path, op.content);
-              changedPaths.push(op.path);
-            } else if (op.type === "delete") {
-              console.log("[AI] Deleting file:", op.path);
-              actions.deleteFile(op.path);
-              changedPaths.push(op.path);
+        // Handle mode-specific post-processing
+        if (chatMode === "agent") {
+          const fileOperations = parseAIResponse(fullText);
+          if (fileOperations.length > 0) {
+            const changedPaths: string[] = [];
+            for (const op of fileOperations) {
+              if (op.type === "create" || op.type === "update") {
+                actions.updateFile(op.path, op.content);
+                changedPaths.push(op.path);
+              } else if (op.type === "delete") {
+                actions.deleteFile(op.path);
+                changedPaths.push(op.path);
+              }
             }
-          }
-          toast.success(
-            `${fileOperations.length} file${fileOperations.length > 1 ? "s" : ""} updated!`,
-          );
+            toast.success(
+              `${fileOperations.length} file${fileOperations.length > 1 ? "s" : ""} updated!`,
+            );
 
-          // Auto-commit to GitHub if configured
-          if (gitConfigured && commitAndPush) {
-            try {
-              // Build files array for commit
-              const filesToCommit: Array<{ path: string; content: string }> =
-                [];
-              for (const op of fileOperations) {
-                if (op.type === "create" || op.type === "update") {
-                  const path = op.path.startsWith("/")
-                    ? op.path.slice(1)
-                    : op.path;
-                  filesToCommit.push({ path, content: op.content });
-                }
+            // Auto-commit
+            if (gitConfigured && commitAndPush) {
+              try {
+                const filesToCommit = fileOperations
+                  .filter((op) => op.type !== "delete")
+                  .map((op) => ({
+                    path: op.path.replace(/^\//, ""),
+                    content: op.content,
+                  }));
+                const commitMessage = `AI: ${content.slice(0, 60)}${content.length > 60 ? "..." : ""}`;
+                const result = await commitAndPush(
+                  filesToCommit,
+                  commitMessage,
+                );
+                if (result)
+                  toast.success(`Committed: ${result.sha.slice(0, 7)}`, {
+                    description: "Changes pushed to GitHub",
+                  });
+              } catch (commitError) {
+                console.error("Auto-commit failed:", commitError);
+                setHasUncommittedChanges(true);
               }
-
-              const commitMessage = `AI: ${content.slice(0, 60)}${content.length > 60 ? "..." : ""}`;
-              const result = await commitAndPush(filesToCommit, commitMessage);
-
-              if (result) {
-                toast.success(`Committed: ${result.sha.slice(0, 7)}`, {
-                  description: "Changes pushed to GitHub",
-                });
-              }
-            } catch (commitError) {
-              console.error("Auto-commit failed:", commitError);
+            } else {
               setHasUncommittedChanges(true);
             }
-          } else {
-            setHasUncommittedChanges(true);
+
+            // Generate inline suggestions for Ask mode view
+            const suggestions: CodeSuggestion[] = fileOperations
+              .filter((op) => op.type === "update")
+              .map((op) => ({
+                id: `sug-${Date.now()}-${op.path}`,
+                filePath: op.path,
+                originalCode: state.files[op.path] || "",
+                suggestedCode: op.content,
+                description: `AI update to ${op.path.split("/").pop()}`,
+              }));
+            if (suggestions.length > 0) setCodeSuggestions(suggestions);
+          }
+        } else if (chatMode === "plan") {
+          // Parse the plan into a task file
+          const plan = parsePlanToTaskPlan(fullText, content.slice(0, 50));
+          if (plan.tasks.length > 0) {
+            storageRef.current.saveTaskPlan(plan);
+            setActiveTaskPlan(plan);
+            toast.success("Task plan created! View it in the editor.", {
+              description: `${flattenTasks(plan.tasks).length} tasks identified`,
+            });
           }
         }
       } catch (error: any) {
@@ -567,22 +863,45 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
         }
         console.error("Failed to send message:", error);
         toast.error(`Error: ${error.message || "Failed to send message"}`);
-        await addMessage(threadId, "assistant", `Error: ${error.message}`, []);
         setIsStreaming(false);
         setStreamingContent("");
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
+      activeChatId,
       threadId,
       selectedModel,
       isStreaming,
       state.files,
+      localMessages,
+      currentThread,
+      chatMode,
       gitConfigured,
       commitAndPush,
+      addMessage,
+      parseAIResponse,
+      parsePlanToTaskPlan,
+      actions,
     ],
   );
 
+  // ─── Inline Suggestion Handlers ───────────────────────────────────────
+  const handleAcceptSuggestion = useCallback(
+    (suggestion: CodeSuggestion) => {
+      actions.updateFile(suggestion.filePath, suggestion.suggestedCode);
+      setCodeSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+      toast.success(
+        `Applied changes to ${suggestion.filePath.split("/").pop()}`,
+      );
+    },
+    [actions],
+  );
+
+  const handleRejectSuggestion = useCallback((suggestion: CodeSuggestion) => {
+    setCodeSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+  }, []);
+
+  // ─── Loading State ────────────────────────────────────────────────────
   if (isLoading || !currentThread || !filesReady) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
@@ -603,20 +922,21 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
 
   return (
     <div className="flex flex-col w-full h-screen bg-background overflow-hidden">
-      {/* Single unified header — no secondary bars */}
+      {/* Header */}
       <BuilderHeader
         projectName={currentThread?.title || "Untitled Project"}
         onDownloadZip={handleExportZip}
         onDeploy={handleDeploy}
-        onShowQR={handleShowQR}
+        onShowQR={() => setShowQR(true)}
         onToggleMobilePreview={toggleMobilePreview}
         mobilePreview={mobilePreview}
         deploying={showDeploymentProgress}
         isExporting={isExporting}
-        fileCount={Object.keys(state.files).length}
+        fileCount={
+          Object.keys(state.files).filter((f) => !f.startsWith("/.flare-sh/"))
+            .length
+        }
         isSynced={!isSaving && !hasPendingSaves}
-        builderMode={builderMode}
-        onBuilderModeChange={handleBuilderModeChange}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         showConsole={showConsole}
@@ -634,108 +954,111 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
         onServerRestart={restartServer}
       />
 
-      <div className="flex flex-1 w-full overflow-hidden min-h-0">
-        {/* Left Sidebar — Chat + Checkpoint History */}
-        <div className="w-56 md:w-64 lg:w-80 border-r flex flex-col shrink-0 bg-muted/20">
-          {/* Chat Header */}
-          <div className="flex items-center justify-between px-3 py-2 border-b bg-background/50 shrink-0 h-10">
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Chat</span>
+      {/* Main Layout — Resizable Panels */}
+      <PanelGroup direction="horizontal" className="flex-1 min-h-0">
+        {/* Left Panel — Chat Sidebar */}
+        <Panel defaultSize={25} minSize={15} maxSize={45}>
+          <div className="flex flex-col h-full bg-muted/20">
+            {/* Chat Header */}
+            <div className="flex items-center justify-between px-3 py-1.5 border-b bg-background/50 shrink-0 h-9">
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs font-medium">Builder AI</span>
+              </div>
+              <div className="flex items-center gap-0.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => setShowCheckpoints(!showCheckpoints)}
+                  title="History"
+                >
+                  <History className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={() => {
-                  // TODO: Implement history list
-                  toast.info("Chat history coming soon");
-                }}
-                title="History"
-              >
-                <History className="h-4 w-4 text-muted-foreground" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7"
-                onClick={handleResetChat}
-                title="New Chat"
-              >
-                <Plus className="h-4 w-4 text-muted-foreground" />
-              </Button>
-            </div>
-          </div>
-          <ChatInterface
-            messages={transformedMessages}
-            onSendMessage={handleSendMessage}
-            isStreaming={isStreaming}
-            streamingContent={streamingContent}
-            onStopStreaming={handleStopStreaming}
-            onReviewChanges={() => setShowCheckpoints(!showCheckpoints)}
-            hasUncommittedChanges={hasUncommittedChanges || isCommitting}
-            modelName={
-              selectedModel.model === "gpt-4.1-mini"
-                ? "GPT-4.1 Mini"
-                : selectedModel.model
-            }
-            onModelChange={(modelId?: string) => {
-              if (modelId) {
-                const [provider, model] = modelId.includes("/")
-                  ? modelId.split("/")
-                  : ["custom", modelId];
-                setSelectedModel({ provider, model });
-              } else {
-                // Toggle fallback
-                const nextModel =
-                  selectedModel.model === "gpt-4.1-mini"
-                    ? "gpt-4o"
-                    : "gpt-4.1-mini";
-                setSelectedModel({ ...selectedModel, model: nextModel });
+
+            {/* Chat Tabs */}
+            <ChatTabsBar
+              chats={chatList}
+              activeChatId={activeChatId}
+              onSelectChat={handleSelectChat}
+              onNewChat={handleNewChat}
+              onDeleteChat={handleDeleteChat}
+            />
+
+            {/* Chat Interface */}
+            <ChatInterface
+              messages={transformedMessages}
+              onSendMessage={handleSendMessage}
+              isStreaming={isStreaming}
+              streamingContent={streamingContent}
+              onStopStreaming={handleStopStreaming}
+              onReviewChanges={() => setShowCheckpoints(!showCheckpoints)}
+              hasUncommittedChanges={hasUncommittedChanges || isCommitting}
+              modelName={
+                selectedModel.model === "gpt-4.1-mini"
+                  ? "GPT-4.1 Mini"
+                  : selectedModel.model
               }
-            }}
-            files={state.files}
-            condensed
-          />
-
-          {/* Checkpoint History Panel (collapsible) */}
-          {showCheckpoints && (
-            <div className="border-t border-border/40 max-h-[40%] overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-300">
-              <CheckpointHistory
-                checkpoints={checkpoints}
-                onRollback={async (id) => {
-                  const success = await rollbackCheckpoint(id);
-                  if (success) {
-                    toast.success("Rolled back successfully");
-                    setHasUncommittedChanges(false);
-                  }
-                }}
-                isRollingBack={isCommitting}
-                repoOwner={repoConfig?.owner}
-                repoName={repoConfig?.repo}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Main Area — Sandpack Workspace */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0 min-h-0">
-          <main className="flex-1 overflow-hidden min-h-0 w-full relative">
-            {filesReady ? (
-              <div
-                className={
-                  mobilePreview
-                    ? "absolute inset-0 flex items-center justify-center overflow-hidden"
-                    : "absolute inset-0 overflow-hidden"
+              onModelChange={(modelId?: string) => {
+                if (modelId) {
+                  const [provider, model] = modelId.includes("/")
+                    ? modelId.split("/")
+                    : ["custom", modelId];
+                  setSelectedModel({ provider, model });
+                } else {
+                  const nextModel =
+                    selectedModel.model === "gpt-4.1-mini"
+                      ? "gpt-4o"
+                      : "gpt-4.1-mini";
+                  setSelectedModel({ ...selectedModel, model: nextModel });
                 }
-              >
-                {builderMode === "httpchain" ? (
-                  <div className="w-full h-full relative">
-                    <HttpChainWrapper />
-                  </div>
-                ) : (
-                  <>
+              }}
+              files={state.files}
+              condensed
+              chatModeDropdown={
+                <ChatModeDropdown mode={chatMode} onModeChange={setChatMode} />
+              }
+            />
+
+            {/* Checkpoint History */}
+            {showCheckpoints && (
+              <div className="border-t border-border/40 max-h-[40%] overflow-hidden flex flex-col animate-in slide-in-from-bottom-2 duration-300">
+                <CheckpointHistory
+                  checkpoints={checkpoints}
+                  onRollback={async (id) => {
+                    const success = await rollbackCheckpoint(id);
+                    if (success) {
+                      toast.success("Rolled back successfully");
+                      setHasUncommittedChanges(false);
+                    }
+                  }}
+                  isRollingBack={isCommitting}
+                  repoOwner={repoConfig?.owner}
+                  repoName={repoConfig?.repo}
+                />
+              </div>
+            )}
+          </div>
+        </Panel>
+
+        <ResizeHandle direction="horizontal" />
+
+        {/* Right Panel — Editor/Preview (with vertical resizable bottom panel) */}
+        <Panel defaultSize={75} minSize={40}>
+          <PanelGroup direction="vertical">
+            {/* Top — Main workspace */}
+            <Panel defaultSize={activeTaskPlan ? 60 : 100} minSize={30}>
+              <main className="h-full w-full relative overflow-hidden">
+                {filesReady ? (
+                  <div
+                    className={
+                      mobilePreview
+                        ? "absolute inset-0 flex items-center justify-center overflow-hidden"
+                        : "absolute inset-0 overflow-hidden"
+                    }
+                  >
                     {mobilePreview && (
                       <div className="w-[375px] h-full border-x overflow-hidden">
                         <SandpackWrapper
@@ -770,27 +1093,62 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
                         }
                       />
                     )}
-                  </>
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        Loading preview...
+                      </p>
+                    </div>
+                  </div>
                 )}
-              </div>
-            ) : (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent mx-auto mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Loading preview...
-                  </p>
-                </div>
-              </div>
-            )}
-          </main>
-        </div>
-      </div>
 
+                {/* Inline code suggestions overlay */}
+                {codeSuggestions.length > 0 && (
+                  <div className="absolute top-2 right-2 w-[400px] z-20 max-h-[50%] overflow-y-auto">
+                    <InlineSuggestionsPanel
+                      suggestions={codeSuggestions}
+                      onAccept={handleAcceptSuggestion}
+                      onReject={handleRejectSuggestion}
+                      onAcceptAll={() => {
+                        codeSuggestions.forEach((s) =>
+                          actions.updateFile(s.filePath, s.suggestedCode),
+                        );
+                        setCodeSuggestions([]);
+                        toast.success("All suggestions applied!");
+                      }}
+                      onRejectAll={() => setCodeSuggestions([])}
+                    />
+                  </div>
+                )}
+              </main>
+            </Panel>
+
+            {/* Task Plan Panel — shows when a plan is active */}
+            {activeTaskPlan && (
+              <>
+                <ResizeHandle direction="vertical" />
+                <Panel defaultSize={40} minSize={15} maxSize={60}>
+                  <TaskPlanViewer
+                    plan={activeTaskPlan}
+                    onStartTask={handleStartTask}
+                    onStartAll={handleStartAllTasks}
+                    isExecuting={isExecutingTask}
+                    executingTaskId={executingTaskId}
+                  />
+                </Panel>
+              </>
+            )}
+          </PanelGroup>
+        </Panel>
+      </PanelGroup>
+
+      {/* Modals */}
       {showQR && (
         <QRCodeModal url={previewUrl} onClose={() => setShowQR(false)} />
       )}
-
       {showDeploymentProgress && (
         <DeploymentProgress
           open={true}
@@ -804,7 +1162,31 @@ ${Object.keys(state.files).join(", ") || "No files yet"}`;
   );
 }
 
-// Main component with ProjectProvider wrapper
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function flattenTasks(tasks: TaskItem[]): TaskItem[] {
+  const result: TaskItem[] = [];
+  for (const t of tasks) {
+    result.push(t);
+    if (t.subtasks) result.push(...flattenTasks(t.subtasks));
+  }
+  return result;
+}
+
+function markTaskCompleted(plan: TaskPlan, taskId: string) {
+  function mark(items: TaskItem[]) {
+    for (const item of items) {
+      if (item.id === taskId) {
+        item.status = "completed";
+        return true;
+      }
+      if (item.subtasks && mark(item.subtasks)) return true;
+    }
+    return false;
+  }
+  mark(plan.tasks);
+}
+
+// ─── Main Export ────────────────────────────────────────────────────────────
 export function BuilderThreadPage({ threadId }: BuilderThreadPageProps) {
   return (
     <ProjectProvider>

@@ -25,13 +25,7 @@ import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { useRemoteDevStore } from "@/stores/remote-dev-store";
 import type { RuntimeError } from "@/types/builder";
 
-type Template =
-  | "react"
-  | "nextjs"
-  | "vite-react"
-  | "vanilla"
-  | "static"
-  | "httpchain";
+type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
 
 type ViewMode = "code" | "preview" | "split";
 
@@ -79,7 +73,6 @@ const DEFAULT_FILES: Record<Template, Record<string, string>> = {
     "index.html": `<!DOCTYPE html>
 <html><body><h1>Hello Static</h1></body></html>`,
   },
-  httpchain: {},
 };
 
 // Component to register server controls with the store
@@ -331,13 +324,7 @@ export function SandpackWrapper({
 
   return (
     <SandpackProvider
-      template={
-        template === "vite-react"
-          ? "vite-react"
-          : template === "httpchain"
-            ? "static"
-            : template
-      }
+      template={template === "vite-react" ? "vite-react" : template}
       theme={sandpackTheme}
       files={mergedFiles}
       options={{

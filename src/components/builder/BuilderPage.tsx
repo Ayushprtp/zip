@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { SandpackWrapper } from "./SandpackWrapper";
-import { HttpChainWrapper } from "./HttpChainWrapper";
 import { useBuilderEngine, type Template } from "@/hooks/useBuilderEngine";
 import { ProjectProvider } from "@/lib/builder/project-context";
 import { ChatInterface } from "./chat-interface";
@@ -158,9 +157,6 @@ function BuilderContent() {
   const [previewUrl, setPreviewUrl] = useState<string>("");
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [builderMode, setBuilderMode] = useState<"default" | "httpchain">(
-    "default",
-  );
   const viewMode: "code" | "preview" | "split" = "split";
   const showConsole = false;
 
@@ -169,11 +165,16 @@ function BuilderContent() {
     setProjectConfig(config);
     setShowGitHubSetup(false);
 
-    // If a framework was selected in the setup, use it directly
-    if (config.framework) {
+    // If it's an existing repo, skip template selection — go directly to builder
+    if (config.type === "existing") {
+      // For existing repos, use the detected framework or default to react
+      const detectedTemplate = config.framework || "react";
+      handleTemplateSelect(detectedTemplate);
+    } else if (config.framework) {
+      // New project with framework selected
       handleTemplateSelect(config.framework);
     } else {
-      // Show template selection dialog
+      // New project, no framework — show template selection
       setShowTemplateDialog(true);
     }
   };
@@ -198,7 +199,7 @@ function BuilderContent() {
       ctrlKey: true,
       shiftKey: true,
       handler: () => {
-        handleNetlifyDeploy();
+        handleDeploy();
       },
       description: "Deploy project",
     },
@@ -283,11 +284,6 @@ function BuilderContent() {
 
       // Fallback to local state if API fails
       setTemplate(selectedTemplate);
-      if (selectedTemplate === "httpchain") {
-        setBuilderMode("httpchain");
-      } else {
-        setBuilderMode("default");
-      }
       setTemplateSelected(true);
       setShowTemplateDialog(false);
       setIsAskAIMode(false);
@@ -300,7 +296,7 @@ function BuilderContent() {
     setTemplateSelected(false);
   };
 
-  const handleNetlifyDeploy = async () => {
+  const handleDeploy = async () => {
     setShowDeploymentProgress(true);
     setDeploymentStatus(null);
     setDeploymentUrl(undefined);
@@ -446,8 +442,6 @@ function BuilderContent() {
   // Update preview URL when component mounts or when it changes
   useEffect(() => {
     if (typeof window !== "undefined") {
-      // For now, use the current window location
-      // In production, this would be the Sandpack bundler URL
       setPreviewUrl(window.location.href);
     }
   }, []);
@@ -487,7 +481,7 @@ function BuilderContent() {
             id="chat-interface"
             className="w-80 lg:w-96 border-r flex flex-col bg-muted/20 shrink-0"
             role="complementary"
-            aria-label="AI Assistant Chat"
+            aria-label="Builder AI Chat"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b bg-background/50 shrink-0">
               <h2 className="font-semibold text-sm">Builder AI</h2>
@@ -514,27 +508,23 @@ function BuilderContent() {
               role="main"
               aria-label="Code Editor and Preview"
             >
-              {builderMode === "httpchain" ? (
-                <HttpChainWrapper />
-              ) : (
-                <main className="flex-1 overflow-hidden min-h-0 w-full h-full relative">
-                  <div className="absolute inset-0">
-                    <PreviewErrorBoundary>
-                      <TransitionWrapper
-                        loading={isExporting}
-                        fallback={<ExportProgress />}
-                      >
-                        <SandpackWrapper
-                          files={files}
-                          template={template}
-                          viewMode={viewMode}
-                          showConsole={showConsole}
-                        />
-                      </TransitionWrapper>
-                    </PreviewErrorBoundary>
-                  </div>
-                </main>
-              )}
+              <main className="flex-1 overflow-hidden min-h-0 w-full h-full relative">
+                <div className="absolute inset-0">
+                  <PreviewErrorBoundary>
+                    <TransitionWrapper
+                      loading={isExporting}
+                      fallback={<ExportProgress />}
+                    >
+                      <SandpackWrapper
+                        files={files}
+                        template={template}
+                        viewMode={viewMode}
+                        showConsole={showConsole}
+                      />
+                    </TransitionWrapper>
+                  </PreviewErrorBoundary>
+                </div>
+              </main>
             </div>
           )}
         </div>
