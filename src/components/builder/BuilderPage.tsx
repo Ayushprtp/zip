@@ -197,6 +197,7 @@ function BuilderContent() {
     useState<DeploymentStatus | null>(null);
   const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
   const [deploymentError, setDeploymentError] = useState<string | undefined>();
+  const [deploymentLogs, setDeploymentLogs] = useState<string[]>([]);
   const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
   const [messages, setMessages] = useState<any[]>([]);
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
@@ -315,7 +316,10 @@ function BuilderContent() {
     }
   };
 
-  const handleTemplateSelect = async (selectedTemplate: Template, configOverride?: ProjectConfig | null) => {
+  const handleTemplateSelect = async (
+    selectedTemplate: Template,
+    configOverride?: ProjectConfig | null,
+  ) => {
     // Use configOverride if provided (avoids React setState race condition)
     const projectCfg = configOverride ?? _projectConfig;
     try {
@@ -392,6 +396,7 @@ function BuilderContent() {
     setDeploymentStatus(null);
     setDeploymentUrl(undefined);
     setDeploymentError(undefined);
+    setDeploymentLogs([]);
 
     try {
       // Convert Template to TemplateType
@@ -416,17 +421,22 @@ function BuilderContent() {
         (status) => {
           setDeploymentStatus(status);
         },
+        isTempWorkspace,
       );
 
       // Set deployment URL on success
       setDeploymentUrl(result.url);
       toast.success("Deployment successful!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Deployment failed:", error);
       errorHandler.handleError(error);
       const errorMessage =
         error instanceof Error ? error.message : "Deployment failed";
       setDeploymentError(errorMessage);
+      // Capture build logs from the error (attached by deployment-service)
+      if (error.buildLogs && Array.isArray(error.buildLogs)) {
+        setDeploymentLogs(error.buildLogs);
+      }
       toast.error(errorMessage);
     }
   };
@@ -653,6 +663,7 @@ function BuilderContent() {
           status={deploymentStatus}
           deploymentUrl={deploymentUrl}
           error={deploymentError}
+          buildLogs={deploymentLogs}
         />
       </div>
     </ErrorBoundary>

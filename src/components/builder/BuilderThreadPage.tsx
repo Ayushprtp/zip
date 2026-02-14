@@ -394,6 +394,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     useState<DeploymentStatus | null>(null);
   const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
   const [deploymentError, setDeploymentError] = useState<string | undefined>();
+  const [deploymentLogs, setDeploymentLogs] = useState<string[]>([]);
   const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
   const [showVercelConnect, setShowVercelConnect] = useState(false);
 
@@ -441,7 +442,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         const parsed = JSON.parse(stored);
         if (parsed.expiresAt) setTempExpiresAt(parsed.expiresAt);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [threadId]);
 
   // .flare-sh chat storage
@@ -532,13 +535,14 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   useEffect(() => {
     const shouldInit = searchParams.get("initRepo");
-    if (!shouldInit || initRepoRef.current || !gitConfigured || !commitAndPush) return;
+    if (!shouldInit || initRepoRef.current || !gitConfigured || !commitAndPush)
+      return;
     if (!filesReady) return; // Wait for thread load + Sandpack init
 
     // Wait until real template files (not just README) are synced from Sandpack → context
     const filePaths = Object.keys(state.files);
     const hasTemplateFiles =
-      filePaths.some(p => p === "/package.json" || p === "/index.html") &&
+      filePaths.some((p) => p === "/package.json" || p === "/index.html") &&
       filePaths.length >= 3;
 
     if (!hasTemplateFiles) return; // Sandpack hasn't synced yet
@@ -673,12 +677,21 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     setDeploymentStatus(null);
     setDeploymentUrl(undefined);
     setDeploymentError(undefined);
+    setDeploymentLogs([]);
     try {
+      // Determine output directory based on template — for frameworks
+      // Vercel manages (nextjs, nuxtjs, etc.), leave it empty
+      const templateType = (currentThread.template as TemplateType) || "react";
+      const vercelManaged = ["nextjs", "nuxtjs", "gatsby"];
+      const outputDirectory = vercelManaged.includes(templateType)
+        ? ""
+        : "dist";
+
       const config: DeploymentConfig = {
         platform: "vercel",
         projectName: currentThread.title,
         buildCommand: "npm run build",
-        outputDirectory: "dist",
+        outputDirectory,
       };
       deploymentService.validateConfig(config);
       const result = await deploymentService.deploy(
@@ -710,6 +723,10 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       }
 
       setDeploymentError(errorMessage);
+      // Capture build logs (attached by deployment-service)
+      if ((error as any).buildLogs && Array.isArray((error as any).buildLogs)) {
+        setDeploymentLogs((error as any).buildLogs);
+      }
       toast.error(errorMessage);
     }
   }, [currentThread, state.files, isTempWorkspace]);
@@ -1387,9 +1404,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                   setSelectedModel({
                     ...selectedModel,
                     provider:
-                      nextModel === "glm-4.1v-9b-thinking"
-                        ? "glm"
-                        : "openai",
+                      nextModel === "glm-4.1v-9b-thinking" ? "glm" : "openai",
                     model: nextModel,
                   });
                 }
@@ -1539,6 +1554,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
           onClose={() => setShowDeploymentProgress(false)}
           deploymentUrl={deploymentUrl}
           error={deploymentError}
+          buildLogs={deploymentLogs}
         />
       )}
       {showChatHistory && (

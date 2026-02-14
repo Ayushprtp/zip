@@ -14,14 +14,23 @@ import { cookies } from "next/headers";
 const VERCEL_API_URL = "https://api.vercel.com";
 
 /**
- * GET /api/builder/deploy/status?deploymentId=xxx&platform=vercel
+ * Token used for deploying temporary workspace projects.
+ * Must match the token used in the deploy route.
+ */
+const VERCEL_TEMP_TOKEN = process.env.VERCEL_TEMP_TOKEN;
+
+/**
+ * GET /api/builder/deploy/status?deploymentId=xxx&platform=vercel&isTemporary=true
  *
- * Checks the status of a Vercel deployment
+ * Checks the status of a Vercel deployment.
+ * Pass isTemporary=true for temporary workspace deployments so the server
+ * uses VERCEL_TEMP_TOKEN instead of the per-user cookie.
  */
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const deploymentId = searchParams.get("deploymentId");
+    const isTemporary = searchParams.get("isTemporary") === "true";
 
     if (!deploymentId) {
       return NextResponse.json(
@@ -30,7 +39,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const result = await checkVercelStatus(deploymentId);
+    const result = await checkVercelStatus(deploymentId, isTemporary);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Status check error:", error);
@@ -46,11 +55,24 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * Check Vercel deployment status using per-user token
+ * Check Vercel deployment status.
+ *
+ * Token resolution order (mirrors the deploy route):
+ *   1. User's Vercel token from cookies (personal account)
+ *   2. For temporary-workspace projects: VERCEL_TEMP_TOKEN env var
+ *   3. If neither is available → error
  */
-async function checkVercelStatus(deploymentId: string): Promise<any> {
+async function checkVercelStatus(
+  deploymentId: string,
+  isTemporary: boolean,
+): Promise<any> {
   const cookieStore = await cookies();
-  const token = cookieStore.get("vercel_token")?.value;
+  let token = cookieStore.get("vercel_token")?.value;
+
+  // For temporary workspace projects, fall back to the server-side env token
+  if (!token && isTemporary && VERCEL_TEMP_TOKEN) {
+    token = VERCEL_TEMP_TOKEN;
+  }
 
   if (!token) {
     throw new Error("Vercel token not configured");
@@ -80,10 +102,56 @@ async function checkVercelStatus(deploymentId: string): Promise<any> {
     status = "error";
   }
 
+  // Fetch build logs when deployment is errored (or optionally building)
+  let logs: string[] = [];
+  if (status === "error") {
+    try {
+      const eventsResponse = await fetch(
+        `${VERCEL_API_URL}/v3/deployments/${deploymentId}/events`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        },
+      );
+      if (eventsResponse.ok) {
+        const events = await eventsResponse.json();
+        // Filter to build output lines — Vercel events have `type` and `text`
+        logs = (Array.isArray(events) ? events : [])
+          .filter(
+            (e: any) =>
+              e.type === "stdout" ||
+              e.type === "stderr" ||
+              e.type === "command",
+          )
+          .map((e: any) => e.text || e.payload?.text || "")
+          .filter(Boolean)
+          // Keep only the last 80 lines to avoid overwhelming the UI
+          .slice(-80);
+      }
+    } catch (logErr) {
+      console.warn("[DeployStatus] Failed to fetch build logs:", logErr);
+    }
+  }
+
+  // Build a detailed error message from the deployment + logs
+  let errorMessage = deployment.error?.message || undefined;
+  if (status === "error" && !errorMessage && logs.length > 0) {
+    // Try to find the most relevant error line from the logs
+    const errorLines = logs.filter(
+      (l) =>
+        l.toLowerCase().includes("error") || l.toLowerCase().includes("failed"),
+    );
+    if (errorLines.length > 0) {
+      errorMessage = errorLines[errorLines.length - 1];
+    }
+  }
+
   return {
     status,
     url: deployment.url ? `https://${deployment.url}` : null,
-    logs: [],
-    error: deployment.error?.message,
+    logs,
+    error: errorMessage,
   };
 }

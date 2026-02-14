@@ -79,7 +79,11 @@ function sanitizeProjectName(name: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { package: deploymentPackage, config, isTemporary } = body as {
+    const {
+      package: deploymentPackage,
+      config,
+      isTemporary,
+    } = body as {
       package: DeploymentPackage;
       config: DeploymentConfig;
       isTemporary?: boolean;
@@ -130,7 +134,9 @@ async function deployToVercel(
   // For temporary workspace projects, fall back to the server-side env token
   if (!token && isTemporary && VERCEL_TEMP_TOKEN) {
     token = VERCEL_TEMP_TOKEN;
-    console.log("[Deploy] Using VERCEL_TEMP_TOKEN for temporary workspace deployment");
+    console.log(
+      "[Deploy] Using VERCEL_TEMP_TOKEN for temporary workspace deployment",
+    );
   }
 
   if (!token) {
@@ -159,10 +165,24 @@ async function deployToVercel(
   const framework = mapFramework(deploymentPackage.metadata.template);
 
   // Build project settings — only include recognized fields
+  // For frameworks that Vercel auto-manages (nextjs, nuxtjs, gatsby, etc.),
+  // do NOT send outputDirectory — Vercel knows where the output goes and
+  // sending an incorrect value (e.g., "dist") will cause build failures.
+  const VERCEL_MANAGED_FRAMEWORKS = new Set([
+    "nextjs",
+    "nuxtjs",
+    "gatsby",
+    "sveltekit",
+  ]);
+
   const projectSettings: Record<string, string> = {};
   if (config.buildCommand) projectSettings.buildCommand = config.buildCommand;
-  if (config.outputDirectory)
+  if (
+    config.outputDirectory &&
+    !VERCEL_MANAGED_FRAMEWORKS.has(framework || "")
+  ) {
     projectSettings.outputDirectory = config.outputDirectory;
+  }
   if (framework) projectSettings.framework = framework;
 
   // Call the Vercel deployment API
