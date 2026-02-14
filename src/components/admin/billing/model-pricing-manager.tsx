@@ -20,7 +20,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "ui/dialog";
 import { Label } from "ui/label";
@@ -31,14 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "ui/select";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  ArrowLeft,
-  Search,
-  DollarSign,
-} from "lucide-react";
+import { Plus, Pencil, Trash2, ArrowLeft, Search } from "lucide-react";
 import Link from "next/link";
 import { Switch } from "ui/switch";
 import {

@@ -259,6 +259,27 @@ export class FlareChatStorage {
     return null;
   }
 
+  /** Save the task plan to the unified tasklist.json */
+  saveTaskList(plan: TaskPlan) {
+    this.updateFile(
+      "/.flare-sh/tasks/tasklist.json",
+      JSON.stringify(plan, null, 2),
+    );
+  }
+
+  /** Get the unified task list */
+  getTaskList(): TaskPlan | null {
+    const raw = this.projectFiles["/.flare-sh/tasks/tasklist.json"];
+    if (raw) {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  }
+
   /** List task plans */
   listTaskPlans(): TaskPlan[] {
     const plans: TaskPlan[] = [];
@@ -274,43 +295,207 @@ export class FlareChatStorage {
     return plans.sort((a, b) => b.createdAt - a.createdAt);
   }
 
-  /** Parse AI plan response into tasks */
+  /**
+   * Parse AI plan response (markdown format) into hierarchical tasks.
+   *
+   * Handles:
+   * - ## H2 headers → top-level tasks (phase/section)
+   * - ### H3 headers → subtasks of the nearest H2
+   * - #### H4 headers → subtasks of the nearest H3
+   * - Numbered lists (1., 2., 1.1, etc.) → tasks at appropriate depth
+   * - Bullet points (- or *) → subtasks inside the current context
+   * - **Bold text** within bullets/numbers as task labels
+   */
   static parsePlanToTasks(planText: string): TaskItem[] {
     const tasks: TaskItem[] = [];
     const lines = planText.split("\n");
 
-    // Stack to track nesting: [level, parentReference]
+    let taskCounter = 0;
+    // Stack tracks parent containers at each depth
+    // level 1 = h2, level 2 = h3, level 3 = h4/numbered, level 4 = bullets
     const stack: { level: number; items: TaskItem[] }[] = [
       { level: 0, items: tasks },
     ];
 
-    for (const line of lines) {
-      // Match numbered items like "1.", "1.1", "1.1.1", "2.", etc.
-      const match = line.match(/^(\s*)(\d+(?:\.\d+)*)[.)]\s+(.+)/);
-      if (!match) continue;
+    function getNextId(): string {
+      taskCounter++;
+      return `task-${taskCounter}`;
+    }
 
-      const numbering = match[2];
-      const text = match[3].trim();
-      const level = numbering.split(".").length;
-
-      const item: TaskItem = {
-        id: `task-${numbering.replace(/\./g, "-")}`,
-        label: numbering,
-        description: text,
-        status: "pending",
-        subtasks: [],
-      };
-
-      // Find the right parent level
+    function pushToLevel(level: number, item: TaskItem) {
+      // Pop stack to the right level
       while (stack.length > 1 && stack[stack.length - 1].level >= level) {
         stack.pop();
       }
-
       const parent = stack[stack.length - 1];
       parent.items.push(item);
-
       if (item.subtasks) {
         stack.push({ level, items: item.subtasks });
+      }
+    }
+
+    function cleanText(text: string): string {
+      // Remove markdown bold/italic markers
+      return text
+        .replace(/\*\*/g, "")
+        .replace(/\*/g, "")
+        .replace(/__/g, "")
+        .trim();
+    }
+
+    function extractTitleAndDesc(text: string): {
+      title: string;
+      desc: string;
+    } {
+      // If text has a colon or dash separator, split into title + description
+      const boldMatch = text.match(/^\*\*(.+?)\*\*[:\-–—]?\s*(.*)/);
+      if (boldMatch) {
+        return {
+          title: boldMatch[1].trim(),
+          desc: boldMatch[2].trim() || boldMatch[1].trim(),
+        };
+      }
+      // Check for colon separator
+      const colonIdx = text.indexOf(":");
+      if (colonIdx > 0 && colonIdx < 60) {
+        return {
+          title: cleanText(text.substring(0, colonIdx)),
+          desc:
+            cleanText(text.substring(colonIdx + 1)) ||
+            cleanText(text.substring(0, colonIdx)),
+        };
+      }
+      return { title: cleanText(text), desc: cleanText(text) };
+    }
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      // Skip code blocks
+      if (trimmed.startsWith("```")) continue;
+
+      // Skip pure metadata lines like "---", "===", or lines that are just symbols
+      if (/^[-=]{3,}$/.test(trimmed)) continue;
+
+      // ## H2 headers → top-level tasks (Phase / Section)
+      const h2Match = trimmed.match(/^##\s+(.+)/);
+      if (h2Match && !trimmed.startsWith("###")) {
+        const text = h2Match[1].trim();
+        // Skip overview/generic headers
+        if (
+          /^(project overview|technology stack|timeline|additional|table of contents)/i.test(
+            text,
+          )
+        )
+          continue;
+
+        const { title } = extractTitleAndDesc(text);
+        const item: TaskItem = {
+          id: getNextId(),
+          label: `${tasks.length + 1}`,
+          description: title,
+          status: "pending",
+          subtasks: [],
+        };
+        // Reset stack to root
+        while (stack.length > 1) stack.pop();
+        stack[0].items.push(item);
+        stack.push({ level: 1, items: item.subtasks! });
+        continue;
+      }
+
+      // ### H3 headers → subtasks of the current H2
+      const h3Match = trimmed.match(/^###\s+(.+)/);
+      if (h3Match && !trimmed.startsWith("####")) {
+        const text = h3Match[1].trim();
+        const { title } = extractTitleAndDesc(text);
+        // Pop to h2 level
+        while (stack.length > 2) stack.pop();
+        // If no H2 parent, create at root
+        if (stack.length < 2) {
+          while (stack.length > 1) stack.pop();
+        }
+        const parent = stack[stack.length - 1];
+        const item: TaskItem = {
+          id: getNextId(),
+          label: `${stack.length > 1 ? (stack[1].items.length > 0 ? tasks.length : tasks.length + 1) : tasks.length + 1}.${parent.items.length + 1}`,
+          description: title,
+          status: "pending",
+          subtasks: [],
+        };
+        parent.items.push(item);
+        stack.push({ level: 2, items: item.subtasks! });
+        continue;
+      }
+
+      // #### H4 headers → subtasks of current H3
+      const h4Match = trimmed.match(/^####\s+(.+)/);
+      if (h4Match) {
+        const text = h4Match[1].trim();
+        const { title } = extractTitleAndDesc(text);
+        while (stack.length > 3) stack.pop();
+        if (stack.length < 3) {
+          // No parent h3, add under current context
+        }
+        const parent = stack[stack.length - 1];
+        const item: TaskItem = {
+          id: getNextId(),
+          label: `${parent.items.length + 1}`,
+          description: title,
+          status: "pending",
+          subtasks: [],
+        };
+        parent.items.push(item);
+        stack.push({ level: 3, items: item.subtasks! });
+        continue;
+      }
+
+      // Numbered items: "1.", "2.", "1.1", "1.1.1", "1)", etc.
+      const numMatch = trimmed.match(/^(\d+(?:\.\d+)*)[.)]\s+(.+)/);
+      if (numMatch) {
+        const numbering = numMatch[1];
+        const text = numMatch[2];
+        const numLevel = numbering.split(".").length;
+        const { title } = extractTitleAndDesc(text);
+
+        const item: TaskItem = {
+          id: getNextId(),
+          label: numbering,
+          description: title,
+          status: "pending",
+          subtasks: [],
+        };
+
+        // Determine where to attach: numbered depth + stack context
+        const targetLevel = Math.min(
+          numLevel + (stack.length > 1 ? stack[1].level : 0),
+          stack.length + 1,
+        );
+        pushToLevel(targetLevel, item);
+        continue;
+      }
+
+      // Bullet points: "- item" or "* item"
+      const bulletMatch = trimmed.match(/^[-*]\s+(.+)/);
+      if (bulletMatch) {
+        const text = bulletMatch[1];
+        // Skip lines that look like descriptions (too long, starts with lowercase)
+        if (text.length > 120 && text[0] === text[0].toLowerCase()) continue;
+        // Skip tech stack listing lines like "**Framework**: React.js"
+        if (/^\*\*\w+\*\*:\s/.test(text) && text.length < 50) continue;
+
+        const { title } = extractTitleAndDesc(text);
+        const parent = stack[stack.length - 1];
+
+        const item: TaskItem = {
+          id: getNextId(),
+          label: `${parent.items.length + 1}`,
+          description: title,
+          status: "pending",
+        };
+        parent.items.push(item);
+        continue;
       }
     }
 
@@ -325,6 +510,16 @@ export class FlareChatStorage {
       }
     }
     cleanSubtasks(tasks);
+
+    // If no tasks were parsed (fallback), create a single task
+    if (tasks.length === 0) {
+      tasks.push({
+        id: getNextId(),
+        label: "1",
+        description: "Review and implement the plan above",
+        status: "pending",
+      });
+    }
 
     return tasks;
   }

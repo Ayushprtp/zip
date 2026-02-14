@@ -608,36 +608,83 @@ async function handleExec(
 // ============================================================================
 
 async function handleListFiles(
-  sessionId: string,
+  _sessionId: string,
   dirPath: string,
 ): Promise<NextResponse> {
-  const session = getSession(sessionId);
-  if (!session) {
+  // --- GitHub repo agent integration ---
+  // Example config: these should be provided by session or params
+  const installationId = process.env.GITHUB_INSTALLATION_ID
+    ? parseInt(process.env.GITHUB_INSTALLATION_ID)
+    : undefined;
+  const owner = process.env.GITHUB_REPO_OWNER;
+  const repo = process.env.GITHUB_REPO_NAME;
+  const branch = process.env.GITHUB_REPO_BRANCH || "main";
+
+  if (!installationId || !owner || !repo) {
     return NextResponse.json(
-      { error: "No active SSH session" },
-      { status: 404 },
+      { error: "GitHub repo agent config missing" },
+      { status: 500 },
     );
   }
 
   try {
-    const result = await execOnClient(
-      session.client,
-      `cd "${dirPath}" 2>/dev/null && ls -la --time-style=long-iso 2>/dev/null || ls -la "${dirPath}" 2>/dev/null`,
+    // Dynamically import GitHubAppService
+    const { GitHubAppService } = await import(
+      "@/lib/builder/github-app-service"
     );
+    const githubApp = new GitHubAppService({
+      appId: process.env.GITHUB_APP_ID!,
+      privateKey: process.env.GITHUB_APP_PRIVATE_KEY!,
+      clientId: process.env.GITHUB_APP_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_APP_CLIENT_SECRET!,
+    });
 
-    session.lastActivity = Date.now();
+    // Get directory tree for the branch
+    const tree = await githubApp.getTree(installationId, owner, repo, branch);
+    // Normalize dirPath (remove leading/trailing slashes)
+    const normalizedDir = dirPath.replace(/^\/+|\/+$/g, "");
+    const dirPrefix = normalizedDir ? `${normalizedDir}/` : "";
 
-    const files: RemoteFileInfo[] = [];
-    const lines = result
-      .split("\n")
-      .filter((l) => l.trim() && !l.startsWith("total"));
+    // Collect files and directories in the requested path
+    const items = new Map<string, any>();
 
-    for (const line of lines) {
-      const parsed = parseLsLine(line, dirPath);
-      if (parsed && parsed.name !== "." && parsed.name !== "..") {
-        files.push(parsed);
+    for (const item of tree) {
+      if (
+        normalizedDir &&
+        !item.path.startsWith(dirPrefix) &&
+        item.path !== normalizedDir
+      ) {
+        continue; // Not in this directory
       }
+
+      const relativePath = normalizedDir
+        ? item.path.slice(dirPrefix.length)
+        : item.path;
+      if (!relativePath || relativePath.includes("/")) {
+        // Skip items deeper than one level
+        continue;
+      }
+
+      items.set(relativePath, item);
     }
+
+    const files: RemoteFileInfo[] = Array.from(items.values()).map(
+      (item: any) => {
+        const name = item.path.split("/").pop() || item.path;
+        const isDirectory = item.type === "tree";
+        return {
+          name,
+          path: item.path,
+          type: isDirectory ? "directory" : "file",
+          size: item.size || 0,
+          permissions: isDirectory ? "drwxr-xr-x" : "rw-r--r--",
+          owner: owner,
+          group: "",
+          modifiedAt: "",
+          isHidden: name.startsWith("."),
+        };
+      },
+    );
 
     return NextResponse.json({
       success: true,
@@ -646,7 +693,7 @@ async function handleListFiles(
     });
   } catch (err: any) {
     return NextResponse.json(
-      { error: `Failed to list files: ${err.message}` },
+      { error: `Failed to list files (GitHub agent): ${err.message}` },
       { status: 500 },
     );
   }
@@ -1216,51 +1263,4 @@ function execOnClient(
         });
     });
   });
-}
-
-function parseLsLine(line: string, basePath: string): RemoteFileInfo | null {
-  const regex =
-    /^([dlcbsp-])([rwxsStT-]{9})\s+\d+\s+(\S+)\s+(\S+)\s+(\d+)\s+(\S+\s+\S+)\s+(.+)$/;
-  const match = line.match(regex);
-
-  if (!match) {
-    const simpleRegex =
-      /^([dlcbsp-])([rwxsStT-]{9})\s+\d+\s+(\S+)\s+(\S+)\s+(\d+)\s+(\S+\s+\d+\s+[\d:]+)\s+(.+)$/;
-    const simpleMatch = line.match(simpleRegex);
-    if (!simpleMatch) return null;
-
-    const [, typeChar, perms, owner, group, size, date, name] = simpleMatch;
-    const type =
-      typeChar === "d" ? "directory" : typeChar === "l" ? "symlink" : "file";
-
-    const cleanName = name.split(" -> ")[0];
-    return {
-      name: cleanName,
-      path: basePath === "/" ? `/${cleanName}` : `${basePath}/${cleanName}`,
-      type: type as RemoteFileInfo["type"],
-      size: parseInt(size),
-      permissions: `${typeChar}${perms}`,
-      owner,
-      group,
-      modifiedAt: date,
-      isHidden: cleanName.startsWith("."),
-    };
-  }
-
-  const [, typeChar, perms, owner, group, size, date, name] = match;
-  const type =
-    typeChar === "d" ? "directory" : typeChar === "l" ? "symlink" : "file";
-
-  const cleanName = name.split(" -> ")[0];
-  return {
-    name: cleanName,
-    path: basePath === "/" ? `/${cleanName}` : `${basePath}/${cleanName}`,
-    type: type as RemoteFileInfo["type"],
-    size: parseInt(size),
-    permissions: `${typeChar}${perms}`,
-    owner,
-    group,
-    modifiedAt: date,
-    isHidden: cleanName.startsWith("."),
-  };
 }
