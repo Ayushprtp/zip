@@ -49,7 +49,7 @@ import {
   deploymentService,
   type DeploymentStatus,
 } from "@/lib/builder/deployment-service";
-import { DeploymentProgress } from "./deployment-progress";
+import { DeploymentPanel } from "./deployment-panel";
 import { errorHandler } from "@/lib/builder/error-handlers";
 import type { TemplateType, DeploymentConfig } from "app-types/builder";
 
@@ -395,7 +395,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [deploymentUrl, setDeploymentUrl] = useState<string | undefined>();
   const [deploymentError, setDeploymentError] = useState<string | undefined>();
   const [deploymentLogs, setDeploymentLogs] = useState<string[]>([]);
-  const [showDeploymentProgress, setShowDeploymentProgress] = useState(false);
+  const [showDeployPanel, setShowDeployPanel] = useState(false);
   const [showVercelConnect, setShowVercelConnect] = useState(false);
 
   // Chat mode
@@ -549,13 +549,14 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
     initRepoRef.current = true;
 
-    // Wait 4s for Sandpack to finish syncing ALL template files into state.files
+    // Wait 6s for Sandpack to finish syncing ALL template files into state.files
     // Use latestFilesRef to read the most up-to-date files (avoids stale closure)
     const timer = setTimeout(() => {
       const currentFiles = latestFilesRef.current;
-      const filesList = Object.entries(currentFiles)
-        .filter(([path]) => !path.startsWith("/.flare-sh/"))
-        .map(([path, content]) => ({ path, content }));
+      const filesList = Object.entries(currentFiles).map(([path, content]) => ({
+        path,
+        content,
+      }));
 
       if (filesList.length === 0) return;
 
@@ -673,7 +674,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   const handleDeploy = useCallback(async () => {
     if (!currentThread) return;
-    setShowDeploymentProgress(true);
+    // Open the deploy panel if not already open
+    setShowDeployPanel(true);
     setDeploymentStatus(null);
     setDeploymentUrl(undefined);
     setDeploymentError(undefined);
@@ -727,7 +729,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
           toast.error("Server-side Vercel token missing for temp workspace");
         } else {
           setShowVercelConnect(true);
-          setShowDeploymentProgress(false);
+          setShowDeployPanel(false);
         }
         return;
       }
@@ -1320,7 +1322,11 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         onShowQR={() => setShowQR(true)}
         onToggleMobilePreview={toggleMobilePreview}
         mobilePreview={mobilePreview}
-        deploying={showDeploymentProgress}
+        deploying={
+          !!deploymentStatus &&
+          deploymentStatus.status !== "success" &&
+          deploymentStatus.status !== "error"
+        }
         isExporting={isExporting}
         fileCount={
           Object.keys(state.files).filter((f) => !f.startsWith("/.flare-sh/"))
@@ -1342,6 +1348,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         onServerStart={startServer}
         onServerStop={stopServer}
         onServerRestart={restartServer}
+        showDeployPanel={showDeployPanel}
+        onToggleDeployPanel={() => setShowDeployPanel((v) => !v)}
       />
 
       {/* Main Layout — Resizable Panels */}
@@ -1455,7 +1463,26 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
             {/* Top — Main workspace */}
             <Panel defaultSize={activeTaskPlan ? 60 : 100} minSize={30}>
               <main className="h-full w-full relative overflow-hidden">
-                {filesReady ? (
+                {showDeployPanel ? (
+                  /* Deployment Panel — replaces preview */
+                  <div className="absolute inset-0 overflow-hidden">
+                    <DeploymentPanel
+                      projectName={currentThread?.title || "Untitled"}
+                      isTemporary={isTempWorkspace}
+                      onClose={() => setShowDeployPanel(false)}
+                      onDeploy={handleDeploy}
+                      deploymentStatus={deploymentStatus}
+                      deploymentUrl={deploymentUrl}
+                      deploymentError={deploymentError}
+                      buildLogs={deploymentLogs}
+                      isDeploying={
+                        !!deploymentStatus &&
+                        deploymentStatus.status !== "success" &&
+                        deploymentStatus.status !== "error"
+                      }
+                    />
+                  </div>
+                ) : filesReady ? (
                   <div
                     className={
                       mobilePreview
@@ -1556,16 +1583,6 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       {/* Modals */}
       {showQR && (
         <QRCodeModal url={previewUrl} onClose={() => setShowQR(false)} />
-      )}
-      {showDeploymentProgress && (
-        <DeploymentProgress
-          open={true}
-          status={deploymentStatus}
-          onClose={() => setShowDeploymentProgress(false)}
-          deploymentUrl={deploymentUrl}
-          error={deploymentError}
-          buildLogs={deploymentLogs}
-        />
       )}
       {showChatHistory && (
         <ChatHistoryModal
