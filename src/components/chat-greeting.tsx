@@ -144,7 +144,7 @@ export const ChatGreeting = ({
   return (
     <motion.div
       key="welcome"
-      className="max-w-2xl mx-auto w-full flex flex-col items-center px-4"
+      className="max-w-3xl mx-auto w-full flex flex-col items-center px-4"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
