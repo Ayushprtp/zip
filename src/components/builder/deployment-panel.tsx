@@ -13,6 +13,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Rocket,
   Globe,
   ExternalLink,
@@ -33,13 +43,14 @@ import {
 } from "lucide-react";
 import type { DeploymentStatus } from "@/lib/builder/deployment-service";
 import { toast } from "sonner";
+import { VercelConnectModal } from "./VercelConnectModal";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
 interface DeploymentRecord {
   id: string;
   url: string | null;
-  state: string;
+  state: string; // READY, ERROR, BUILDING
   createdAt: number;
   meta: {
     gitCommitSha?: string;
@@ -63,7 +74,7 @@ interface DeploymentPanelProps {
   onClose: () => void;
   onDeploy: () => void;
   deploymentStatus: DeploymentStatus | null;
-  deploymentUrl?: string;
+  deploymentUrl?: string; // Production URL or current deploy URL
   deploymentError?: string;
   buildLogs?: string[];
   isDeploying?: boolean;
@@ -90,6 +101,14 @@ export function DeploymentPanel({
   const [newDomain, setNewDomain] = useState("");
   const [addingDomain, setAddingDomain] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Deletion state
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Install App Prompt
+  const [showInstallApp, setShowInstallApp] = useState(false);
+
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const activeLogs = deploymentStatus?.buildLogs ?? buildLogs ?? [];
@@ -101,6 +120,14 @@ export function DeploymentPanel({
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [activeLogs]);
+
+  // Check for MISSING_GITHUB_APP error
+  useEffect(() => {
+    const errorMsg = deploymentError || deploymentStatus?.message || "";
+    if (errorMsg.includes("MISSING_GITHUB_APP")) {
+      setShowInstallApp(true);
+    }
+  }, [deploymentError, deploymentStatus?.message]);
 
   // ── Data Fetching ──────────────────────────────────────────────────
 
@@ -153,6 +180,36 @@ export function DeploymentPanel({
       return () => clearTimeout(timer);
     }
   }, [deploymentStatus?.status, fetchHistory]);
+
+  // ── Deployment Management ──────────────────────────────────────────
+
+  const handleDelete = async () => {
+    if (!deleteConfirmId) return;
+    setIsDeleting(true);
+    try {
+      const resp = await fetch(
+        `/api/builder/deploy?deploymentId=${deleteConfirmId}${isTemporary ? "&isTemporary=true" : ""}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to delete deployment");
+      }
+
+      toast.success("Deployment deleted");
+      setDeployments((prev) => prev.filter((d) => d.id !== deleteConfirmId));
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete deployment",
+      );
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmId(null);
+    }
+  };
 
   // ── Domain Management ──────────────────────────────────────────────
 
@@ -218,7 +275,7 @@ export function DeploymentPanel({
     deploymentStatus?.status === "deploying";
 
   return (
-    <div className="flex flex-col h-full bg-background overflow-hidden">
+    <div className="flex flex-col h-full bg-background overflow-hidden relative">
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-3 border-b bg-muted/20 shrink-0">
         <Button
@@ -240,6 +297,7 @@ export function DeploymentPanel({
             fetchDomains();
           }}
           className="h-7 w-7"
+          title="Refresh"
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -312,6 +370,23 @@ export function DeploymentPanel({
                       deploymentStatus?.message ||
                       "Unknown error"}
                   </p>
+
+                  {/* Show "Install App" prompt inside error if relevant */}
+                  {(
+                    deploymentError ||
+                    deploymentStatus?.message ||
+                    ""
+                  ).includes("MISSING_GITHUB_APP") && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full mt-2 gap-2 text-red-400 border-red-400/30 hover:bg-red-500/10"
+                      onClick={() => setShowInstallApp(true)}
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Install Vercel GitHub App
+                    </Button>
+                  )}
                 </div>
               )}
 
@@ -496,6 +571,7 @@ export function DeploymentPanel({
                     deployment={d}
                     copied={copied}
                     onCopy={copyUrl}
+                    onDelete={() => setDeleteConfirmId(d.id)}
                   />
                 ))}
               </div>
@@ -503,6 +579,38 @@ export function DeploymentPanel({
           </section>
         </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog
+        open={!!deleteConfirmId}
+        onOpenChange={(v) => !v && setDeleteConfirmId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Deployment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This deployment will be permanently deleted from Vercel. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-red-500 hover:bg-red-600 focus:ring-red-500"
+            >
+              {isDeleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Vercel App Install Helper */}
+      <VercelConnectModal
+        open={showInstallApp}
+        onOpenChange={setShowInstallApp}
+        mode="install-app"
+      />
     </div>
   );
 }
@@ -513,10 +621,12 @@ function DeploymentRow({
   deployment,
   copied,
   onCopy,
+  onDelete,
 }: {
   deployment: DeploymentRecord;
   copied: string | null;
   onCopy: (url: string) => void;
+  onDelete: () => void;
 }) {
   const isReady = deployment.state === "READY";
   const isError = deployment.state === "ERROR";
@@ -528,7 +638,7 @@ function DeploymentRow({
 
   return (
     <div
-      className={`rounded-lg border p-3 space-y-2 ${
+      className={`rounded-lg border p-3 space-y-2 group ${
         isError
           ? "border-red-500/20 bg-red-500/5"
           : isProduction
@@ -594,34 +704,56 @@ function DeploymentRow({
         </div>
       )}
 
-      {/* URL */}
-      {deployment.url && isReady && (
-        <div className="flex items-center gap-1.5">
-          <code className="text-[11px] text-blue-400 truncate flex-1">
-            {deployment.url}
-          </code>
+      {/* URL & Actions */}
+      <div className="flex items-center justify-between">
+        <div className="overflow-hidden flex-1 mr-2">
+          {deployment.url && isReady && (
+            <div className="flex items-center gap-1.5 truncate">
+              <code className="text-[11px] text-blue-400 truncate flex-1 block">
+                {deployment.url}
+              </code>
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+          {deployment.url && isReady && (
+            <>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5"
+                onClick={() => onCopy(deployment.url!)}
+              >
+                {copied === deployment.url ? (
+                  <CheckCircle2 className="h-2.5 w-2.5 text-green-500" />
+                ) : (
+                  <Copy className="h-2.5 w-2.5" />
+                )}
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-5 w-5"
+                onClick={() =>
+                  window.open(deployment.url!, "_blank", "noopener")
+                }
+              >
+                <ExternalLink className="h-2.5 w-2.5" />
+              </Button>
+            </>
+          )}
+
           <Button
             size="icon"
             variant="ghost"
-            className="h-5 w-5"
-            onClick={() => onCopy(deployment.url!)}
+            className="h-5 w-5 hover:text-red-400"
+            onClick={onDelete}
           >
-            {copied === deployment.url ? (
-              <CheckCircle2 className="h-2.5 w-2.5 text-green-500" />
-            ) : (
-              <Copy className="h-2.5 w-2.5" />
-            )}
-          </Button>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-5 w-5"
-            onClick={() => window.open(deployment.url!, "_blank", "noopener")}
-          >
-            <ExternalLink className="h-2.5 w-2.5" />
+            <Trash2 className="h-2.5 w-2.5" />
           </Button>
         </div>
-      )}
+      </div>
 
       {/* Error */}
       {deployment.errorMessage && (
