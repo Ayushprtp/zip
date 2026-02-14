@@ -32,6 +32,13 @@ interface DeploymentConfig {
 }
 
 /**
+ * Token used for deploying temporary workspace projects.
+ * Set this in .env so temp-workspace users can deploy without
+ * connecting their own Vercel account.
+ */
+const VERCEL_TEMP_TOKEN = process.env.VERCEL_TEMP_TOKEN;
+
+/**
  * Map internal template names to Vercel-recognized framework identifiers.
  * Vercel uses specific strings — sending an unrecognized framework will cause
  * a Bad Request error.
@@ -72,9 +79,10 @@ function sanitizeProjectName(name: string): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { package: deploymentPackage, config } = body as {
+    const { package: deploymentPackage, config, isTemporary } = body as {
       package: DeploymentPackage;
       config: DeploymentConfig;
+      isTemporary?: boolean;
     };
 
     if (!deploymentPackage || !config) {
@@ -84,7 +92,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await deployToVercel(deploymentPackage, config);
+    const result = await deployToVercel(deploymentPackage, config, isTemporary);
 
     return NextResponse.json(result);
   } catch (error) {
@@ -99,7 +107,12 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Deploy to Vercel using the user's token from cookies.
+ * Deploy to Vercel.
+ *
+ * Token resolution order:
+ *   1. User's Vercel token from cookies (personal account)
+ *   2. For temporary-workspace projects: VERCEL_TEMP_TOKEN env var
+ *   3. If neither is available → error
  *
  * Uses the Vercel v13 deployments API with inline file content.
  * Each file is base64-encoded and sent with an `encoding: "base64"` field
@@ -108,10 +121,17 @@ export async function POST(request: NextRequest) {
 async function deployToVercel(
   deploymentPackage: DeploymentPackage,
   config: DeploymentConfig,
+  isTemporary?: boolean,
 ): Promise<{ deploymentId: string; status: string }> {
   // Get per-user Vercel token from cookies
   const cookieStore = await cookies();
-  const token = cookieStore.get("vercel_token")?.value;
+  let token = cookieStore.get("vercel_token")?.value;
+
+  // For temporary workspace projects, fall back to the server-side env token
+  if (!token && isTemporary && VERCEL_TEMP_TOKEN) {
+    token = VERCEL_TEMP_TOKEN;
+    console.log("[Deploy] Using VERCEL_TEMP_TOKEN for temporary workspace deployment");
+  }
 
   if (!token) {
     throw new Error(

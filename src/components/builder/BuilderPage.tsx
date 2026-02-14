@@ -7,7 +7,7 @@ import { ProjectProvider } from "@/lib/builder/project-context";
 import { ChatInterface } from "./chat-interface";
 import { GitHubProjectSetup, type ProjectConfig } from "./github-project-setup";
 import { TemplateSelectionDialog } from "./TemplateSelectionDialog";
-import { X, Copy, Check } from "lucide-react";
+import { X, Copy, Check, AlertTriangle, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
@@ -38,6 +38,61 @@ import { SkipLinks, useKeyboardShortcuts } from "./accessibility";
 
 // Error Handler
 import { errorHandler } from "@/lib/builder/error-handlers";
+
+// ─── Temp Workspace Banner ────────────────────────────────────────────────
+
+function TempWorkspaceBanner({
+  expiresAt,
+  onUpgrade,
+}: {
+  expiresAt: string;
+  onUpgrade: () => void;
+}) {
+  const [remaining, setRemaining] = useState("");
+  const [isUrgent, setIsUrgent] = useState(false);
+
+  useEffect(() => {
+    const update = () => {
+      const diff = new Date(expiresAt).getTime() - Date.now();
+      if (diff <= 0) {
+        setRemaining("Expired");
+        setIsUrgent(true);
+        return;
+      }
+      const h = Math.floor(diff / (60 * 60 * 1000));
+      const m = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+      setRemaining(`${h}h ${m}m`);
+      setIsUrgent(h < 2);
+    };
+    update();
+    const interval = setInterval(update, 60_000);
+    return () => clearInterval(interval);
+  }, [expiresAt]);
+
+  return (
+    <div
+      className={`flex items-center gap-2 px-3 py-1.5 text-[11px] border-b shrink-0 transition-colors ${
+        isUrgent
+          ? "bg-red-500/10 border-red-500/20 text-red-400"
+          : "bg-amber-500/8 border-amber-500/15 text-amber-400"
+      }`}
+    >
+      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+      <span className="flex-1">
+        <strong>Temporary Workspace</strong> — auto-deletes in{" "}
+        <strong>{remaining}</strong>. All code, deployments & history will be
+        destroyed.
+      </span>
+      <button
+        onClick={onUpgrade}
+        className="flex items-center gap-1 px-2 py-0.5 rounded bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-[10px] font-medium transition-colors whitespace-nowrap"
+      >
+        <Github className="h-3 w-3" />
+        Connect GitHub to Keep
+      </button>
+    </div>
+  );
+}
 
 function QRCodeModal({ url, onClose }: { url: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -160,19 +215,27 @@ function BuilderContent() {
   const viewMode: "code" | "preview" | "split" = "split";
   const showConsole = false;
 
+  // Temporary workspace state
+  const [isTempWorkspace, setIsTempWorkspace] = useState(false);
+  const [tempExpiresAt, setTempExpiresAt] = useState<string | null>(null);
+
   // Handle GitHub project setup completion
   const handleProjectReady = (config: ProjectConfig) => {
     setProjectConfig(config);
     setShowGitHubSetup(false);
 
+    // Check if this is a temporary workspace
+    if (config.type === "temporary" || config.isTemporary) {
+      setIsTempWorkspace(true);
+      setTempExpiresAt(config.expiresAt || null);
+    }
+
     // If it's an existing repo, skip template selection — go directly to builder
     if (config.type === "existing") {
-      // For existing repos, use the detected framework or default to react
       const detectedTemplate = config.framework || "react";
-      handleTemplateSelect(detectedTemplate);
+      handleTemplateSelect(detectedTemplate, config);
     } else if (config.framework) {
-      // New project with framework selected
-      handleTemplateSelect(config.framework);
+      handleTemplateSelect(config.framework, config);
     } else {
       // New project, no framework — show template selection
       setShowTemplateDialog(true);
@@ -182,6 +245,13 @@ function BuilderContent() {
   const handleSkipGitHubSetup = () => {
     setShowGitHubSetup(false);
     setShowTemplateDialog(true);
+  };
+
+  const handleUpgradeFromTemp = () => {
+    // Go back to GitHub setup to connect account
+    setShowGitHubSetup(true);
+    setIsTempWorkspace(false);
+    setTempExpiresAt(null);
   };
 
   // Keyboard shortcuts
@@ -245,15 +315,21 @@ function BuilderContent() {
     }
   };
 
-  const handleTemplateSelect = async (selectedTemplate: Template) => {
+  const handleTemplateSelect = async (selectedTemplate: Template, configOverride?: ProjectConfig | null) => {
+    // Use configOverride if provided (avoids React setState race condition)
+    const projectCfg = configOverride ?? _projectConfig;
     try {
+      // Use the project's actual name when available (e.g., existing repos)
+      const projectTitle =
+        projectCfg?.projectName || `New ${selectedTemplate} Project`;
+
       // Create a new thread in the database
       const response = await fetch("/api/builder/threads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           template: selectedTemplate,
-          title: `New ${selectedTemplate} Project`,
+          title: projectTitle,
         }),
       });
 
@@ -264,21 +340,34 @@ function BuilderContent() {
       const { thread } = await response.json();
 
       // Persist GitHub repo config if available
-      if (_projectConfig) {
+      if (projectCfg) {
         const repoConfig = {
-          owner: _projectConfig.repo.owner,
-          repo: _projectConfig.repo.name,
-          branch: _projectConfig.branch,
+          owner: projectCfg.repo.owner,
+          repo: projectCfg.repo.name,
+          branch: projectCfg.branch,
         };
         localStorage.setItem(
           `flare_repo_config_${thread.id}`,
           JSON.stringify(repoConfig),
         );
+
+        // Persist temp workspace metadata
+        if (projectCfg.isTemporary || projectCfg.type === "temporary") {
+          localStorage.setItem(
+            `flare_temp_workspace_${thread.id}`,
+            JSON.stringify({
+              expiresAt: projectCfg.expiresAt,
+              createdAt: new Date().toISOString(),
+            }),
+          );
+        }
       }
 
       // Redirect to the new thread with initRepo flag if it's a new project
       const queryParams =
-        _projectConfig?.type === "new" ? "?initRepo=true" : "";
+        projectCfg?.type === "new" || projectCfg?.type === "temporary"
+          ? "?initRepo=true"
+          : "";
       window.location.href = `/builder/${thread.id}${queryParams}`;
     } catch (error) {
       console.error("Error creating project:", error);
@@ -469,6 +558,13 @@ function BuilderContent() {
     <ErrorBoundary>
       <SkipLinks />
       <div className="flex flex-col w-full h-screen bg-background overflow-hidden">
+        {/* Temporary workspace warning banner */}
+        {isTempWorkspace && tempExpiresAt && (
+          <TempWorkspaceBanner
+            expiresAt={tempExpiresAt}
+            onUpgrade={handleUpgradeFromTemp}
+          />
+        )}
         <div className="flex flex-1 w-full overflow-hidden">
           {/* Template Selection Dialog */}
           <TemplateSelectionDialog

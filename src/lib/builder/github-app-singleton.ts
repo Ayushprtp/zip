@@ -84,3 +84,70 @@ export async function requireGitHubAuth(): Promise<{
 
   return { token, installationId };
 }
+
+/**
+ * Check if a repo is a Flare-managed temp workspace.
+ */
+export function isTempWorkspaceRepo(owner?: string, repo?: string): boolean {
+  const flareOrg = process.env.FLARE_TEMP_WORKSPACE_ORG || "Flare-SH";
+  return (
+    !!owner &&
+    !!repo &&
+    owner.toLowerCase() === flareOrg.toLowerCase() &&
+    repo.startsWith("tmp-")
+  );
+}
+
+/**
+ * Require GitHub auth — with temp-workspace fallback.
+ *
+ * For temp workspace repos, the user has no GitHub OAuth cookie because
+ * they skipped GitHub login. In that case we use the org-level PAT and
+ * the GitHub App installation ID to operate on the repo.
+ */
+export async function requireGitHubAuthOrTemp(
+  owner?: string,
+  repo?: string,
+): Promise<{ token: string; installationId: number }> {
+  // Try normal user auth first
+  const token = await getGitHubToken();
+  const installationId = await getInstallationId();
+  if (token && installationId) {
+    return { token, installationId };
+  }
+
+  // Fall back to temp workspace auth
+  if (isTempWorkspaceRepo(owner, repo)) {
+    const tempToken = process.env.FLARE_TEMP_REPO_TOKEN;
+    const orgInstallationId = process.env.FLARE_ORG_INSTALLATION_ID
+      ? parseInt(process.env.FLARE_ORG_INSTALLATION_ID, 10)
+      : null;
+
+    if (!tempToken) {
+      throw {
+        status: 500,
+        message:
+          "Temp workspace token (FLARE_TEMP_REPO_TOKEN) is not configured.",
+      };
+    }
+    if (!orgInstallationId) {
+      throw {
+        status: 500,
+        message:
+          "Org installation ID (FLARE_ORG_INSTALLATION_ID) is not configured.",
+      };
+    }
+
+    return { token: tempToken, installationId: orgInstallationId };
+  }
+
+  // Neither path worked
+  if (!token) {
+    throw { status: 401, message: "Not authenticated with GitHub" };
+  }
+  throw {
+    status: 403,
+    message:
+      "No GitHub App installation found. Please install the Flare-SH GitHub App first.",
+  };
+}

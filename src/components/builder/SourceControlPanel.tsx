@@ -11,10 +11,9 @@ import {
   FileCode,
   CheckCircle2,
   Github,
-  Upload,
   Loader2,
-  FolderGit2,
   Plus,
+  ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,31 +45,15 @@ export function SourceControlPanel({
   // Visibility toggles
   const [showChanges, setShowChanges] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
+  const [showBranches, setShowBranches] = useState(false);
 
-  // Quick repo setup state (when no repo is configured)
-  const [showQuickSetup, setShowQuickSetup] = useState(false);
-  const [quickRepoName, setQuickRepoName] = useState("");
-  const [isCreatingRepo, setIsCreatingRepo] = useState(false);
-  const [ghUser, setGhUser] = useState<string | null>(null);
-  const [ghChecked, setGhChecked] = useState(false);
-
-  // Check if GitHub App is already connected
-  useEffect(() => {
-    if (!repoOwner && !ghChecked) {
-      fetch("/api/github/user")
-        .then((res) => {
-          if (res.ok) return res.json();
-          throw new Error("Not connected");
-        })
-        .then((data) => {
-          setGhUser(data.login || null);
-        })
-        .catch(() => {
-          setGhUser(null);
-        })
-        .finally(() => setGhChecked(true));
-    }
-  }, [repoOwner, ghChecked]);
+  // Branch management
+  const [newBranchName, setNewBranchName] = useState("");
+  const [isCreatingBranch, setIsCreatingBranch] = useState(false);
+  const [branches, setBranches] = useState<
+    Array<{ name: string; current: boolean }>
+  >([]);
+  const [loadingBranches, setLoadingBranches] = useState(false);
 
   // Helper to get files from Sandpack state
   const currentFiles = useMemo(() => {
@@ -110,6 +93,38 @@ export function SourceControlPanel({
     }
   }, [repoOwner, repoName, isCommitting]);
 
+  // Load branches when section is opened
+  useEffect(() => {
+    if (showBranches && repoOwner && repoName && branches.length === 0) {
+      loadBranches();
+    }
+  }, [showBranches, repoOwner, repoName]);
+
+  const loadBranches = useCallback(async () => {
+    if (!repoOwner || !repoName) return;
+    setLoadingBranches(true);
+    try {
+      const res = await fetch(
+        `/api/github/app/branches?owner=${repoOwner}&repo=${repoName}`,
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.branches)) {
+          setBranches(
+            data.branches.map((b: any) => ({
+              name: b.name,
+              current: b.name === branch,
+            })),
+          );
+        }
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoadingBranches(false);
+    }
+  }, [repoOwner, repoName, branch]);
+
   const handleCommit = async () => {
     if (!commitMessage.trim()) return;
     if (!onCommitAndPush) {
@@ -121,7 +136,6 @@ export function SourceControlPanel({
     try {
       await onCommitAndPush(commitMessage.trim(), currentFiles);
       setCommitMessage("");
-      // Refresh commits will happen automatically via effect dependency
     } catch (error) {
       console.error(error);
       toast.error("Failed to commit changes");
@@ -130,246 +144,96 @@ export function SourceControlPanel({
     }
   };
 
-  // Quick create repo + initial push
-  const handleQuickCreateRepo = useCallback(async () => {
-    if (!quickRepoName.trim() || !ghUser) return;
+  const handleCreateBranch = useCallback(async () => {
+    if (!newBranchName.trim() || !repoOwner || !repoName) return;
 
-    const cleanName = quickRepoName
+    const cleanName = newBranchName
       .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9-_.]/g, "-")
-      .replace(/^-+|-+$/g, "");
+      .replace(/[^a-zA-Z0-9\-_./]/g, "-")
+      .replace(/-+/g, "-");
 
-    if (!cleanName) {
-      toast.error("Invalid repository name");
-      return;
-    }
-
-    setIsCreatingRepo(true);
+    setIsCreatingBranch(true);
     try {
-      // 1. Create the repo
-      const createRes = await fetch("/api/github/repos", {
+      const res = await fetch("/api/github/app/branches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: cleanName,
-          private: true,
-          auto_init: true,
-          description: "Created by Flare IDE",
+          owner: repoOwner,
+          repo: repoName,
+          branchName: cleanName,
+          baseBranch: branch,
         }),
       });
 
-      if (!createRes.ok) {
-        const err = await createRes.json().catch(() => ({}));
-        if (createRes.status === 422) {
-          toast.error(`Repository "${cleanName}" already exists`);
-        } else {
-          toast.error(err.error || "Failed to create repository");
-        }
-        return;
+      if (res.ok) {
+        toast.success(`Branch "${cleanName}" created`);
+        setNewBranchName("");
+        setBranches((prev) => [
+          ...prev,
+          { name: cleanName, current: false },
+        ]);
+      } else if (res.status === 422) {
+        toast.info(`Branch "${cleanName}" already exists`);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Failed to create branch");
       }
-
-      const repo = await createRes.json();
-      const owner = repo.owner?.login || ghUser;
-      const repoNameCreated = repo.name || cleanName;
-
-      // 2. Save config to localStorage
-      const threadId = window.location.pathname.split("/").pop() || "";
-      const config = {
-        owner,
-        repo: repoNameCreated,
-        branch: "main",
-      };
-      localStorage.setItem(
-        `flare_repo_config_${threadId}`,
-        JSON.stringify(config),
-      );
-
-      // 3. Push all sandbox files
-      const filesList = currentFiles
-        .filter((f) => !f.path.startsWith("/.flare-sh/"))
-        .map((f) => ({
-          path: f.path.replace(/^\//, ""),
-          content: f.content,
-        }));
-
-      if (filesList.length > 0) {
-        const commitRes = await fetch("/api/github/app/commit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            owner,
-            repo: repoNameCreated,
-            branch: "main",
-            message: "Initial commit from Flare IDE",
-            files: filesList,
-          }),
-        });
-
-        if (!commitRes.ok) {
-          toast.warning(
-            "Repo created but initial push failed. Try committing manually.",
-          );
-        }
-      }
-
-      toast.success(`Repository "${repoNameCreated}" created & files pushed!`, {
-        description: `${owner}/${repoNameCreated}`,
-      });
-
-      // Reload page to pick up the new config
-      setTimeout(() => window.location.reload(), 1500);
-    } catch (err: any) {
-      console.error("Quick repo setup error:", err);
-      toast.error(err.message || "Failed to setup repository");
+    } catch {
+      toast.error("Failed to create branch");
     } finally {
-      setIsCreatingRepo(false);
+      setIsCreatingBranch(false);
     }
-  }, [quickRepoName, ghUser, currentFiles]);
+  }, [newBranchName, repoOwner, repoName, branch]);
 
-  // If no repo is configured, show setup prompt
   const isGitConfigured = !!repoOwner;
 
   return (
     <div className="h-full flex flex-col overflow-hidden text-xs">
-      {/* Git Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-3.5 w-3.5 text-orange-400" />
-          <span className="font-semibold text-[11px] uppercase tracking-wide text-muted-foreground">
-            Source Control
-          </span>
-        </div>
-        <div className="flex items-center gap-1">
+      {/* Git Info Bar */}
+      <div className="flex items-center justify-end px-3 py-1.5 border-b bg-muted/30 shrink-0">
+        <div className="flex items-center gap-1.5">
           <span className="text-[10px] bg-muted/50 px-1.5 py-0.5 rounded text-muted-foreground font-mono">
             {branch}
           </span>
+          {isGitConfigured && (
+            <a
+              href={`https://github.com/${repoOwner}/${repoName}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+              title="Open on GitHub"
+            >
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
         </div>
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
-        {/* Git Not Configured — Show setup options */}
+        {/* Repo info when configured */}
+        {isGitConfigured && (
+          <div className="px-3 py-2 border-b border-border/20">
+            <div className="flex items-center gap-2">
+              <Github className="h-3.5 w-3.5 text-muted-foreground/60" />
+              <span className="text-[11px] text-muted-foreground truncate">
+                {repoOwner}/{repoName}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Git NOT configured — tell user it's already set up */}
         {!isGitConfigured && (
-          <div className="p-3 space-y-3">
-            {/* Show GitHub App status */}
-            {ghChecked && ghUser ? (
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-500/10 border border-emerald-500/20">
-                <Github className="h-3.5 w-3.5 text-emerald-500" />
-                <span className="text-[11px] text-emerald-500 font-medium">
-                  Connected as {ghUser}
-                </span>
-              </div>
-            ) : ghChecked ? (
-              <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-                <Github className="h-3.5 w-3.5 text-amber-500" />
-                <span className="text-[11px] text-amber-500 font-medium">
-                  GitHub not connected
-                </span>
-              </div>
-            ) : null}
-
-            {/* Quick repo creation */}
-            {ghUser && !showQuickSetup && (
-              <div className="space-y-2">
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Create a GitHub repository to start tracking your changes. All
-                  sandbox files will be uploaded automatically.
-                </p>
-                <Button
-                  size="sm"
-                  onClick={() => setShowQuickSetup(true)}
-                  className="w-full h-7 text-[11px] gap-1.5 bg-orange-600 hover:bg-orange-700 text-white"
-                >
-                  <Plus className="h-3 w-3" />
-                  Create Repository
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    window.location.href = "/builder";
-                  }}
-                  className="w-full h-7 text-[11px] gap-1.5"
-                >
-                  <FolderGit2 className="h-3 w-3" />
-                  Link Existing Repo
-                </Button>
-              </div>
-            )}
-
-            {/* Quick setup form */}
-            {ghUser && showQuickSetup && (
-              <div className="space-y-2">
-                <label className="text-[10px] font-medium text-muted-foreground">
-                  Repository Name
-                </label>
-                <Input
-                  placeholder="my-project"
-                  value={quickRepoName}
-                  onChange={(e) => setQuickRepoName(e.target.value)}
-                  className="h-7 text-[11px]"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleQuickCreateRepo();
-                  }}
-                />
-                <p className="text-[9px] text-muted-foreground">
-                  Will create{" "}
-                  <strong>
-                    {ghUser}/{quickRepoName || "..."}
-                  </strong>{" "}
-                  (private) and push {currentFiles.length} files.
-                </p>
-                <div className="flex gap-1.5">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setShowQuickSetup(false)}
-                    className="flex-1 h-7 text-[11px]"
-                    disabled={isCreatingRepo}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={handleQuickCreateRepo}
-                    disabled={isCreatingRepo || !quickRepoName.trim()}
-                    className="flex-1 h-7 text-[11px] gap-1 bg-orange-600 hover:bg-orange-700 text-white"
-                  >
-                    {isCreatingRepo ? (
-                      <>
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        Creating...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-3 w-3" />
-                        Create & Push
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Not connected to GitHub */}
-            {ghChecked && !ghUser && (
-              <div className="space-y-2">
-                <p className="text-[10px] text-muted-foreground leading-relaxed">
-                  Connect your GitHub account to create repositories and commit
-                  code directly from the IDE.
-                </p>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    window.location.href = "/builder";
-                  }}
-                  className="w-full h-7 text-[11px] gap-1.5"
-                >
-                  <Github className="h-3 w-3" />
-                  Connect GitHub
-                </Button>
-              </div>
-            )}
+          <div className="p-3 space-y-2">
+            <div className="flex items-center gap-2 px-2 py-1.5 rounded-md bg-amber-500/10 border border-amber-500/20">
+              <Github className="h-3.5 w-3.5 text-amber-500" />
+              <span className="text-[11px] text-amber-500 font-medium">
+                No repository linked
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
+              Go back to the project setup to connect a GitHub repository.
+            </p>
           </div>
         )}
 
@@ -450,6 +314,87 @@ export function SourceControlPanel({
           )}
         </div>
 
+        {/* Branches Section — only when git is configured */}
+        {isGitConfigured && (
+          <div>
+            <button
+              onClick={() => setShowBranches(!showBranches)}
+              className="w-full flex items-center px-2 py-1 bg-muted/20 hover:bg-muted/30 transition-colors mt-1"
+            >
+              {showBranches ? (
+                <ChevronDown className="h-3 w-3 mr-1 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="h-3 w-3 mr-1 text-muted-foreground" />
+              )}
+              <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                Branches
+              </span>
+            </button>
+
+            {showBranches && (
+              <div className="p-2 space-y-2">
+                {/* Create new branch */}
+                <div className="flex gap-1.5">
+                  <Input
+                    placeholder="new-branch-name"
+                    value={newBranchName}
+                    onChange={(e) => setNewBranchName(e.target.value)}
+                    className="h-6 text-[10px]"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleCreateBranch();
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleCreateBranch}
+                    disabled={isCreatingBranch || !newBranchName.trim()}
+                    className="h-6 px-2 text-[10px] gap-1"
+                  >
+                    {isCreatingBranch ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-2.5 w-2.5" />
+                    )}
+                  </Button>
+                </div>
+                <p className="text-[9px] text-muted-foreground">
+                  New branch from{" "}
+                  <strong className="text-foreground">{branch}</strong>
+                </p>
+
+                {/* Branch list */}
+                {loadingBranches ? (
+                  <div className="flex items-center gap-1 py-1 text-[10px] text-muted-foreground">
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    Loading...
+                  </div>
+                ) : (
+                  branches.map((b) => (
+                    <div
+                      key={b.name}
+                      className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted/30"
+                    >
+                      <GitBranch className="h-3 w-3 text-muted-foreground/60" />
+                      <span
+                        className={`text-[11px] flex-1 truncate ${
+                          b.current ? "font-semibold text-orange-400" : ""
+                        }`}
+                      >
+                        {b.name}
+                      </span>
+                      {b.current && (
+                        <span className="text-[9px] text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded">
+                          current
+                        </span>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Commits History Section */}
         {repoOwner && repoName && (
           <div>
@@ -488,9 +433,13 @@ export function SourceControlPanel({
                         <div className="flex items-center gap-2 text-[10px] text-muted-foreground/60">
                           <span className="flex items-center gap-0.5">
                             <Clock className="h-2.5 w-2.5" />
-                            {formatDistanceToNow(new Date(commit.date), {
-                              addSuffix: true,
-                            })}
+                            {(() => {
+                              try {
+                                const d = new Date(commit.date);
+                                if (isNaN(d.getTime())) return "recently";
+                                return formatDistanceToNow(d, { addSuffix: true });
+                              } catch { return "recently"; }
+                            })()}
                           </span>
                           <span>•</span>
                           <span className="font-mono text-[9px] opacity-70">

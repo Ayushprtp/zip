@@ -160,14 +160,8 @@ export function CodeSearchPanel({
 
   return (
     <div className="h-full flex flex-col text-xs overflow-hidden">
-      {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-2">
-          <Search className="h-3.5 w-3.5 text-blue-400" />
-          <span className="font-semibold text-[11px] uppercase tracking-wide text-muted-foreground">
-            Search
-          </span>
-        </div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-end px-3 py-1 border-b bg-muted/30 shrink-0">
         <button
           onClick={() => setShowReplace(!showReplace)}
           className={`h-5 w-5 flex items-center justify-center rounded transition-colors ${showReplace ? "bg-blue-500/20 text-blue-400" : "hover:bg-muted/60 text-muted-foreground"}`}

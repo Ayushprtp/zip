@@ -19,14 +19,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getGitHubApp,
-  requireGitHubAuth,
+  requireGitHubAuthOrTemp,
 } from "@/lib/builder/github-app-singleton";
 
 export async function POST(request: NextRequest) {
   try {
-    const auth = await requireGitHubAuth();
     const body = await request.json();
     const { owner, repo, branch, files, message, installationId } = body;
+    const auth = await requireGitHubAuthOrTemp(owner, repo);
 
     if (!owner || !repo || !branch || !files || !message) {
       return NextResponse.json(

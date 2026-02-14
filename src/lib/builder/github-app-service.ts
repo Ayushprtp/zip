@@ -368,7 +368,7 @@ export class GitHubAppService {
     const { data: newCommit } = await octokit.git.createCommit({
       owner,
       repo,
-      message: `🤖 ${message}`,
+      message: `Flare-SH/${message}`,
       tree: tree.sha,
       parents: [latestSha],
       author: {
@@ -452,7 +452,7 @@ export class GitHubAppService {
     const { data: newCommit } = await octokit.git.createCommit({
       owner,
       repo,
-      message: `🗑️ ${message}`,
+      message: `Flare-SH/${message}`,
       tree: newTree.sha,
       parents: [ref.object.sha],
       author: {

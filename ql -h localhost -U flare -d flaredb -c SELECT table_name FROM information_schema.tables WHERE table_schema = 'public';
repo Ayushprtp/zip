@@ -1,0 +1,39 @@
+                      List of relations
+ Schema |                Name                 | Type  | Owner 
+--------+-------------------------------------+-------+-------
+ public | account                             | table | flare
+ public | agent                               | table | flare
+ public | archive                             | table | flare
+ public | archive_item                        | table | flare
+ public | audit_log                           | table | flare
+ public | bookmark                            | table | flare
+ public | builder_commits                     | table | flare
+ public | builder_deployments                 | table | flare
+ public | builder_files                       | table | flare
+ public | builder_messages                    | table | flare
+ public | builder_threads                     | table | flare
+ public | chat_export                         | table | flare
+ public | chat_export_comment                 | table | flare
+ public | chat_message                        | table | flare
+ public | chat_thread                         | table | flare
+ public | credit_transaction                  | table | flare
+ public | invite_token                        | table | flare
+ public | mcp_oauth_session                   | table | flare
+ public | mcp_server                          | table | flare
+ public | mcp_server_custom_instructions      | table | flare
+ public | mcp_server_tool_custom_instructions | table | flare
+ public | model_pricing                       | table | flare
+ public | pricing_plan                        | table | flare
+ public | project                             | table | flare
+ public | session                             | table | flare
+ public | subscription                        | table | flare
+ public | usage_aggregate                     | table | flare
+ public | usage_log                           | table | flare
+ public | user                                | table | flare
+ public | user_credits                        | table | flare
+ public | verification                        | table | flare
+ public | workflow                            | table | flare
+ public | workflow_edge                       | table | flare
+ public | workflow_node                       | table | flare
+(34 rows)
+

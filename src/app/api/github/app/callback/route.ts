@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
   try {
     const code = request.nextUrl.searchParams.get("code");
     const installationId = request.nextUrl.searchParams.get("installation_id");
-    const setupAction = request.nextUrl.searchParams.get("setup_action");
 
     if (!code) {
       return NextResponse.json(
@@ -84,15 +83,25 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Redirect back to the app
-    const redirectUrl = new URL("/builder", process.env.NEXT_PUBLIC_APP_URL!);
-    redirectUrl.searchParams.set("github_connected", "true");
+    // Instead of redirecting, return an HTML page that closes the popup
+    // and notifies the parent window.
+    const html = `<!DOCTYPE html>
+<html><head><title>GitHub Connected</title></head>
+<body>
+<script>
+  if (window.opener) {
+    window.opener.postMessage({ type: "github-auth-success" }, "*");
+  }
+  window.close();
+</script>
+<p>Authentication successful! This window should close automatically.</p>
+<p>If it doesn't, you can <a href="#" onclick="window.close()">close it manually</a>.</p>
+</body></html>`;
 
-    if (setupAction === "install") {
-      redirectUrl.searchParams.set("setup", "complete");
-    }
-
-    return NextResponse.redirect(redirectUrl);
+    return new Response(html, {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    });
   } catch (error: any) {
     console.error("GitHub App callback error:", error);
 
