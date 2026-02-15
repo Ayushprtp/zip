@@ -8,7 +8,12 @@ type ServerControl = {
   restart: () => void;
 } | null;
 type BottomPanel = "none" | "console" | "terminal" | "report" | "ssh";
-type SidebarPanel = "files" | "source-control" | "search" | "settings";
+type SidebarPanel =
+  | "files"
+  | "source-control"
+  | "search"
+  | "settings"
+  | "shortcuts";
 
 interface BuilderUIStore {
   // View state
@@ -85,6 +90,12 @@ interface BuilderUIStore {
   setEditorSettings: (
     settings: Partial<BuilderUIStore["editorSettings"]>,
   ) => void;
+
+  // Open tabs
+  openTabs: string[];
+  setOpenTabs: (tabs: string[]) => void;
+  addOpenTab: (path: string) => void;
+  removeOpenTab: (path: string) => void;
 }
 
 export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
@@ -262,5 +273,18 @@ export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
   setEditorSettings: (settings) =>
     set((state) => ({
       editorSettings: { ...state.editorSettings, ...settings },
+    })),
+
+  // Open tabs implementation
+  openTabs: [],
+  setOpenTabs: (tabs) => set({ openTabs: tabs }),
+  addOpenTab: (path) =>
+    set((state) => {
+      if (state.openTabs.includes(path)) return state;
+      return { openTabs: [...state.openTabs, path] };
+    }),
+  removeOpenTab: (path) =>
+    set((state) => ({
+      openTabs: state.openTabs.filter((p) => p !== path),
     })),
 }));

@@ -5,6 +5,7 @@
 
 "use client";
 
+import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { useProject } from "@/lib/builder/project-context";
 import { cn } from "@/lib/utils";
 import {
@@ -16,7 +17,7 @@ import {
   ContextMenuTrigger,
 } from "ui/context-menu";
 import { File, X } from "lucide-react";
-import React, { useCallback, useState, useEffect } from "react";
+import React, { useCallback, useEffect } from "react";
 
 // ============================================================================
 // Types
@@ -161,20 +162,26 @@ export function TabBar({ className }: TabBarProps) {
   const { state, actions } = useProject();
   const { files, activeFile } = state;
 
-  // Track open tabs (files that have been opened)
-  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const openTabs = useBuilderUIStore((s) => s.openTabs);
+  const setOpenTabs = useBuilderUIStore((s) => s.setOpenTabs);
+  const addOpenTab = useBuilderUIStore((s) => s.addOpenTab);
+  const removeOpenTab = useBuilderUIStore((s) => s.removeOpenTab);
 
   // When activeFile changes, add it to open tabs if not already there
   useEffect(() => {
-    if (activeFile && !openTabs.includes(activeFile)) {
-      setOpenTabs((prev) => [...prev, activeFile]);
+    if (activeFile) {
+      addOpenTab(activeFile);
     }
-  }, [activeFile, openTabs]);
+  }, [activeFile, addOpenTab]);
 
   // Remove tabs for deleted files
   useEffect(() => {
-    setOpenTabs((prev) => prev.filter((path) => path in files));
-  }, [files]);
+    // Only keep tabs that exist in current files
+    const validTabs = openTabs.filter((path) => path in files);
+    if (validTabs.length !== openTabs.length) {
+      setOpenTabs(validTabs);
+    }
+  }, [files, openTabs, setOpenTabs]);
 
   // Handle tab selection
   const handleSelectTab = useCallback(
@@ -187,27 +194,29 @@ export function TabBar({ className }: TabBarProps) {
   // Handle tab close
   const handleCloseTab = useCallback(
     (path: string) => {
-      setOpenTabs((prev) => {
-        const newTabs = prev.filter((p) => p !== path);
+      const newTabs = openTabs.filter((p) => p !== path);
+      removeOpenTab(path);
 
-        // If closing the active tab, switch to another tab
-        if (path === activeFile) {
-          const currentIndex = prev.indexOf(path);
-          if (newTabs.length > 0) {
-            // Switch to the tab to the right, or left if at the end
-            const nextIndex =
-              currentIndex < newTabs.length ? currentIndex : currentIndex - 1;
-            actions.setActiveFile(newTabs[nextIndex]);
-          } else {
-            // No more tabs, clear active file
-            actions.setActiveFile("");
-          }
+      // If closing the active tab, switch to another tab
+      if (path === activeFile) {
+        const currentIndex = openTabs.indexOf(path);
+        if (newTabs.length > 0) {
+          // Switch to the tab to the right, or left if at the end
+          const nextIndex =
+            currentIndex < newTabs.length ? currentIndex : currentIndex - 1;
+          // Make sure nextIndex is valid
+          const safeIndex = Math.max(
+            0,
+            Math.min(nextIndex, newTabs.length - 1),
+          );
+          actions.setActiveFile(newTabs[safeIndex]);
+        } else {
+          // No more tabs, clear active file
+          actions.setActiveFile("");
         }
-
-        return newTabs;
-      });
+      }
     },
-    [activeFile, actions],
+    [activeFile, actions, openTabs, removeOpenTab],
   );
 
   const handleCloseOthers = useCallback(
@@ -217,13 +226,13 @@ export function TabBar({ className }: TabBarProps) {
         actions.setActiveFile(path);
       }
     },
-    [activeFile, actions],
+    [activeFile, actions, setOpenTabs],
   );
 
   const handleCloseAll = useCallback(() => {
     setOpenTabs([]);
     actions.setActiveFile("");
-  }, [actions]);
+  }, [actions, setOpenTabs]);
 
   // Convert paths to tab objects
   const tabs: Tab[] = openTabs.map((path) => ({
