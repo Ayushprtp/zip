@@ -544,7 +544,21 @@ function PreviewToolbar({
         <input
           type="text"
           value={url}
-          onChange={(e) => setUrl(e.target.value)}
+          onChange={(e) => {
+            const val = e.target.value;
+            // Enforce strictly relative paths starting with /
+            if (val === "" || val === "/") {
+              setUrl("/");
+            } else if (val.startsWith("//")) {
+              // Prevent protocol-relative URLs
+              setUrl("/");
+            } else if (val.startsWith("/")) {
+              setUrl(val);
+            } else {
+              // Force leading slash
+              setUrl("/" + val);
+            }
+          }}
           onKeyDown={handleKeyDown}
           className="h-6 bg-muted/50 border border-border/30 rounded-md px-2 text-[10px] text-muted-foreground font-mono w-full focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all placeholder:text-muted-foreground/50"
           placeholder="/"
@@ -632,6 +646,7 @@ export function SandpackWrapper({
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   const previewRef = useRef<any>(null);
+  const editorWrapperRef = useRef<HTMLDivElement>(null);
 
   const handlePreviewRefresh = useCallback(() => {
     // Force refresh the Sandpack preview by re-running
