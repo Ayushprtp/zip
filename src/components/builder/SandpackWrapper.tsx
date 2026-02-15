@@ -26,6 +26,7 @@ import {
   Maximize2,
   Minimize2,
   RotateCcw,
+  Keyboard,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -42,6 +43,7 @@ import { StatusBar } from "./StatusBar";
 import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
 import { TabBar } from "./tab-bar";
 import { KeyBindings } from "./KeyBindings";
+import { ShortcutsPanel } from "./ShortcutsPanel";
 
 type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
 
@@ -539,29 +541,22 @@ function PreviewToolbar({
         <RotateCcw className="h-3 w-3" />
       </button>
 
-      {/* URL bar */}
-      <div className="flex-1 mx-1">
+      <div className="flex-1 mx-1 flex items-center bg-muted/50 border border-border/30 rounded-md px-2 focus-within:ring-1 focus-within:ring-violet-500/50 transition-all">
+        <span className="text-[10px] text-muted-foreground mr-0.5 select-none font-mono">
+          /
+        </span>
         <input
           type="text"
-          value={url}
+          value={url.startsWith("/") ? url.slice(1) : url}
           onChange={(e) => {
             const val = e.target.value;
-            // Enforce strictly relative paths starting with /
-            if (val === "" || val === "/") {
-              setUrl("/");
-            } else if (val.startsWith("//")) {
-              // Prevent protocol-relative URLs
-              setUrl("/");
-            } else if (val.startsWith("/")) {
-              setUrl(val);
-            } else {
-              // Force leading slash
-              setUrl("/" + val);
-            }
+            // Always keep relative path structure
+            // We strip the leading slash from display, so adding it back
+            setUrl("/" + val);
           }}
           onKeyDown={handleKeyDown}
-          className="h-6 bg-muted/50 border border-border/30 rounded-md px-2 text-[10px] text-muted-foreground font-mono w-full focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all placeholder:text-muted-foreground/50"
-          placeholder="/"
+          className="h-6 bg-transparent text-[10px] text-muted-foreground font-mono w-full focus:outline-none placeholder:text-muted-foreground/50"
+          placeholder=""
         />
       </div>
 
@@ -664,7 +659,9 @@ export function SandpackWrapper({
     if (!previewFullscreen) {
       previewRef.current?.requestFullscreen?.();
     } else {
-      document.exitFullscreen?.();
+      if (typeof document !== "undefined" && document.fullscreenElement) {
+        document.exitFullscreen?.();
+      }
     }
     setPreviewFullscreen(!previewFullscreen);
   }, [previewFullscreen]);
@@ -821,6 +818,29 @@ export function SandpackWrapper({
                     {/* Spacer to push settings to bottom */}
                     <div className="flex-1" />
 
+                    {/* Shortcuts Toggle */}
+                    <button
+                      onClick={() => {
+                        if (sidebarPanel === "shortcuts" && showFileExplorer) {
+                          setShowFileExplorer(false);
+                        } else {
+                          setSidebarPanel("shortcuts");
+                          setShowFileExplorer(true);
+                        }
+                      }}
+                      className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative mb-1 ${
+                        sidebarPanel === "shortcuts" && showFileExplorer
+                          ? "text-foreground"
+                          : "text-muted-foreground/50 hover:text-muted-foreground"
+                      }`}
+                      title="Keyboard Shortcuts"
+                    >
+                      {sidebarPanel === "shortcuts" && showFileExplorer && (
+                        <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                      )}
+                      <Keyboard className="h-4 w-4" />
+                    </button>
+
                     {/* Settings — at the bottom of activity bar */}
                     <button
                       onClick={() => {
@@ -914,6 +934,11 @@ export function SandpackWrapper({
                             )}
                             {sidebarPanel === "settings" && (
                               <SettingsPanel
+                                onClose={() => setShowFileExplorer(false)}
+                              />
+                            )}
+                            {sidebarPanel === "shortcuts" && (
+                              <ShortcutsPanel
                                 onClose={() => setShowFileExplorer(false)}
                               />
                             )}
