@@ -24,7 +24,7 @@ export function SWRConfigProvider({
 
   useEffect(() => {
     console.log(
-      "%c█▀▀ █   █▀▀ █▀█ █▀▀\n█▀▀ █▄▄ █▀▀ █▀▄ █▄▄\n\n%c⛓️ Just Flare.sh\nhttps://github.com/Flare-SH",
+      "%c  _____  _                 _____   _____ \n |  ___|| |       /\\      |  __ \\ |  ___|\n | |__  | |      /  \\     | |__) || |__  \n |  __| | |     / /\\ \\    |  _  / |  __| \n | |    | |____/ ____ \\   | | \\ \\ | |___ \n |_|    |______/_/    \\_\\  |_|  \\_\\|_____|\n\n\n%c⛓️ FLARE\nhttps://github.com/Flare-SH",
       "color: #9333ea; font-weight: bold; font-family: monospace; font-size: 16px; text-shadow: 0 0 10px #9333ea;",
       "color: #888; font-size: 12px;",
     );
