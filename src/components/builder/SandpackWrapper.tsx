@@ -40,6 +40,8 @@ import { RemoteTerminal } from "./RemoteTerminal";
 import { SourceControlPanel } from "./SourceControlPanel";
 import { StatusBar } from "./StatusBar";
 import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
+import { TabBar } from "./tab-bar";
+import { KeyBindings } from "./KeyBindings";
 
 type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
 
@@ -717,6 +719,7 @@ export function SandpackWrapper({
       <SandpackActiveFileSync />
 
       <div className="absolute inset-0 flex flex-col bg-background">
+        <KeyBindings />
         {/* Main Workspace */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           <BuilderErrorBoundary
@@ -728,7 +731,7 @@ export function SandpackWrapper({
             <PanelGroup direction="horizontal">
               {/* Sidebar + Main Area */}
               {/* File Explorer / Source Control / Search / Settings Panel */}
-              {(viewMode === "code" || viewMode === "split") && (
+              {true && (
                 <>
                   {/* Activity Bar — VS Code icon strip */}
                   <div className="w-[36px] shrink-0 flex flex-col items-center pt-1 gap-0.5 bg-muted/30 border-r border-border/20">
@@ -928,25 +931,27 @@ export function SandpackWrapper({
                           defaultSize={viewMode === "split" ? 50 : 100}
                           minSize={20}
                         >
-                          <div
-                            className="h-full w-full relative"
-                            onMouseUpCapture={handleCursorUpdate}
-                            onKeyUpCapture={handleCursorUpdate}
-                            onClickCapture={handleCursorUpdate}
-                          >
-                            <SandpackCodeEditor
-                              showTabs
-                              closableTabs
-                              showLineNumbers
-                              wrapContent={editorSettings.wordWrap}
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                height: "100%",
-                                width: "100%",
-                                fontSize: editorSettings.fontSize,
-                              }}
-                            />
+                          <div className="flex flex-col h-full w-full">
+                            <TabBar />
+                            <div
+                              className="flex-1 relative min-h-0"
+                              ref={editorWrapperRef}
+                              onMouseUpCapture={handleCursorUpdate}
+                              onKeyUpCapture={handleCursorUpdate}
+                              onClickCapture={handleCursorUpdate}
+                            >
+                              <SandpackCodeEditor
+                                showTabs={false}
+                                closableTabs={false}
+                                showLineNumbers
+                                wrapContent={editorSettings.wordWrap}
+                                style={{
+                                  width: "100%",
+                                  height: "100%",
+                                  fontSize: editorSettings.fontSize,
+                                }}
+                              />
+                            </div>
                           </div>
                         </Panel>
                       )}

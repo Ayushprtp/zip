@@ -7,6 +7,14 @@
 
 import { useProject } from "@/lib/builder/project-context";
 import { cn } from "@/lib/utils";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuTrigger,
+} from "ui/context-menu";
 import { File, X } from "lucide-react";
 import React, { useCallback, useState, useEffect } from "react";
 
@@ -40,9 +48,18 @@ interface TabItemProps {
   isActive: boolean;
   onSelect: (path: string) => void;
   onClose: (path: string) => void;
+  onCloseOthers: (path: string) => void;
+  onCloseAll: () => void;
 }
 
-function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
+function TabItem({
+  tab,
+  isActive,
+  onSelect,
+  onClose,
+  onCloseOthers,
+  onCloseAll,
+}: TabItemProps) {
   const handleClick = useCallback(() => {
     onSelect(tab.path);
   }, [tab.path, onSelect]);
@@ -56,32 +73,78 @@ function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
   );
 
   return (
-    <div
-      className={cn(
-        "flex items-center gap-2 px-3 py-2 border-r border-border cursor-pointer transition-all group relative min-w-[120px] max-w-[200px] text-sm",
-        "hover:bg-accent/50",
-        isActive
-          ? "bg-background text-foreground border-t-2 border-t-blue-500 font-medium shadow-sm"
-          : "bg-muted/40 text-muted-foreground border-t-2 border-t-transparent hover:text-foreground",
-      )}
-      onClick={handleClick}
-    >
-      <File className="h-3.5 w-3.5 flex-shrink-0" />
-      <span className="text-sm truncate max-w-[150px]" title={tab.path}>
-        {tab.name}
-      </span>
-      <button
-        className={cn(
-          "flex-shrink-0 rounded-sm hover:bg-accent-foreground/10 p-0.5 transition-opacity",
-          "opacity-0 group-hover:opacity-100",
-          isActive && "opacity-100",
-        )}
-        onClick={handleClose}
-        aria-label={`Close ${tab.name}`}
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
+    <ContextMenu>
+      <ContextMenuTrigger>
+        <div
+          className={cn(
+            "flex items-center gap-2 px-3 py-2 border-r border-border cursor-pointer transition-all group relative min-w-[120px] max-w-[200px] text-sm select-none",
+            "hover:bg-accent/50",
+            isActive
+              ? "bg-background text-foreground border-t-2 border-t-blue-500 font-medium shadow-sm"
+              : "bg-muted/40 text-muted-foreground border-t-2 border-t-transparent hover:text-foreground",
+          )}
+          onClick={handleClick}
+          onAuxClick={(e) => {
+            // Chrome handles middle click separately
+            if (e.button === 1) {
+              e.preventDefault();
+              handleClose(e);
+            }
+          }}
+        >
+          <File className="h-3.5 w-3.5 flex-shrink-0" />
+          <span className="text-sm truncate max-w-[150px]" title={tab.path}>
+            {tab.name}
+          </span>
+          <button
+            className={cn(
+              "flex-shrink-0 rounded-sm hover:bg-accent-foreground/10 p-0.5 transition-opacity",
+              "opacity-0 group-hover:opacity-100",
+              isActive && "opacity-100",
+            )}
+            onClick={handleClose}
+            aria-label={`Close ${tab.name}`}
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="w-48">
+        <ContextMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose(tab.path);
+          }}
+        >
+          Close
+          <ContextMenuShortcut>Ctrl+W</ContextMenuShortcut>
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onCloseOthers(tab.path);
+          }}
+        >
+          Close Others
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            onCloseAll();
+          }}
+        >
+          Close All
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          onClick={() => {
+            navigator.clipboard.writeText(tab.path);
+          }}
+        >
+          Copy Path
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -147,6 +210,21 @@ export function TabBar({ className }: TabBarProps) {
     [activeFile, actions],
   );
 
+  const handleCloseOthers = useCallback(
+    (path: string) => {
+      setOpenTabs([path]);
+      if (activeFile !== path) {
+        actions.setActiveFile(path);
+      }
+    },
+    [activeFile, actions],
+  );
+
+  const handleCloseAll = useCallback(() => {
+    setOpenTabs([]);
+    actions.setActiveFile("");
+  }, [actions]);
+
   // Convert paths to tab objects
   const tabs: Tab[] = openTabs.map((path) => ({
     path,
@@ -172,6 +250,8 @@ export function TabBar({ className }: TabBarProps) {
           isActive={tab.path === activeFile}
           onSelect={handleSelectTab}
           onClose={handleCloseTab}
+          onCloseOthers={handleCloseOthers}
+          onCloseAll={handleCloseAll}
         />
       ))}
     </div>
