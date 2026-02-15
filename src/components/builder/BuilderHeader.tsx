@@ -18,6 +18,9 @@ import {
   Wifi,
   Share2,
   Pencil,
+  Code2,
+  Eye,
+  Columns2,
 } from "lucide-react";
 import { Button } from "ui/button";
 import { TextShimmer } from "ui/text-shimmer";
@@ -82,8 +85,8 @@ export function BuilderHeader({
   onServerStop,
   onServerRestart,
   serverStatus = "running",
-  viewMode: _viewMode,
-  onViewModeChange: _onViewModeChange,
+  viewMode,
+  onViewModeChange,
   showConsole: _showConsole,
   onToggleConsole,
   showTerminal: _showTerminal,
@@ -254,6 +257,42 @@ export function BuilderHeader({
           </div>
         )}
       </div>
+
+      {/* View Mode Toggle */}
+      {viewMode && onViewModeChange && (
+        <>
+          <div className="h-4 w-px bg-border shrink-0 mx-2" />
+          <div className="flex items-center bg-muted/50 rounded-lg p-0.5 border border-border/50">
+            <Button
+              variant={viewMode === "code" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-6 w-6 rounded-md"
+              onClick={() => onViewModeChange("code")}
+              title="Code View"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant={viewMode === "split" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-6 w-6 rounded-md"
+              onClick={() => onViewModeChange("split")}
+              title="Split View"
+            >
+              <Columns2 className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              variant={viewMode === "preview" ? "secondary" : "ghost"}
+              size="icon"
+              className="h-6 w-6 rounded-md"
+              onClick={() => onViewModeChange("preview")}
+              title="Preview View"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </>
+      )}
 
       <div className="flex-1 min-w-2 shrink" />
 

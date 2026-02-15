@@ -94,8 +94,19 @@ export function useAutoSave(options: AutoSaveOptions = {}) {
           }
         }
       } catch (error) {
-        console.error(`Error auto-saving file ${filePath}:`, error);
-        onSaveError?.(filePath, error as Error);
+        // Suppress noisy network errors (likely due to dev server restart or unload)
+        const isNetworkError =
+          error instanceof TypeError && error.message === "Failed to fetch";
+
+        if (isNetworkError) {
+          console.warn(
+            `[AutoSave] Network error saving ${filePath} (retrying later)`,
+          );
+          // Don't trigger onSaveError UI for transient network issues
+        } else {
+          console.error(`Error auto-saving file ${filePath}:`, error);
+          onSaveError?.(filePath, error as Error);
+        }
       } finally {
         savingCountRef.current--;
         updateSavingState();
@@ -221,6 +232,12 @@ export function useAutoSave(options: AutoSaveOptions = {}) {
               body: data,
               keepalive: true,
             }).catch((error) => {
+              // Suppress errors during unload
+              if (
+                error instanceof TypeError &&
+                error.message === "Failed to fetch"
+              )
+                return;
               console.error(`Error saving file on unmount:`, error);
             });
           }
