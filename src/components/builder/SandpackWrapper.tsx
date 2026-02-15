@@ -14,7 +14,7 @@ import {
   useSandpack,
 } from "@codesandbox/sandpack-react";
 // @ts-ignore
-import { minimap } from "@replit/codemirror-minimap";
+import { showMinimap } from "@replit/codemirror-minimap";
 import {
   ChevronLeft,
   ChevronRight,
@@ -939,7 +939,7 @@ export function SandpackWrapper({
                               closableTabs
                               showLineNumbers
                               wrapContent={editorSettings.wordWrap}
-                              extensions={[minimap()]}
+                              extensions={[showMinimap]}
                               style={{
                                 position: "absolute",
                                 inset: 0,
