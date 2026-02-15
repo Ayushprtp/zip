@@ -34,7 +34,7 @@ export function CodeSearchPanel({
   const { sandpack } = useSandpack();
   const [searchQuery, setSearchQuery] = useState("");
   const [replaceQuery, setReplaceQuery] = useState("");
-  const [showReplace, setShowReplace] = useState(false);
+  const showReplace = true;
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [useRegex, setUseRegex] = useState(false);
   const [wholeWord, setWholeWord] = useState(false);
@@ -160,8 +160,8 @@ export function CodeSearchPanel({
 
   return (
     <div className="h-full flex flex-col text-xs overflow-hidden">
-      {/* Toolbar */}
-      <div className="flex items-center justify-end px-3 py-1 border-b bg-muted/30 shrink-0">
+      {/* Toolbar - Removed/Simplified as per user request */}
+      {/* <div className="flex items-center justify-end px-3 py-1 border-b bg-muted/30 shrink-0">
         <button
           onClick={() => setShowReplace(!showReplace)}
           className={`h-5 w-5 flex items-center justify-center rounded transition-colors ${showReplace ? "bg-blue-500/20 text-blue-400" : "hover:bg-muted/60 text-muted-foreground"}`}
@@ -169,7 +169,7 @@ export function CodeSearchPanel({
         >
           <Replace className="h-3 w-3" />
         </button>
-      </div>
+      </div> */}
 
       {/* Search Input */}
       <div className="px-2 py-2 space-y-1.5 border-b border-border/20 shrink-0">

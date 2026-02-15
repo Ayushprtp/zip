@@ -346,9 +346,12 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
 
   const { state, actions } = useProject();
 
+  // Retrieve settings first
+  const editorSettings = useBuilderUIStore((s) => s.editorSettings);
+
   const { isSaving, hasPendingSaves } = useProjectSync({
     autoSaveEnabled: true,
-    debounceMs: 1000,
+    debounceMs: editorSettings.autoSaveDelay,
   });
 
   // UI store
@@ -475,9 +478,12 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [streamingContent, setStreamingContent] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Init storage and load chats
+  // Init storage and load chats — only when files are fully loaded
+  const chatInitializedRef = useRef(false);
   useEffect(() => {
-    if (!state.files || !actions) return;
+    if (!state.files || !actions || !filesReady) return;
+    if (chatInitializedRef.current) return; // Prevent double init
+
     const storage = new FlareChatStorage(
       state.files,
       actions.updateFile,
@@ -493,7 +499,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       const chat = storage.getChat(index.activeChat);
       if (chat) setLocalMessages(chat.messages);
     } else if (index.chats.length === 0) {
-      // Create first chat
+      // Create first chat only if there are genuinely no chats
       const chat = storage.createChat("agent", "Chat 1");
       setChatList([
         {
@@ -508,8 +514,10 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       setActiveChatId(chat.id);
       setLocalMessages([]);
     }
+
+    chatInitializedRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!state.files, !!actions]);
+  }, [filesReady, !!state.files, !!actions]);
 
   // Keep storage files in sync
   useEffect(() => {

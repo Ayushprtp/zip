@@ -11,7 +11,6 @@ const VERCEL_REDIRECT_URI =
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
-  const _state = request.nextUrl.searchParams.get("state");
 
   if (!code) {
     return NextResponse.json({ error: "No code provided" }, { status: 400 });

@@ -5,10 +5,10 @@
 
 "use client";
 
-import React, { useCallback, useState, useEffect } from "react";
-import { X, File } from "lucide-react";
 import { useProject } from "@/lib/builder/project-context";
 import { cn } from "@/lib/utils";
+import { File, X } from "lucide-react";
+import React, { useCallback, useState, useEffect } from "react";
 
 // ============================================================================
 // Types
@@ -58,11 +58,11 @@ function TabItem({ tab, isActive, onSelect, onClose }: TabItemProps) {
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-3 py-2 border-r border-border cursor-pointer transition-colors group",
-        "hover:bg-accent",
+        "flex items-center gap-2 px-3 py-2 border-r border-border cursor-pointer transition-all group relative min-w-[120px] max-w-[200px] text-sm",
+        "hover:bg-accent/50",
         isActive
-          ? "bg-background text-foreground"
-          : "bg-muted text-muted-foreground",
+          ? "bg-background text-foreground border-t-2 border-t-blue-500 font-medium shadow-sm"
+          : "bg-muted/40 text-muted-foreground border-t-2 border-t-transparent hover:text-foreground",
       )}
       onClick={handleClick}
     >
