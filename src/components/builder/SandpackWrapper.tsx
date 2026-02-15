@@ -1,39 +1,44 @@
 "use client";
 
-import {
-  SandpackProvider,
-  SandpackCodeEditor,
-  SandpackPreview,
-  SandpackConsole,
-  useSandpack,
-} from "@codesandbox/sandpack-react";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import {
-  ChevronRight,
-  ChevronLeft,
-  Files,
-  Search,
-  GitBranch,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { BuilderErrorBoundary } from "./BuilderErrorBoundary";
 import { getAssetGenerator } from "@/lib/builder/asset-generator";
-import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
-import { SourceControlPanel } from "./SourceControlPanel";
-import { CodeSearchPanel } from "./CodeSearchPanel";
-import { StatusBar } from "./StatusBar";
-import { BuilderTerminal } from "./BuilderTerminal";
-import { BuilderReportPanel } from "./BuilderReportPanel";
-import { RemoteTerminal } from "./RemoteTerminal";
-import { RemoteFileBrowser } from "./RemoteFileBrowser";
-import { RemoteStatusBar } from "./RemoteStatusBar";
-import { createSandpackTheme } from "@/lib/builder/sandpack-theme";
-import { useTheme } from "next-themes";
 import { useProject } from "@/lib/builder/project-context";
+import { createSandpackTheme } from "@/lib/builder/sandpack-theme";
 import { useBuilderUIStore } from "@/stores/builder-ui-store";
 import { useRemoteDevStore } from "@/stores/remote-dev-store";
 import type { RuntimeError } from "@/types/builder";
+import {
+  SandpackCodeEditor,
+  SandpackConsole,
+  SandpackPreview,
+  SandpackProvider,
+  useSandpack,
+} from "@codesandbox/sandpack-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Files,
+  GitBranch,
+  Search,
+  Settings,
+  Smartphone,
+  Monitor,
+  Maximize2,
+  Minimize2,
+  RotateCcw,
+} from "lucide-react";
+import { useTheme } from "next-themes";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { BuilderErrorBoundary } from "./BuilderErrorBoundary";
+import { BuilderReportPanel } from "./BuilderReportPanel";
+import { BuilderTerminal } from "./BuilderTerminal";
+import { CodeSearchPanel } from "./CodeSearchPanel";
+import { RemoteFileBrowser } from "./RemoteFileBrowser";
+import { RemoteStatusBar } from "./RemoteStatusBar";
+import { RemoteTerminal } from "./RemoteTerminal";
+import { SourceControlPanel } from "./SourceControlPanel";
+import { StatusBar } from "./StatusBar";
+import { VSCodeFileExplorer } from "./VSCodeFileExplorer";
 
 type Template = "react" | "nextjs" | "vite-react" | "vanilla" | "static";
 
@@ -170,8 +175,6 @@ function FileChangeListener() {
   stateFilesRef.current = state.files;
 
   // Sync ProjectContext → Sandpack (for hot reload when AI or external changes occur)
-  // Use a stringified key of context file paths+content lengths to detect real changes
-  // Use a simple hash of each file's content for change detection
   const contextFilesKey = Object.entries(state.files)
     .map(([p, c]) => {
       let h = 0;
@@ -315,6 +318,241 @@ function AssetGenerationHandler({
   return null; // This component doesn't render anything
 }
 
+// ─── Settings Panel ──────────────────────────────────────────────────────
+function SettingsPanel({ onClose }: { onClose: () => void }) {
+  const settings = useBuilderUIStore((s) => s.editorSettings);
+  const setSettings = useBuilderUIStore((s) => s.setEditorSettings);
+
+  return (
+    <div className="h-full flex flex-col bg-background">
+      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+        <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+          Settings
+        </span>
+        <button
+          onClick={onClose}
+          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto p-3 space-y-4">
+        {/* Auto Save */}
+        <div>
+          <label className="text-[11px] font-medium text-foreground block mb-1.5">
+            Auto Save Delay
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={500}
+              max={5000}
+              step={500}
+              value={settings.autoSaveDelay}
+              onChange={(e) =>
+                setSettings({ autoSaveDelay: parseInt(e.target.value) })
+              }
+              className="flex-1 h-1 accent-orange-500"
+            />
+            <span className="text-[10px] text-muted-foreground w-12 text-right">
+              {settings.autoSaveDelay}ms
+            </span>
+          </div>
+          <p className="text-[9px] text-muted-foreground/60 mt-1">
+            Delay before auto-saving files after editing
+          </p>
+        </div>
+
+        {/* Font Size */}
+        <div>
+          <label className="text-[11px] font-medium text-foreground block mb-1.5">
+            Editor Font Size
+          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="range"
+              min={10}
+              max={24}
+              step={1}
+              value={settings.fontSize}
+              onChange={(e) =>
+                setSettings({ fontSize: parseInt(e.target.value) })
+              }
+              className="flex-1 h-1 accent-orange-500"
+            />
+            <span className="text-[10px] text-muted-foreground w-8 text-right">
+              {settings.fontSize}px
+            </span>
+          </div>
+        </div>
+
+        {/* Word Wrap */}
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-[11px] font-medium text-foreground block">
+              Word Wrap
+            </label>
+            <p className="text-[9px] text-muted-foreground/60">
+              Wrap long lines in the editor
+            </p>
+          </div>
+          <button
+            onClick={() => setSettings({ wordWrap: !settings.wordWrap })}
+            className={`w-8 h-4 rounded-full transition-colors relative ${
+              settings.wordWrap ? "bg-orange-500" : "bg-muted-foreground/30"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                settings.wordWrap ? "left-4" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Minimap */}
+        <div className="flex items-center justify-between">
+          <div>
+            <label className="text-[11px] font-medium text-foreground block">
+              Minimap
+            </label>
+            <p className="text-[9px] text-muted-foreground/60">
+              Show minimap on the right side
+            </p>
+          </div>
+          <button
+            onClick={() => setSettings({ minimap: !settings.minimap })}
+            className={`w-8 h-4 rounded-full transition-colors relative ${
+              settings.minimap ? "bg-orange-500" : "bg-muted-foreground/30"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-transform ${
+                settings.minimap ? "left-4" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-border/20 pt-3">
+          <h3 className="text-[10px] font-semibold uppercase text-muted-foreground mb-2">
+            IDE Settings
+          </h3>
+        </div>
+
+        {/* Tab Size */}
+        <div>
+          <label className="text-[11px] font-medium text-foreground block mb-1.5">
+            Tab Size
+          </label>
+          <div className="flex gap-1">
+            {[2, 4, 8].map((size) => (
+              <button
+                key={size}
+                className="px-3 py-1 text-[10px] rounded bg-muted/50 hover:bg-muted transition-colors border border-border/30"
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Theme */}
+        <div>
+          <label className="text-[11px] font-medium text-foreground block mb-1.5">
+            Editor Theme
+          </label>
+          <p className="text-[9px] text-muted-foreground/60">
+            Theme follows system preference
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Preview Toolbar ──────────────────────────────────────────────────────
+function PreviewToolbar({
+  onRefresh,
+  onToggleMobile,
+  onToggleFullscreen,
+  isMobile,
+  isFullscreen,
+}: {
+  onRefresh: () => void;
+  onToggleMobile: () => void;
+  onToggleFullscreen: () => void;
+  isMobile: boolean;
+  isFullscreen: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 px-1 h-8 border-b bg-muted/30 shrink-0">
+      {/* Navigation buttons */}
+      <button
+        className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground transition-colors"
+        title="Back"
+      >
+        <ChevronLeft className="h-3 w-3" />
+      </button>
+      <button
+        className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground transition-colors"
+        title="Forward"
+      >
+        <ChevronRight className="h-3 w-3" />
+      </button>
+      <button
+        className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground transition-colors"
+        title="Refresh"
+        onClick={onRefresh}
+      >
+        <RotateCcw className="h-3 w-3" />
+      </button>
+
+      {/* URL bar */}
+      <div className="flex-1 mx-1">
+        <div className="h-6 bg-muted/50 border border-border/30 rounded-md flex items-center px-2 text-[10px] text-muted-foreground font-mono">
+          /
+        </div>
+      </div>
+
+      {/* Mobile View */}
+      <button
+        className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${
+          isMobile
+            ? "bg-violet-500/20 text-violet-400"
+            : "hover:bg-muted/60 text-muted-foreground"
+        }`}
+        title={isMobile ? "Desktop View" : "Mobile View"}
+        onClick={onToggleMobile}
+      >
+        {isMobile ? (
+          <Monitor className="h-3 w-3" />
+        ) : (
+          <Smartphone className="h-3 w-3" />
+        )}
+      </button>
+
+      {/* Fullscreen */}
+      <button
+        className={`h-6 w-6 flex items-center justify-center rounded transition-colors ${
+          isFullscreen
+            ? "bg-violet-500/20 text-violet-400"
+            : "hover:bg-muted/60 text-muted-foreground"
+        }`}
+        title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+        onClick={onToggleFullscreen}
+      >
+        {isFullscreen ? (
+          <Minimize2 className="h-3 w-3" />
+        ) : (
+          <Maximize2 className="h-3 w-3" />
+        )}
+      </button>
+    </div>
+  );
+}
+
 export function SandpackWrapper({
   files,
   template,
@@ -352,6 +590,33 @@ export function SandpackWrapper({
 
   const setCursorPosition = useBuilderUIStore((s) => s.setCursorPosition);
   const setSelectionCount = useBuilderUIStore((s) => s.setSelectionCount);
+  const editorSettings = useBuilderUIStore((s) => s.editorSettings);
+
+  // Preview controls
+  const [previewMobile, setPreviewMobile] = useState(false);
+  const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  const handlePreviewRefresh = useCallback(() => {
+    // Force refresh the Sandpack preview by re-running
+    const sandpackPreview = document.querySelector(
+      'iframe[title="Sandpack Preview"]',
+    );
+    if (sandpackPreview) {
+      (sandpackPreview as HTMLIFrameElement).src = (
+        sandpackPreview as HTMLIFrameElement
+      ).src;
+    }
+  }, []);
+
+  const handleTogglePreviewFullscreen = useCallback(() => {
+    if (!previewFullscreen) {
+      previewRef.current?.requestFullscreen?.();
+    } else {
+      document.exitFullscreen?.();
+    }
+    setPreviewFullscreen(!previewFullscreen);
+  }, [previewFullscreen]);
 
   // DOM-based cursor tracking workaround to avoid EditorView crash
   const handleCursorUpdate = useCallback(() => {
@@ -361,7 +626,6 @@ export function SandpackWrapper({
       if (!selection || selection.rangeCount === 0) return;
 
       // Try to find active line number from gutter (CM6 uses .cm-activeLineGutter)
-      // We look within the document or scoped if possible, but document is easiest
       const activeGutter = document.querySelector(".cm-activeLineGutter");
       if (activeGutter && activeGutter.textContent) {
         const line = parseInt(activeGutter.textContent, 10);
@@ -427,313 +691,398 @@ export function SandpackWrapper({
               toggleConsole();
             }}
           >
-            <PanelGroup direction="vertical">
-              {/* Top section: file explorer + editor + preview */}
-              <Panel defaultSize={hasBottomPanel ? 70 : 100} minSize={30}>
-                <PanelGroup direction="horizontal">
-                  {/* File Explorer / Source Control / Search Panel */}
-                  {showFileExplorer &&
-                    (viewMode === "code" || viewMode === "split") && (
-                      <>
-                        {/* Activity Bar — VS Code icon strip */}
-                        <div className="w-[36px] shrink-0 flex flex-col items-center pt-1 gap-0.5 bg-muted/30 border-r border-border/20">
-                          <button
-                            onClick={() => setSidebarPanel("files")}
-                            className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
-                              sidebarPanel === "files"
-                                ? "text-foreground"
-                                : "text-muted-foreground/50 hover:text-muted-foreground"
-                            }`}
-                            title="Explorer"
-                          >
+            <PanelGroup direction="horizontal">
+              {/* Sidebar + Main Area */}
+              {/* File Explorer / Source Control / Search / Settings Panel */}
+              {(viewMode === "code" || viewMode === "split") && (
+                <>
+                  {/* Activity Bar — VS Code icon strip */}
+                  <div className="w-[36px] shrink-0 flex flex-col items-center pt-1 gap-0.5 bg-muted/30 border-r border-border/20">
+                    <button
+                      onClick={() => {
+                        if (sidebarPanel === "files" && showFileExplorer) {
+                          setShowFileExplorer(false);
+                        } else {
+                          setSidebarPanel("files");
+                          setShowFileExplorer(true);
+                        }
+                      }}
+                      className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
+                        sidebarPanel === "files" && showFileExplorer
+                          ? "text-foreground"
+                          : "text-muted-foreground/50 hover:text-muted-foreground"
+                      }`}
+                      title="Explorer"
+                    >
+                      {sidebarPanel === "files" && showFileExplorer && (
+                        <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                      )}
+                      <Files className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (sidebarPanel === "search" && showFileExplorer) {
+                          setShowFileExplorer(false);
+                        } else {
+                          setSidebarPanel("search");
+                          setShowFileExplorer(true);
+                        }
+                      }}
+                      className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
+                        sidebarPanel === "search" && showFileExplorer
+                          ? "text-foreground"
+                          : "text-muted-foreground/50 hover:text-muted-foreground"
+                      }`}
+                      title="Search"
+                    >
+                      {sidebarPanel === "search" && showFileExplorer && (
+                        <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                      )}
+                      <Search className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (
+                          sidebarPanel === "source-control" &&
+                          showFileExplorer
+                        ) {
+                          setShowFileExplorer(false);
+                        } else {
+                          setSidebarPanel("source-control");
+                          setShowFileExplorer(true);
+                        }
+                      }}
+                      className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
+                        sidebarPanel === "source-control" && showFileExplorer
+                          ? "text-foreground"
+                          : "text-muted-foreground/50 hover:text-muted-foreground"
+                      }`}
+                      title="Source Control"
+                    >
+                      {sidebarPanel === "source-control" &&
+                        showFileExplorer && (
+                          <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                        )}
+                      <GitBranch className="h-4 w-4" />
+                    </button>
+
+                    {/* Spacer to push settings to bottom */}
+                    <div className="flex-1" />
+
+                    {/* Settings — at the bottom of activity bar */}
+                    <button
+                      onClick={() => {
+                        if (sidebarPanel === "settings" && showFileExplorer) {
+                          setShowFileExplorer(false);
+                        } else {
+                          setSidebarPanel("settings");
+                          setShowFileExplorer(true);
+                        }
+                      }}
+                      className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative mb-1 ${
+                        sidebarPanel === "settings" && showFileExplorer
+                          ? "text-foreground"
+                          : "text-muted-foreground/50 hover:text-muted-foreground"
+                      }`}
+                      title="Settings"
+                    >
+                      {sidebarPanel === "settings" && showFileExplorer && (
+                        <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                      )}
+                      <Settings className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Collapsible Panel Content */}
+                  {showFileExplorer && (
+                    <>
+                      <Panel defaultSize={15} minSize={8} maxSize={30}>
+                        <div className="h-full flex flex-col bg-muted/20">
+                          {/* Panel Header */}
+                          <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/50 shrink-0">
+                            {sidebarPanel === "files" ? (
+                              <>
+                                {remoteConnected ? (
+                                  <div className="flex gap-0.5">
+                                    <button
+                                      className={`px-1.5 py-0.5 text-[10px] rounded ${!showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                                      onClick={() => setShowRemoteFiles(false)}
+                                    >
+                                      Local
+                                    </button>
+                                    <button
+                                      className={`px-1.5 py-0.5 text-[10px] rounded ${showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                                      onClick={() => setShowRemoteFiles(true)}
+                                    >
+                                      Remote
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                    Explorer
+                                  </span>
+                                )}
+                              </>
+                            ) : sidebarPanel === "search" ? (
+                              <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                Search
+                              </span>
+                            ) : sidebarPanel === "source-control" ? (
+                              <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                Source Control
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-semibold uppercase text-muted-foreground">
+                                Settings
+                              </span>
+                            )}
+                          </div>
+                          {/* Panel Content */}
+                          <div className="flex-1 overflow-auto min-h-0">
                             {sidebarPanel === "files" && (
-                              <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                              <>
+                                {showRemoteFiles && remoteConnected ? (
+                                  <RemoteFileBrowser />
+                                ) : (
+                                  <VSCodeFileExplorer />
+                                )}
+                              </>
                             )}
-                            <Files className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setSidebarPanel("search")}
-                            className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
-                              sidebarPanel === "search"
-                                ? "text-foreground"
-                                : "text-muted-foreground/50 hover:text-muted-foreground"
-                            }`}
-                            title="Search"
-                          >
                             {sidebarPanel === "search" && (
-                              <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                              <CodeSearchPanel files={files} />
                             )}
-                            <Search className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => setSidebarPanel("source-control")}
-                            className={`h-8 w-8 flex items-center justify-center rounded-md transition-colors relative ${
-                              sidebarPanel === "source-control"
-                                ? "text-foreground"
-                                : "text-muted-foreground/50 hover:text-muted-foreground"
-                            }`}
-                            title="Source Control"
-                          >
                             {sidebarPanel === "source-control" && (
-                              <div className="absolute left-0 top-1 bottom-1 w-[2px] bg-foreground rounded-r" />
+                              <SourceControlPanel
+                                files={files}
+                                repoOwner={repoOwner}
+                                repoName={repoName}
+                                branch={branch}
+                                onCommitAndPush={onCommitAndPush}
+                              />
                             )}
-                            <GitBranch className="h-4 w-4" />
-                          </button>
+                            {sidebarPanel === "settings" && (
+                              <SettingsPanel
+                                onClose={() => setShowFileExplorer(false)}
+                              />
+                            )}
+                          </div>
                         </div>
-                        <Panel defaultSize={15} minSize={8} maxSize={30}>
-                          <div className="h-full flex flex-col bg-muted/20">
-                            {/* Panel Header */}
-                            <div className="flex items-center justify-between px-2 py-1 border-b bg-muted/50 shrink-0">
-                              {sidebarPanel === "files" ? (
-                                <>
-                                  {remoteConnected ? (
-                                    <div className="flex gap-0.5">
-                                      <button
-                                        className={`px-1.5 py-0.5 text-[10px] rounded ${!showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                                        onClick={() =>
-                                          setShowRemoteFiles(false)
-                                        }
-                                      >
-                                        Local
-                                      </button>
-                                      <button
-                                        className={`px-1.5 py-0.5 text-[10px] rounded ${showRemoteFiles ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                                        onClick={() => setShowRemoteFiles(true)}
-                                      >
-                                        Remote
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                                      Explorer
-                                    </span>
-                                  )}
-                                </>
-                              ) : sidebarPanel === "search" ? (
-                                <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                                  Search
-                                </span>
+                      </Panel>
+                      <PanelResizeHandle className="w-[3px] hover:w-[5px] cursor-col-resize transition-all group flex items-center justify-center">
+                        <div className="w-[1px] h-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
+                      </PanelResizeHandle>
+                    </>
+                  )}
+                </>
+              )}
+
+              {/* Layout Divider - Before Editor Area */}
+              {(viewMode === "code" || viewMode === "split") && (
+                <PanelResizeHandle className="w-[3px] hover:w-[5px] cursor-col-resize transition-all group flex items-center justify-center">
+                  <div className="w-[1px] h-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
+                </PanelResizeHandle>
+              )}
+
+              <Panel minSize={30}>
+                <PanelGroup direction="vertical">
+                  {/* Top section: Editor + Preview */}
+                  <Panel defaultSize={hasBottomPanel ? 70 : 100} minSize={20}>
+                    <PanelGroup direction="horizontal">
+                      {/* Code Editor Panel */}
+                      {(viewMode === "code" || viewMode === "split") && (
+                        <Panel
+                          defaultSize={viewMode === "split" ? 50 : 100}
+                          minSize={20}
+                        >
+                          <div
+                            className="h-full w-full relative"
+                            onMouseUp={handleCursorUpdate}
+                            onKeyUp={handleCursorUpdate}
+                            onClick={handleCursorUpdate}
+                          >
+                            <SandpackCodeEditor
+                              showTabs
+                              closableTabs
+                              showLineNumbers
+                              wrapContent={editorSettings.wordWrap}
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                height: "100%",
+                                width: "100%",
+                                fontSize: editorSettings.fontSize,
+                              }}
+                            />
+                          </div>
+                        </Panel>
+                      )}
+
+                      {/* Resize handle between editor and preview */}
+                      {viewMode === "split" && (
+                        <PanelResizeHandle className="w-[3px] hover:w-[5px] cursor-col-resize transition-all group flex items-center justify-center">
+                          <div className="w-[1px] h-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
+                        </PanelResizeHandle>
+                      )}
+
+                      {/* Preview Panel */}
+                      {(viewMode === "preview" || viewMode === "split") && (
+                        <Panel
+                          defaultSize={viewMode === "split" ? 50 : 100}
+                          minSize={20}
+                        >
+                          <div
+                            className="h-full w-full relative flex flex-col"
+                            ref={previewRef}
+                          >
+                            {/* Preview Toolbar */}
+                            <PreviewToolbar
+                              onRefresh={handlePreviewRefresh}
+                              onToggleMobile={() =>
+                                setPreviewMobile(!previewMobile)
+                              }
+                              onToggleFullscreen={handleTogglePreviewFullscreen}
+                              isMobile={previewMobile}
+                              isFullscreen={previewFullscreen}
+                            />
+                            {/* Preview Content */}
+                            <div
+                              className={`flex-1 relative ${previewMobile ? "flex items-center justify-center" : ""}`}
+                            >
+                              {previewMobile ? (
+                                <div className="w-[375px] h-full border-x border-border/30 overflow-hidden">
+                                  <SandpackPreview
+                                    showNavigator={false}
+                                    showRefreshButton={false}
+                                    style={{
+                                      height: "100%",
+                                      width: "100%",
+                                    }}
+                                  />
+                                </div>
                               ) : (
-                                <span className="text-[10px] font-semibold uppercase text-muted-foreground">
-                                  Source Control
-                                </span>
-                              )}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => setShowFileExplorer(false)}
-                                className="h-4 w-4"
-                              >
-                                <ChevronLeft className="h-2.5 w-2.5" />
-                              </Button>
-                            </div>
-                            {/* Panel Content */}
-                            <div className="flex-1 overflow-auto min-h-0">
-                              {sidebarPanel === "files" && (
-                                <>
-                                  {showRemoteFiles && remoteConnected ? (
-                                    <RemoteFileBrowser />
-                                  ) : (
-                                    <VSCodeFileExplorer />
-                                  )}
-                                </>
-                              )}
-                              {sidebarPanel === "search" && (
-                                <CodeSearchPanel files={files} />
-                              )}
-                              {sidebarPanel === "source-control" && (
-                                <SourceControlPanel
-                                  files={files}
-                                  repoOwner={repoOwner}
-                                  repoName={repoName}
-                                  branch={branch}
-                                  onCommitAndPush={onCommitAndPush}
+                                <SandpackPreview
+                                  showNavigator={false}
+                                  showRefreshButton={false}
+                                  style={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    height: "100%",
+                                    width: "100%",
+                                  }}
                                 />
                               )}
                             </div>
                           </div>
                         </Panel>
-                        <PanelResizeHandle className="w-[3px] hover:w-[5px] cursor-col-resize transition-all group flex items-center justify-center">
-                          <div className="w-[1px] h-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
-                        </PanelResizeHandle>
-                      </>
-                    )}
+                      )}
+                    </PanelGroup>
+                  </Panel>
 
-                  {/* Toggle File Explorer Button (when collapsed) */}
-                  {!showFileExplorer &&
-                    (viewMode === "code" || viewMode === "split") && (
-                      <div className="border-r shrink-0 flex">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          onClick={() => setShowFileExplorer(true)}
-                          className="h-7 w-7 m-0.5"
-                          title="Show File Explorer"
-                        >
-                          <ChevronRight className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    )}
+                  {/* Remote Status Bar */}
+                  {remoteConnected && <RemoteStatusBar />}
 
-                  {/* Code Editor Panel */}
-                  {(viewMode === "code" || viewMode === "split") && (
-                    <Panel
-                      defaultSize={viewMode === "split" ? 50 : 100}
-                      minSize={20}
-                    >
-                      <div
-                        className="h-full w-full relative"
-                        onMouseUp={handleCursorUpdate}
-                        onKeyUp={handleCursorUpdate}
-                        onClick={handleCursorUpdate}
+                  {/* Bottom Panel — Console / Terminal / Report / Remote (resizable) */}
+                  {hasBottomPanel && (
+                    <>
+                      <PanelResizeHandle className="h-[3px] hover:h-[5px] cursor-row-resize transition-all group flex items-center justify-center">
+                        <div className="h-[1px] w-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
+                      </PanelResizeHandle>
+                      <Panel
+                        defaultSize={30}
+                        minSize={10}
+                        maxSize={bottomPanelMaximized ? 90 : 60}
                       >
-                        <SandpackCodeEditor
-                          showTabs
-                          closableTabs
-                          showLineNumbers
-                          wrapContent
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            height: "100%",
-                            width: "100%",
-                          }}
-                        />
-                      </div>
-                    </Panel>
-                  )}
-
-                  {/* Resize handle between editor and preview */}
-                  {viewMode === "split" && (
-                    <PanelResizeHandle className="w-[3px] hover:w-[5px] cursor-col-resize transition-all group flex items-center justify-center">
-                      <div className="w-[1px] h-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
-                    </PanelResizeHandle>
-                  )}
-
-                  {/* Preview Panel */}
-                  {(viewMode === "preview" || viewMode === "split") && (
-                    <Panel
-                      defaultSize={viewMode === "split" ? 50 : 100}
-                      minSize={20}
-                    >
-                      <div className="h-full w-full relative">
-                        <SandpackPreview
-                          showNavigator
-                          showRefreshButton
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            height: "100%",
-                            width: "100%",
-                          }}
-                        />
-                      </div>
-                    </Panel>
+                        <div className="h-full flex flex-col">
+                          {/* Bottom Panel Tabs */}
+                          <div className="flex items-center gap-0.5 px-1 py-0.5 bg-muted/30 border-b shrink-0">
+                            <button
+                              className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "console" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                              onClick={() =>
+                                useBuilderUIStore
+                                  .getState()
+                                  .setBottomPanel("console")
+                              }
+                            >
+                              Console
+                            </button>
+                            <button
+                              className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "terminal" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                              onClick={() =>
+                                useBuilderUIStore
+                                  .getState()
+                                  .setBottomPanel("terminal")
+                              }
+                            >
+                              Terminal
+                            </button>
+                            <button
+                              className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "report" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                              onClick={() =>
+                                useBuilderUIStore
+                                  .getState()
+                                  .setBottomPanel("report")
+                              }
+                            >
+                              Report
+                            </button>
+                            <button
+                              className={`px-2 py-0.5 text-[10px] rounded flex items-center gap-1 ${bottomPanel === "ssh" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
+                              onClick={() =>
+                                useBuilderUIStore
+                                  .getState()
+                                  .setBottomPanel("ssh")
+                              }
+                            >
+                              Remote
+                              {remoteConnected && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                              )}
+                            </button>
+                          </div>
+                          <div className="flex-1 min-h-0 overflow-hidden">
+                            {bottomPanel === "console" && (
+                              <SandpackConsole
+                                style={{ height: "100%", width: "100%" }}
+                              />
+                            )}
+                            {bottomPanel === "terminal" && (
+                              <BuilderTerminal
+                                onClose={() =>
+                                  useBuilderUIStore
+                                    .getState()
+                                    .setBottomPanel("none")
+                                }
+                                isMaximized={bottomPanelMaximized}
+                                onToggleMaximize={onToggleBottomPanelMaximized}
+                              />
+                            )}
+                            {bottomPanel === "report" && (
+                              <BuilderReportPanel
+                                onClose={() =>
+                                  useBuilderUIStore
+                                    .getState()
+                                    .setBottomPanel("none")
+                                }
+                              />
+                            )}
+                            {bottomPanel === "ssh" && (
+                              <RemoteTerminal
+                                onClose={() =>
+                                  useBuilderUIStore
+                                    .getState()
+                                    .setBottomPanel("none")
+                                }
+                                isMaximized={bottomPanelMaximized}
+                                onToggleMaximize={onToggleBottomPanelMaximized}
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </Panel>
+                    </>
                   )}
                 </PanelGroup>
               </Panel>
-
-              {/* Remote Status Bar */}
-              {remoteConnected && <RemoteStatusBar />}
-
-              {/* Bottom Panel — Console / Terminal / Report / Remote (resizable) */}
-              {hasBottomPanel && (
-                <>
-                  <PanelResizeHandle className="h-[3px] hover:h-[5px] cursor-row-resize transition-all group flex items-center justify-center">
-                    <div className="h-[1px] w-8 rounded-full bg-border/40 group-hover:bg-violet-400/60 group-active:bg-violet-400 transition-colors" />
-                  </PanelResizeHandle>
-                  <Panel
-                    defaultSize={30}
-                    minSize={10}
-                    maxSize={bottomPanelMaximized ? 90 : 60}
-                  >
-                    <div className="h-full flex flex-col">
-                      {/* Bottom Panel Tabs */}
-                      <div className="flex items-center gap-0.5 px-1 py-0.5 bg-muted/30 border-b shrink-0">
-                        <button
-                          className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "console" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() =>
-                            useBuilderUIStore
-                              .getState()
-                              .setBottomPanel("console")
-                          }
-                        >
-                          Console
-                        </button>
-                        <button
-                          className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "terminal" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() =>
-                            useBuilderUIStore
-                              .getState()
-                              .setBottomPanel("terminal")
-                          }
-                        >
-                          Terminal
-                        </button>
-                        <button
-                          className={`px-2 py-0.5 text-[10px] rounded ${bottomPanel === "report" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() =>
-                            useBuilderUIStore
-                              .getState()
-                              .setBottomPanel("report")
-                          }
-                        >
-                          Report
-                        </button>
-                        <button
-                          className={`px-2 py-0.5 text-[10px] rounded flex items-center gap-1 ${bottomPanel === "ssh" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"}`}
-                          onClick={() =>
-                            useBuilderUIStore.getState().setBottomPanel("ssh")
-                          }
-                        >
-                          Remote
-                          {remoteConnected && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-                          )}
-                        </button>
-                      </div>
-                      <div className="flex-1 min-h-0 overflow-hidden">
-                        {bottomPanel === "console" && (
-                          <SandpackConsole
-                            style={{ height: "100%", width: "100%" }}
-                          />
-                        )}
-                        {bottomPanel === "terminal" && (
-                          <BuilderTerminal
-                            onClose={() =>
-                              useBuilderUIStore
-                                .getState()
-                                .setBottomPanel("none")
-                            }
-                            isMaximized={bottomPanelMaximized}
-                            onToggleMaximize={onToggleBottomPanelMaximized}
-                          />
-                        )}
-                        {bottomPanel === "report" && (
-                          <BuilderReportPanel
-                            onClose={() =>
-                              useBuilderUIStore
-                                .getState()
-                                .setBottomPanel("none")
-                            }
-                          />
-                        )}
-                        {bottomPanel === "ssh" && (
-                          <RemoteTerminal
-                            onClose={() =>
-                              useBuilderUIStore
-                                .getState()
-                                .setBottomPanel("none")
-                            }
-                            isMaximized={bottomPanelMaximized}
-                            onToggleMaximize={onToggleBottomPanelMaximized}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  </Panel>
-                </>
-              )}
             </PanelGroup>
           </BuilderErrorBoundary>
         </div>

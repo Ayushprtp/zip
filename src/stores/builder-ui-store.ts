@@ -8,7 +8,7 @@ type ServerControl = {
   restart: () => void;
 } | null;
 type BottomPanel = "none" | "console" | "terminal" | "report" | "ssh";
-type SidebarPanel = "files" | "source-control" | "search";
+type SidebarPanel = "files" | "source-control" | "search" | "settings";
 
 interface BuilderUIStore {
   // View state
@@ -74,6 +74,17 @@ interface BuilderUIStore {
   setCursorPosition: (pos: { line: number; col: number }) => void;
   selectionCount: number;
   setSelectionCount: (count: number) => void;
+
+  // Editor Settings
+  editorSettings: {
+    fontSize: number;
+    wordWrap: boolean;
+    minimap: boolean;
+    autoSaveDelay: number;
+  };
+  setEditorSettings: (
+    settings: Partial<BuilderUIStore["editorSettings"]>,
+  ) => void;
 }
 
 export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
@@ -92,7 +103,14 @@ export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
   sidebarPanel: "files",
   activeFilePath: null,
   cursorPosition: { line: 1, col: 1 },
+
   selectionCount: 0,
+  editorSettings: {
+    fontSize: 13,
+    wordWrap: true,
+    minimap: false,
+    autoSaveDelay: 1000,
+  },
 
   // View mode
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -239,5 +257,10 @@ export const useBuilderUIStore = create<BuilderUIStore>((set, get) => ({
   // Active file for status bar
   setActiveFilePath: (path) => set({ activeFilePath: path }),
   setCursorPosition: (pos) => set({ cursorPosition: pos }),
+
   setSelectionCount: (count) => set({ selectionCount: count }),
+  setEditorSettings: (settings) =>
+    set((state) => ({
+      editorSettings: { ...state.editorSettings, ...settings },
+    })),
 }));

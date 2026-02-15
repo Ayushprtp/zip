@@ -6,29 +6,23 @@ import {
   PanelLeftOpen,
   PanelLeftClose,
   Download,
-  Smartphone,
-  Monitor,
   Rocket,
-  QrCode,
   History,
   Play,
   Square,
   RotateCcw,
-  Check,
-  FileCode,
   Terminal,
-  Code2,
-  Eye,
-  Columns2,
   AlertTriangle,
   SquareTerminal,
   Globe,
   Wifi,
+  Share2,
+  Pencil,
 } from "lucide-react";
 import { Button } from "ui/button";
 import { TextShimmer } from "ui/text-shimmer";
-import { Badge } from "ui/badge";
 import { useRemoteDevStore } from "@/stores/remote-dev-store";
+import { useState, useRef, useEffect } from "react";
 
 type ViewMode = "code" | "preview" | "split";
 
@@ -67,6 +61,8 @@ interface BuilderHeaderProps {
   showDeployPanel?: boolean;
   /** Toggle the deployment panel open/closed */
   onToggleDeployPanel?: () => void;
+  onRenameProject?: (newName: string) => void;
+  onShareProject?: () => void;
 }
 
 export function BuilderHeader({
@@ -74,20 +70,20 @@ export function BuilderHeader({
   isGeneratingTitle = false,
   onDownloadZip,
   onDeploy,
-  onShowQR,
-  onToggleMobilePreview,
+  onShowQR: _onShowQR,
+  onToggleMobilePreview: _onToggleMobilePreview,
   onCreateCheckpoint,
-  mobilePreview,
+  mobilePreview: _mobilePreview,
   isExporting,
-  onProjectNameClick,
-  fileCount = 0,
-  isSynced = true,
+  onProjectNameClick: _onProjectNameClick,
+  fileCount: _fileCount = 0,
+  isSynced: _isSynced = true,
   onServerStart,
   onServerStop,
   onServerRestart,
   serverStatus = "running",
-  viewMode,
-  onViewModeChange,
+  viewMode: _viewMode,
+  onViewModeChange: _onViewModeChange,
   showConsole: _showConsole,
   onToggleConsole,
   showTerminal: _showTerminal,
@@ -99,6 +95,8 @@ export function BuilderHeader({
   bottomPanel,
   showDeployPanel,
   onToggleDeployPanel,
+  onRenameProject,
+  onShareProject,
 }: BuilderHeaderProps) {
   const { toggleSidebar, open } = useSidebar();
   const remoteConnected = useRemoteDevStore(
@@ -106,6 +104,44 @@ export function BuilderHeader({
   );
   const executionContext = useRemoteDevStore((s) => s.executionContext);
   const activeConnection = useRemoteDevStore((s) => s.activeConnection);
+
+  // Project dropdown state
+  const [showProjectMenu, setShowProjectMenu] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(projectName);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        projectMenuRef.current &&
+        !projectMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowProjectMenu(false);
+        setIsRenaming(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Focus rename input when activated
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  const handleRenameSubmit = () => {
+    if (renameValue.trim() && renameValue !== projectName) {
+      onRenameProject?.(renameValue.trim());
+    }
+    setIsRenaming(false);
+    setShowProjectMenu(false);
+  };
 
   return (
     <header className="sticky top-0 z-50 flex items-center gap-1 px-2 py-1.5 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 overflow-x-auto">
@@ -132,80 +168,96 @@ export function BuilderHeader({
 
       <div className="h-4 w-px bg-border shrink-0" />
 
-      {/* Project Name */}
-
-      <Button
-        variant="ghost"
-        className="h-7 px-1.5 gap-1 hover:bg-accent shrink-0 min-w-0"
-        onClick={onProjectNameClick}
-      >
-        {isGeneratingTitle ? (
-          <TextShimmer className="truncate max-w-[80px] text-xs font-medium">
-            {projectName}
-          </TextShimmer>
-        ) : (
-          <span className="truncate max-w-[80px] text-xs font-medium">
-            {projectName}
-          </span>
-        )}
-        <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
-      </Button>
-
-      {/* File Count */}
-      <Badge
-        variant="secondary"
-        className="h-6 px-1.5 text-[10px] gap-0.5 shrink-0"
-      >
-        <FileCode className="h-2.5 w-2.5" />
-        {fileCount}
-      </Badge>
-
-      {/* Sync Status */}
-      {isSynced && (
-        <Badge
-          variant="outline"
-          className="h-6 px-1.5 text-[10px] gap-0.5 shrink-0"
+      {/* Project Name with Dropdown */}
+      <div className="relative" ref={projectMenuRef}>
+        <Button
+          variant="ghost"
+          className="h-7 px-1.5 gap-1 hover:bg-accent shrink-0 min-w-0"
+          onClick={() => setShowProjectMenu(!showProjectMenu)}
         >
-          <Check className="h-2.5 w-2.5 text-green-500" />
-        </Badge>
-      )}
+          {isGeneratingTitle ? (
+            <TextShimmer className="truncate max-w-[120px] text-xs font-medium">
+              {projectName}
+            </TextShimmer>
+          ) : (
+            <span className="truncate max-w-[120px] text-xs font-medium">
+              {projectName}
+            </span>
+          )}
+          <ChevronDown className="h-3 w-3 opacity-50 shrink-0" />
+        </Button>
 
-      {/* View Mode Tabs */}
-      {viewMode !== undefined && onViewModeChange && (
-        <>
-          <div className="h-4 w-px bg-border shrink-0" />
-          <div className="flex gap-0.5 bg-muted/50 border rounded-md p-0.5 shrink-0">
-            <Button
-              size="sm"
-              variant={viewMode === "code" ? "secondary" : "ghost"}
-              onClick={() => onViewModeChange("code")}
-              className="h-6 px-1.5 text-[10px]"
-            >
-              <Code2 className="h-3 w-3" />
-            </Button>
-            <Button
-              size="sm"
-              variant={viewMode === "preview" ? "secondary" : "ghost"}
-              onClick={() => onViewModeChange("preview")}
-              className="h-6 px-1.5 text-[10px]"
-            >
-              <Eye className="h-3 w-3" />
-            </Button>
-            <Button
-              size="sm"
-              variant={viewMode === "split" ? "secondary" : "ghost"}
-              onClick={() => onViewModeChange("split")}
-              className="h-6 px-1.5 text-[10px]"
-            >
-              <Columns2 className="h-3 w-3" />
-            </Button>
+        {/* Project Dropdown Menu */}
+        {showProjectMenu && (
+          <div className="absolute top-full left-0 mt-1 w-56 py-1 bg-popover border border-border rounded-lg shadow-xl z-50 animate-in slide-in-from-top-2 duration-150">
+            {isRenaming ? (
+              <div className="px-3 py-2">
+                <label className="text-[10px] text-muted-foreground uppercase font-medium mb-1 block">
+                  Rename Project
+                </label>
+                <input
+                  ref={renameInputRef}
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleRenameSubmit();
+                    if (e.key === "Escape") {
+                      setIsRenaming(false);
+                      setRenameValue(projectName);
+                    }
+                  }}
+                  className="w-full h-7 px-2 text-xs bg-muted/50 border border-border/50 rounded-md focus:outline-none focus:ring-1 focus:ring-orange-500/40"
+                />
+                <div className="flex gap-1 mt-1.5">
+                  <button
+                    onClick={handleRenameSubmit}
+                    className="flex-1 px-2 py-1 text-[10px] bg-orange-600 text-white rounded hover:bg-orange-700 transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsRenaming(false);
+                      setRenameValue(projectName);
+                    }}
+                    className="flex-1 px-2 py-1 text-[10px] bg-muted text-muted-foreground rounded hover:bg-muted/80 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => {
+                    setRenameValue(projectName);
+                    setIsRenaming(true);
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-[11px] hover:bg-muted/60 transition-colors text-foreground"
+                >
+                  <Pencil className="h-3 w-3" />
+                  Rename Project
+                </button>
+                <button
+                  onClick={() => {
+                    onShareProject?.();
+                    setShowProjectMenu(false);
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-left text-[11px] hover:bg-muted/60 transition-colors text-foreground"
+                >
+                  <Share2 className="h-3 w-3" />
+                  Share Project
+                </button>
+              </>
+            )}
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       <div className="flex-1 min-w-2 shrink" />
 
-      {/* Server Controls */}
+      {/* Server Controls — DON'T TOUCH these buttons */}
       {(onServerStart || onServerStop || onServerRestart) && (
         <>
           <div className="h-4 w-px bg-border shrink-0" />
@@ -307,34 +359,6 @@ export function BuilderHeader({
           )}
         </Button>
       )}
-
-      <div className="h-4 w-px bg-border shrink-0" />
-
-      {/* Mobile/Desktop Toggle */}
-
-      <Button
-        size="icon"
-        variant={mobilePreview ? "secondary" : "ghost"}
-        onClick={onToggleMobilePreview}
-        className="h-7 w-7 shrink-0"
-      >
-        {mobilePreview ? (
-          <Smartphone className="h-3 w-3" />
-        ) : (
-          <Monitor className="h-3 w-3" />
-        )}
-      </Button>
-
-      {/* QR Code */}
-
-      <Button
-        size="icon"
-        variant="ghost"
-        onClick={onShowQR}
-        className="h-7 w-7 shrink-0"
-      >
-        <QrCode className="h-3 w-3" />
-      </Button>
 
       <div className="h-4 w-px bg-border shrink-0" />
 

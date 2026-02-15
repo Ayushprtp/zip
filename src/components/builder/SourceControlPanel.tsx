@@ -31,6 +31,54 @@ interface SourceControlPanelProps {
   ) => Promise<void>;
 }
 
+// Compute line diffs between two strings
+function computeLineDiff(
+  oldContent: string | undefined,
+  newContent: string,
+): { added: number; removed: number } {
+  if (!oldContent) {
+    // New file: all lines are added
+    const lines = newContent.split("\n").length;
+    return { added: lines, removed: 0 };
+  }
+
+  const oldLines = oldContent.split("\n");
+  const newLines = newContent.split("\n");
+
+  // Simple line-by-line diff using LCS approach
+  // For performance, do a quick diff
+  const oldSet = new Map<string, number>();
+  oldLines.forEach((line) => {
+    oldSet.set(line, (oldSet.get(line) || 0) + 1);
+  });
+
+  const newSet = new Map<string, number>();
+  newLines.forEach((line) => {
+    newSet.set(line, (newSet.get(line) || 0) + 1);
+  });
+
+  let added = 0;
+  let removed = 0;
+
+  // Lines in new but not (enough of them) in old → added
+  newSet.forEach((count, line) => {
+    const oldCount = oldSet.get(line) || 0;
+    if (count > oldCount) {
+      added += count - oldCount;
+    }
+  });
+
+  // Lines in old but not (enough of them) in new → removed
+  oldSet.forEach((count, line) => {
+    const newCount = newSet.get(line) || 0;
+    if (count > newCount) {
+      removed += count - newCount;
+    }
+  });
+
+  return { added, removed };
+}
+
 export function SourceControlPanel({
   files: _originalFiles,
   repoOwner,
@@ -55,7 +103,27 @@ export function SourceControlPanel({
   >([]);
   const [loadingBranches, setLoadingBranches] = useState(false);
 
-  // Helper to get files from Sandpack state
+  // Tracking staged additions/modifications locally since we don't have real git status
+  const [committedContent, setCommittedContent] = useState<
+    Record<string, string>
+  >({});
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Initialize snapshot on mount or when repo disconnects/reconnects
+  useEffect(() => {
+    if (!hasInitialized && Object.keys(sandpack.files).length > 0) {
+      const snapshot: Record<string, string> = {};
+      Object.entries(sandpack.files).forEach(([path, file]) => {
+        if (!path.startsWith("/.flare-sh/")) {
+          snapshot[path] = typeof file === "string" ? file : file.code;
+        }
+      });
+      setCommittedContent(snapshot);
+      setHasInitialized(true);
+    }
+  }, [sandpack.files, hasInitialized]);
+
+  // Helper to get files from Sandpack state AND changed from snapshot
   const currentFiles = useMemo(() => {
     return Object.entries(sandpack.files)
       .filter(
@@ -63,11 +131,32 @@ export function SourceControlPanel({
           !path.startsWith("/.flare-sh/") ||
           path.startsWith("/.flare-sh/chats/"),
       )
-      .map(([path, fileData]) => ({
-        path,
-        content: typeof fileData === "string" ? fileData : fileData.code,
-      }));
-  }, [sandpack.files]);
+      .map(([path, fileData]) => {
+        const content = typeof fileData === "string" ? fileData : fileData.code;
+        return { path, content };
+      })
+      .filter((file) => {
+        // If file didn't exist before, it's new (Added)
+        // If file existed but content diff, it's modified (Modified)
+        return committedContent[file.path] !== file.content;
+      });
+  }, [sandpack.files, committedContent]);
+
+  // Compute line diffs for each changed file
+  const changesWithDiff = useMemo(() => {
+    return currentFiles.map((file) => {
+      const oldContent = committedContent[file.path];
+      const isNew = oldContent === undefined;
+      const diff = computeLineDiff(oldContent, file.content);
+      return {
+        ...file,
+        isNew,
+        linesAdded: diff.added,
+        linesRemoved: diff.removed,
+        status: isNew ? "A" : "M", // A = Added, M = Modified
+      };
+    });
+  }, [currentFiles, committedContent]);
 
   const [commits, setCommits] = useState<
     Array<{
@@ -135,7 +224,16 @@ export function SourceControlPanel({
     setIsCommitting(true);
     try {
       await onCommitAndPush(commitMessage.trim(), currentFiles);
+
+      // Update snapshot to reflect "committed" state — this clears the changes
+      const newSnapshot = { ...committedContent };
+      currentFiles.forEach((f) => {
+        newSnapshot[f.path] = f.content;
+      });
+      setCommittedContent(newSnapshot);
+
       setCommitMessage("");
+      toast.success("Changes committed & pushed successfully");
     } catch (error) {
       console.error(error);
       toast.error("Failed to commit changes");
@@ -168,10 +266,7 @@ export function SourceControlPanel({
       if (res.ok) {
         toast.success(`Branch "${cleanName}" created`);
         setNewBranchName("");
-        setBranches((prev) => [
-          ...prev,
-          { name: cleanName, current: false },
-        ]);
+        setBranches((prev) => [...prev, { name: cleanName, current: false }]);
       } else if (res.status === 422) {
         toast.info(`Branch "${cleanName}" already exists`);
       } else {
@@ -250,7 +345,10 @@ export function SourceControlPanel({
               size="sm"
               onClick={handleCommit}
               disabled={
-                isCommitting || !commitMessage.trim() || !onCommitAndPush
+                isCommitting ||
+                !commitMessage.trim() ||
+                !onCommitAndPush ||
+                changesWithDiff.length === 0
               }
               className="w-full h-7 text-[11px] bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50"
             >
@@ -262,7 +360,7 @@ export function SourceControlPanel({
               ) : (
                 <>
                   <CheckCircle2 className="mr-1.5 h-3 w-3" />
-                  Commit & Push
+                  Commit & Push ({changesWithDiff.length})
                 </>
               )}
             </Button>
@@ -284,30 +382,53 @@ export function SourceControlPanel({
               Changes
             </span>
             <span className="ml-auto text-[10px] bg-orange-500/10 text-orange-500 px-1.5 py-0.5 rounded-full">
-              {currentFiles.length}
+              {changesWithDiff.length}
             </span>
           </button>
 
           {showChanges && (
             <div className="py-1">
-              {currentFiles.slice(0, 50).map((file) => (
+              {changesWithDiff.length === 0 && (
+                <div className="px-3 py-2 text-[10px] text-muted-foreground/50 italic">
+                  No pending changes
+                </div>
+              )}
+              {changesWithDiff.slice(0, 50).map((file) => (
                 <div
                   key={file.path}
                   className="flex items-center gap-2 px-3 py-1 hover:bg-muted/30 cursor-default group"
-                  title={file.path}
+                  title={`${file.path}\n+${file.linesAdded} -${file.linesRemoved}`}
                 >
-                  <FileCode className="h-3 w-3 text-muted-foreground/60" />
+                  <FileCode className="h-3 w-3 text-muted-foreground/60 shrink-0" />
                   <span className="text-[11px] truncate flex-1">
                     {file.path.split("/").pop()}
                   </span>
-                  <span className="text-[10px] text-muted-foreground/40 group-hover:text-muted-foreground/60">
-                    M
+                  {/* Line count badges */}
+                  <span className="flex items-center gap-1 shrink-0">
+                    {file.linesAdded > 0 && (
+                      <span className="text-[9px] text-green-500 font-mono font-medium bg-green-500/10 px-1 py-0.5 rounded">
+                        +{file.linesAdded}
+                      </span>
+                    )}
+                    {file.linesRemoved > 0 && (
+                      <span className="text-[9px] text-red-500 font-mono font-medium bg-red-500/10 px-1 py-0.5 rounded">
+                        -{file.linesRemoved}
+                      </span>
+                    )}
+                  </span>
+                  {/* Status badge */}
+                  <span
+                    className={`text-[10px] font-medium shrink-0 ${
+                      file.status === "A" ? "text-green-500" : "text-orange-500"
+                    }`}
+                  >
+                    {file.status}
                   </span>
                 </div>
               ))}
-              {currentFiles.length > 50 && (
+              {changesWithDiff.length > 50 && (
                 <div className="px-3 py-1 text-[10px] text-muted-foreground italic">
-                  + {currentFiles.length - 50} more files
+                  + {changesWithDiff.length - 50} more files
                 </div>
               )}
             </div>
@@ -437,8 +558,12 @@ export function SourceControlPanel({
                               try {
                                 const d = new Date(commit.date);
                                 if (isNaN(d.getTime())) return "recently";
-                                return formatDistanceToNow(d, { addSuffix: true });
-                              } catch { return "recently"; }
+                                return formatDistanceToNow(d, {
+                                  addSuffix: true,
+                                });
+                              } catch {
+                                return "recently";
+                              }
                             })()}
                           </span>
                           <span>•</span>
