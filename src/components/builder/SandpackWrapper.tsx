@@ -13,6 +13,8 @@ import {
   SandpackProvider,
   useSandpack,
 } from "@codesandbox/sandpack-react";
+// @ts-ignore
+import { minimap } from "@replit/codemirror-minimap";
 import {
   ChevronLeft,
   ChevronRight,
@@ -78,11 +80,15 @@ interface SandpackWrapperProps {
 
 const DEFAULT_FILES: Record<Template, Record<string, string>> = {
   react: {
+    ".env":
+      "# Environment Variables\n# REACT_APP_API_URL=https://api.example.com\nKEY=VALUE",
     "/App.js": `export default function App() {
   return <h1 className="text-2xl font-bold p-4">Hello React</h1>;
 }`,
   },
   nextjs: {
+    ".env":
+      "# Environment Variables\n# NEXT_PUBLIC_API_URL=https://api.example.com\nKEY=VALUE",
     "/app/page.tsx": `export default function Home() {
   return <h1 className="text-2xl font-bold p-4">Hello Next.js (App Router)</h1>;
 }`,
@@ -95,14 +101,18 @@ const DEFAULT_FILES: Record<Template, Record<string, string>> = {
 }`,
   },
   "vite-react": {
+    ".env":
+      "# Environment Variables\n# VITE_API_URL=https://api.example.com\nKEY=VALUE",
     "/App.jsx": `export default function App() {
   return <h1 className="text-2xl font-bold p-4">Hello Vite + React</h1>;
 }`,
   },
   vanilla: {
+    ".env": "# Environment Variables\nKEY=VALUE",
     "/index.js": `document.getElementById("app").innerHTML = "<h1>Hello Vanilla</h1>";`,
   },
   static: {
+    ".env": "# Environment Variables\nKEY=VALUE",
     "index.html": `<!DOCTYPE html>
 <html><body><h1>Hello Static</h1></body></html>`,
   },
@@ -479,19 +489,38 @@ function PreviewToolbar({
   onToggleFullscreen,
   isMobile,
   isFullscreen,
+  previewRef,
 }: {
   onRefresh: () => void;
   onToggleMobile: () => void;
   onToggleFullscreen: () => void;
   isMobile: boolean;
   isFullscreen: boolean;
+  previewRef: React.RefObject<any>;
 }) {
+  const [url, setUrl] = useState("/");
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      const client = previewRef.current?.getClient();
+      if (client && client.iframe) {
+        // Try to update iframe location directly to force navigation
+        client.iframe.src = url;
+      }
+    }
+  };
+
   return (
     <div className="flex items-center gap-0.5 px-1 h-8 border-b bg-muted/30 shrink-0">
       {/* Navigation buttons */}
       <button
         className="h-6 w-6 flex items-center justify-center rounded hover:bg-muted/60 text-muted-foreground transition-colors"
         title="Back"
+        onClick={() => {
+          // Basic history management if possible?
+          // Sandpack client doesn't expose simple history back.
+          // Leaving as placeholder for now or omit click handler
+        }}
       >
         <ChevronLeft className="h-3 w-3" />
       </button>
@@ -511,9 +540,14 @@ function PreviewToolbar({
 
       {/* URL bar */}
       <div className="flex-1 mx-1">
-        <div className="h-6 bg-muted/50 border border-border/30 rounded-md flex items-center px-2 text-[10px] text-muted-foreground font-mono">
-          /
-        </div>
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="h-6 bg-muted/50 border border-border/30 rounded-md px-2 text-[10px] text-muted-foreground font-mono w-full focus:outline-none focus:ring-1 focus:ring-violet-500/50 transition-all placeholder:text-muted-foreground/50"
+          placeholder="/"
+        />
       </div>
 
       {/* Mobile View */}
@@ -896,15 +930,16 @@ export function SandpackWrapper({
                         >
                           <div
                             className="h-full w-full relative"
-                            onMouseUp={handleCursorUpdate}
-                            onKeyUp={handleCursorUpdate}
-                            onClick={handleCursorUpdate}
+                            onMouseUpCapture={handleCursorUpdate}
+                            onKeyUpCapture={handleCursorUpdate}
+                            onClickCapture={handleCursorUpdate}
                           >
                             <SandpackCodeEditor
                               showTabs
                               closableTabs
                               showLineNumbers
                               wrapContent={editorSettings.wordWrap}
+                              extensions={[minimap()]}
                               style={{
                                 position: "absolute",
                                 inset: 0,
@@ -930,10 +965,7 @@ export function SandpackWrapper({
                           defaultSize={viewMode === "split" ? 50 : 100}
                           minSize={20}
                         >
-                          <div
-                            className="h-full w-full relative flex flex-col"
-                            ref={previewRef}
-                          >
+                          <div className="h-full w-full relative flex flex-col">
                             {/* Preview Toolbar */}
                             <PreviewToolbar
                               onRefresh={handlePreviewRefresh}
@@ -943,6 +975,7 @@ export function SandpackWrapper({
                               onToggleFullscreen={handleTogglePreviewFullscreen}
                               isMobile={previewMobile}
                               isFullscreen={previewFullscreen}
+                              previewRef={previewRef}
                             />
                             {/* Preview Content */}
                             <div
@@ -951,6 +984,7 @@ export function SandpackWrapper({
                               {previewMobile ? (
                                 <div className="w-[375px] h-full border-x border-border/30 overflow-hidden">
                                   <SandpackPreview
+                                    ref={previewRef}
                                     showNavigator={false}
                                     showRefreshButton={false}
                                     style={{
@@ -961,6 +995,7 @@ export function SandpackWrapper({
                                 </div>
                               ) : (
                                 <SandpackPreview
+                                  ref={previewRef}
                                   showNavigator={false}
                                   showRefreshButton={false}
                                   style={{
