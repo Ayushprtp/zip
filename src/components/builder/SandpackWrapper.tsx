@@ -642,6 +642,7 @@ export function SandpackWrapper({
   /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
   const previewRef = useRef<any>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
 
   const handlePreviewRefresh = useCallback(() => {
     // Force refresh the Sandpack preview by re-running
@@ -657,7 +658,7 @@ export function SandpackWrapper({
 
   const handleTogglePreviewFullscreen = useCallback(() => {
     if (!previewFullscreen) {
-      previewRef.current?.requestFullscreen?.();
+      previewContainerRef.current?.requestFullscreen?.();
     } else {
       if (typeof document !== "undefined" && document.fullscreenElement) {
         document.exitFullscreen?.();
@@ -1009,7 +1010,10 @@ export function SandpackWrapper({
                           defaultSize={viewMode === "split" ? 50 : 100}
                           minSize={20}
                         >
-                          <div className="h-full w-full relative flex flex-col">
+                          <div
+                            className="h-full w-full relative flex flex-col bg-background"
+                            ref={previewContainerRef}
+                          >
                             {/* Preview Toolbar */}
                             <PreviewToolbar
                               onRefresh={handlePreviewRefresh}
