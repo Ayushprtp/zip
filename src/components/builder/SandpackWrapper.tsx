@@ -13,8 +13,7 @@ import {
   SandpackProvider,
   useSandpack,
 } from "@codesandbox/sandpack-react";
-// @ts-ignore
-import { showMinimap } from "@replit/codemirror-minimap";
+
 import {
   ChevronLeft,
   ChevronRight,
@@ -629,7 +628,8 @@ export function SandpackWrapper({
   // Preview controls
   const [previewMobile, setPreviewMobile] = useState(false);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
-  const previewRef = useRef<HTMLDivElement>(null);
+  /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+  const previewRef = useRef<any>(null);
 
   const handlePreviewRefresh = useCallback(() => {
     // Force refresh the Sandpack preview by re-running
@@ -939,7 +939,6 @@ export function SandpackWrapper({
                               closableTabs
                               showLineNumbers
                               wrapContent={editorSettings.wordWrap}
-                              extensions={[showMinimap]}
                               style={{
                                 position: "absolute",
                                 inset: 0,
