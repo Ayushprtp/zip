@@ -44,6 +44,7 @@ import {
 import type { DeploymentStatus } from "@/lib/builder/deployment-service";
 import { toast } from "sonner";
 import { VercelConnectModal } from "./VercelConnectModal";
+import { useProject } from "@/lib/builder/project-context";
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -108,6 +109,78 @@ export function DeploymentPanel({
 
   // Install App Prompt
   const [showInstallApp, setShowInstallApp] = useState(false);
+
+  // Environment Variables Manager
+  const { state, actions } = useProject();
+  const files = state.files;
+  const [envVars, setEnvVars] = useState<Array<{ key: string; value: string }>>(
+    [],
+  );
+  const [newEnvKey, setNewEnvKey] = useState("");
+  const [newEnvValue, setNewEnvValue] = useState("");
+
+  // Load .env content
+  useEffect(() => {
+    if (!files) return;
+    const content = files[".env"];
+    if (content) {
+      const vars = content
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith("#"))
+        .map((l) => {
+          const idx = l.indexOf("=");
+          if (idx !== -1) {
+            return {
+              key: l.substring(0, idx).trim(),
+              value: l.substring(idx + 1).trim(),
+            };
+          }
+          return null;
+        })
+        .filter((v) => v !== null) as Array<{ key: string; value: string }>;
+      setEnvVars(vars);
+    } else {
+      setEnvVars([]);
+    }
+
+    // Auto-fix .gitignore to allow .env
+    const gitignore = files[".gitignore"];
+    if (
+      gitignore &&
+      gitignore.includes(".env") &&
+      !gitignore.includes("# .env")
+    ) {
+      const newGi = gitignore
+        .split("\n")
+        .filter((l) => l.trim() !== ".env" && l.trim() !== "/.env")
+        .join("\n");
+      if (newGi !== gitignore) {
+        actions.updateFile(".gitignore", newGi);
+        toast.info("Enabled git commit for .env files");
+      }
+    }
+  }, [files, actions]);
+
+  const handleAddEnv = () => {
+    if (!newEnvKey.trim()) return;
+    const newVars = [
+      ...envVars,
+      { key: newEnvKey.trim(), value: newEnvValue.trim() },
+    ];
+    const content = newVars.map((v) => `${v.key}=${v.value}`).join("\n");
+    actions.updateFile(".env", content);
+    setNewEnvKey("");
+    setNewEnvValue("");
+    toast.success("Environment variable added");
+  };
+
+  const handleRemoveEnv = (key: string) => {
+    const newVars = envVars.filter((v) => v.key !== key);
+    const content = newVars.map((v) => `${v.key}=${v.value}`).join("\n");
+    actions.updateFile(".env", content);
+    toast.success("Environment variable removed");
+  };
 
   const logsEndRef = useRef<HTMLDivElement>(null);
 
@@ -539,6 +612,69 @@ export function DeploymentPanel({
                   ) : (
                     <Plus className="h-3 w-3" />
                   )}
+                  Add
+                </Button>
+              </div>
+            </section>
+          )}
+
+          {/* ── Environment Variables ───────────────────────────── */}
+          {projectExists && (
+            <section className="space-y-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Terminal className="h-3.5 w-3.5" />
+                Environment Variables (.env)
+              </h3>
+
+              {envVars.length > 0 && (
+                <div className="space-y-2">
+                  {envVars.map((v) => (
+                    <div
+                      key={v.key}
+                      className="flex items-center gap-2 p-2.5 rounded-lg border bg-card"
+                    >
+                      <div className="flex-1 min-w-0 flex items-center gap-2 text-xs font-mono">
+                        <span className="text-blue-400">{v.key}</span>
+                        <span className="text-muted-foreground">=</span>
+                        <span className="truncate text-muted-foreground">
+                          {v.value}
+                        </span>
+                      </div>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-6 w-6 shrink-0 text-muted-foreground hover:text-red-400"
+                        onClick={() => handleRemoveEnv(v.key)}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Input
+                  placeholder="KEY"
+                  value={newEnvKey}
+                  onChange={(e) => setNewEnvKey(e.target.value.toUpperCase())}
+                  className="h-8 text-xs font-mono flex-1"
+                />
+                <Input
+                  placeholder="VALUE"
+                  value={newEnvValue}
+                  onChange={(e) => setNewEnvValue(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleAddEnv()}
+                  className="h-8 text-xs font-mono flex-1"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleAddEnv}
+                  disabled={!newEnvKey.trim()}
+                  className="h-8 gap-1 px-3 shrink-0"
+                >
+                  <Plus className="h-3 w-3" />
                   Add
                 </Button>
               </div>
