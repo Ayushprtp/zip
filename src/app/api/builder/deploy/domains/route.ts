@@ -14,7 +14,9 @@ const VERCEL_API_URL = "https://api.vercel.com";
 async function resolveToken(isTemporary?: boolean): Promise<string | null> {
   const cookieStore = await cookies();
   let token = cookieStore.get("vercel_token")?.value;
-  if (!token && isTemporary && process.env.VERCEL_TEMP_TOKEN) token = process.env.VERCEL_TEMP_TOKEN;
+  if (!token && process.env.VERCEL_TEMP_TOKEN) {
+    if (isTemporary || !process.env.VERCEL_CLIENT_ID) token = process.env.VERCEL_TEMP_TOKEN;
+  }
   return token || null;
 }
 

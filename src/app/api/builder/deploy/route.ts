@@ -56,11 +56,13 @@ async function resolveToken(isTemporary?: boolean): Promise<string> {
   const cookieStore = await cookies();
   let token = cookieStore.get("vercel_token")?.value;
 
-  if (!token && isTemporary && process.env.VERCEL_TEMP_TOKEN) {
-    token = process.env.VERCEL_TEMP_TOKEN;
-    console.log(
-      "[Deploy] Using VERCEL_TEMP_TOKEN for temporary workspace deployment",
-    );
+  if (!token && process.env.VERCEL_TEMP_TOKEN) {
+    if (isTemporary || !process.env.VERCEL_CLIENT_ID) {
+      token = process.env.VERCEL_TEMP_TOKEN;
+      console.log(
+        "[Deploy] Using VERCEL_TEMP_TOKEN fallback for deployment",
+      );
+    }
   }
 
   if (!token) {

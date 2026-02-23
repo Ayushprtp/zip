@@ -8,7 +8,7 @@ const VERCEL_REDIRECT_URI =
 export async function GET(_request: NextRequest) {
   if (!VERCEL_CLIENT_ID) {
     return NextResponse.json(
-      { error: "VERCEL_CLIENT_ID is not configured" },
+      { error: "VERCEL_CLIENT_ID is not configured. Ask your administrator to set up Vercel OAuth, or use the centralized Vercel account by setting VERCEL_TEMP_TOKEN." },
       { status: 500 },
     );
   }
