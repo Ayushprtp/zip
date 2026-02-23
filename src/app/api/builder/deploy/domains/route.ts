@@ -10,12 +10,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 const VERCEL_API_URL = "https://api.vercel.com";
-const VERCEL_TEMP_TOKEN = process.env.VERCEL_TEMP_TOKEN;
 
 async function resolveToken(isTemporary?: boolean): Promise<string | null> {
   const cookieStore = await cookies();
   let token = cookieStore.get("vercel_token")?.value;
-  if (!token && isTemporary && VERCEL_TEMP_TOKEN) token = VERCEL_TEMP_TOKEN;
+  if (!token && isTemporary && process.env.VERCEL_TEMP_TOKEN) token = process.env.VERCEL_TEMP_TOKEN;
   return token || null;
 }
 

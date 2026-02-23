@@ -14,12 +14,7 @@ import { cookies } from "next/headers";
 // Vercel API configuration
 const VERCEL_API_URL = "https://api.vercel.com";
 
-/**
- * Token used for deploying temporary workspace projects.
- * Set this in .env so temp-workspace users can deploy without
- * connecting their own Vercel account.
- */
-const VERCEL_TEMP_TOKEN = process.env.VERCEL_TEMP_TOKEN;
+
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -61,8 +56,8 @@ async function resolveToken(isTemporary?: boolean): Promise<string> {
   const cookieStore = await cookies();
   let token = cookieStore.get("vercel_token")?.value;
 
-  if (!token && isTemporary && VERCEL_TEMP_TOKEN) {
-    token = VERCEL_TEMP_TOKEN;
+  if (!token && isTemporary && process.env.VERCEL_TEMP_TOKEN) {
+    token = process.env.VERCEL_TEMP_TOKEN;
     console.log(
       "[Deploy] Using VERCEL_TEMP_TOKEN for temporary workspace deployment",
     );
