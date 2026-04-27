@@ -212,11 +212,12 @@ export function VercelConnectModal({
     }
   };
 
-  // If prop mode changes, update internal mode
-  if (mode !== currentMode && mode === "install-app") {
-    setCurrentMode("install-app");
-  }
-
+  // Sync external mode prop to internal state when modal opens
+  useEffect(() => {
+    if (open) {
+      setCurrentMode(mode);
+    }
+  }, [mode, open]);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[460px]">

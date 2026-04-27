@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 
 const VERCEL_CLIENT_ID = process.env.VERCEL_CLIENT_ID;
 const VERCEL_CLIENT_SECRET = process.env.VERCEL_CLIENT_SECRET;
@@ -7,16 +8,14 @@ const VERCEL_REDIRECT_URI =
   `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/vercel/callback`;
 
 /**
- * Vercel OAuth callback — exchanges the authorization code for an access token.
+ * Vercel OAuth callback — exchanges the authorization code for tokens
+ * using PKCE (code_verifier from cookie) and the new Vercel token endpoint.
  *
- * Supports two modes:
- *  1. **Popup mode** (default): Returns an HTML page that posts a message back
- *     to the parent window and auto-closes. This mirrors the GitHub OAuth popup flow.
- *  2. **Redirect mode** (fallback): If opened directly (no `window.opener`),
- *     redirects to /builder with the token set as a cookie.
+ * Supports popup mode: posts a message back to the parent window and auto-closes.
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
+  const state = request.nextUrl.searchParams.get("state");
   const error = request.nextUrl.searchParams.get("error");
 
   // Handle OAuth errors (user denied, etc.)
@@ -46,28 +45,50 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  // Retrieve stored PKCE code_verifier and state from cookies
+  const cookieStore = await cookies();
+  const storedState = cookieStore.get("vercel_oauth_state")?.value;
+  const codeVerifier = cookieStore.get("vercel_oauth_code_verifier")?.value;
+
+  // Validate state for CSRF protection
+  if (storedState && state !== storedState) {
+    return new NextResponse(
+      buildPopupHTML(false, "OAuth state mismatch — please try again."),
+      { status: 200, headers: { "Content-Type": "text/html" } },
+    );
+  }
+
+  if (!codeVerifier) {
+    console.warn(
+      "[Vercel OAuth] No code_verifier cookie found — PKCE may fail",
+    );
+  }
+
   try {
+    // Exchange code for tokens using the NEW Vercel token endpoint
     const params = new URLSearchParams({
+      grant_type: "authorization_code",
       client_id: VERCEL_CLIENT_ID,
       client_secret: VERCEL_CLIENT_SECRET,
       code,
       redirect_uri: VERCEL_REDIRECT_URI,
+      ...(codeVerifier ? { code_verifier: codeVerifier } : {}),
     });
 
-    const response = await fetch(
-      "https://api.vercel.com/v2/oauth/access_token",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params,
-      },
-    );
+    const response = await fetch("https://api.vercel.com/login/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params,
+    });
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({}));
       console.error("[Vercel OAuth] Token exchange failed:", err);
       return new NextResponse(
-        buildPopupHTML(false, err.error_description || "Token exchange failed"),
+        buildPopupHTML(
+          false,
+          err.error_description || err.error || "Token exchange failed",
+        ),
         { status: 200, headers: { "Content-Type": "text/html" } },
       );
     }
@@ -82,22 +103,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Set the vercel_token cookie (30 days)
-    const expires = new Date();
-    expires.setDate(expires.getDate() + 30);
-
+    // Clear PKCE cookies
     const res = new NextResponse(buildPopupHTML(true), {
       status: 200,
       headers: { "Content-Type": "text/html" },
     });
+
+    // Set the vercel_token cookie (30 days)
+    const expires = new Date();
+    expires.setDate(expires.getDate() + 30);
 
     res.cookies.set("vercel_token", accessToken, {
       httpOnly: false, // Accessible by frontend JS for cookie checks
       secure: process.env.NODE_ENV === "production",
       path: "/",
       expires,
-      sameSite: "strict",
+      sameSite: "lax",
     });
+
+    // Clean up PKCE cookies
+    res.cookies.set("vercel_oauth_code_verifier", "", { maxAge: 0 });
+    res.cookies.set("vercel_oauth_state", "", { maxAge: 0 });
 
     return res;
   } catch (error) {
