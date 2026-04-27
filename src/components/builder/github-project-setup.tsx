@@ -176,7 +176,7 @@ export function GitHubProjectSetup({
   const [showVercelTokenInput, setShowVercelTokenInput] = useState(false);
   const [vercelToken, setVercelToken] = useState("");
   const [vercelValidating, setVercelValidating] = useState(false);
-  const [vercelOAuthLoading, setVercelOAuthLoading] = useState(false);
+  const [_vercelOAuthLoading, setVercelOAuthLoading] = useState(false);
   const vercelPopupRef = useRef<Window | null>(null);
   const vercelPollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -280,7 +280,7 @@ export function GitHubProjectSetup({
     }
   };
 
-  const handleVercelOAuthConnect = useCallback(async () => {
+  const _handleVercelOAuthConnect = useCallback(async () => {
     setVercelOAuthLoading(true);
     try {
       const resp = await fetch("/api/auth/vercel/login?popup=true");
@@ -1184,35 +1184,29 @@ export function GitHubProjectSetup({
                       <div className="flex flex-col gap-2">
                         <Button
                           size="sm"
-                          className="w-full h-9 text-xs gap-2 bg-black hover:bg-black/90 text-white"
-                          onClick={handleVercelOAuthConnect}
-                          disabled={vercelOAuthLoading}
-                        >
-                          {vercelOAuthLoading ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <div className="w-3.5 h-3.5 rounded-sm bg-white flex items-center justify-center">
-                              <span className="text-black text-[8px] font-bold">
-                                ▲
-                              </span>
-                            </div>
-                          )}
-                          {vercelOAuthLoading
-                            ? "Waiting for authorization..."
-                            : "Connect Vercel Account"}
-                        </Button>
-                        <button
+                          className="w-full h-9 text-xs gap-2"
+                          variant="outline"
                           onClick={() => setShowVercelTokenInput(true)}
-                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 justify-center"
                         >
-                          <Key className="h-2.5 w-2.5" />
-                          Or paste access token manually
-                        </button>
+                          <Key className="h-3 w-3" />
+                          Connect with Personal Access Token
+                        </Button>
+                        <p className="text-[10px] text-center text-muted-foreground">
+                          Get a token from{" "}
+                          <a
+                            href="https://vercel.com/account/tokens"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-violet-400 hover:underline"
+                          >
+                            vercel.com/account/tokens
+                          </a>
+                        </p>
                       </div>
                     ) : (
                       <div className="space-y-2 animate-in fade-in-0 slide-in-from-top-2 duration-300">
                         <p className="text-[10px] text-muted-foreground">
-                          Get a token from{" "}
+                          Create a token at{" "}
                           <a
                             href="https://vercel.com/account/tokens"
                             target="_blank"
@@ -1221,12 +1215,13 @@ export function GitHubProjectSetup({
                           >
                             vercel.com/account/tokens{" "}
                             <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
+                          </a>{" "}
+                          and paste it below:
                         </p>
                         <div className="flex gap-2">
                           <Input
                             type="password"
-                            placeholder="vcp_..."
+                            placeholder="Paste your token..."
                             value={vercelToken}
                             onChange={(e) => setVercelToken(e.target.value)}
                             onKeyDown={(e) =>

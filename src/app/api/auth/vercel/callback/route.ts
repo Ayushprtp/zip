@@ -8,10 +8,18 @@ const VERCEL_REDIRECT_URI =
   `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/vercel/callback`;
 
 /**
- * Vercel OAuth callback — exchanges the authorization code for tokens
- * using PKCE (code_verifier from cookie) and the new Vercel token endpoint.
+ * Vercel OAuth callback — exchanges the authorization code for tokens.
  *
- * Supports popup mode: posts a message back to the parent window and auto-closes.
+ * IMPORTANT: The "Sign in with Vercel" OAuth token (vca_...) only has
+ * identity scopes (openid, email, profile). It does NOT have permission
+ * to create projects or trigger deployments via the Vercel REST API.
+ *
+ * Flow:
+ *  1. Exchange code for access_token (identity verification)
+ *  2. Fetch user info from the token
+ *  3. Return user info to the frontend via postMessage
+ *  4. The frontend will then prompt the user to create a Personal Access Token
+ *     for actual deployment API access
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
@@ -23,14 +31,22 @@ export async function GET(request: NextRequest) {
     const errorDescription =
       request.nextUrl.searchParams.get("error_description") || error;
     return new NextResponse(
-      buildPopupHTML(false, `Vercel authorization failed: ${errorDescription}`),
+      buildPopupHTML(
+        false,
+        undefined,
+        `Vercel authorization failed: ${errorDescription}`,
+      ),
       { status: 200, headers: { "Content-Type": "text/html" } },
     );
   }
 
   if (!code) {
     return new NextResponse(
-      buildPopupHTML(false, "No authorization code received from Vercel"),
+      buildPopupHTML(
+        false,
+        undefined,
+        "No authorization code received from Vercel",
+      ),
       { status: 200, headers: { "Content-Type": "text/html" } },
     );
   }
@@ -39,7 +55,8 @@ export async function GET(request: NextRequest) {
     return new NextResponse(
       buildPopupHTML(
         false,
-        "Vercel OAuth is not configured on the server. Set VERCEL_CLIENT_ID and VERCEL_CLIENT_SECRET.",
+        undefined,
+        "Vercel OAuth is not configured on the server.",
       ),
       { status: 200, headers: { "Content-Type": "text/html" } },
     );
@@ -53,19 +70,17 @@ export async function GET(request: NextRequest) {
   // Validate state for CSRF protection
   if (storedState && state !== storedState) {
     return new NextResponse(
-      buildPopupHTML(false, "OAuth state mismatch — please try again."),
+      buildPopupHTML(
+        false,
+        undefined,
+        "OAuth state mismatch — please try again.",
+      ),
       { status: 200, headers: { "Content-Type": "text/html" } },
     );
   }
 
-  if (!codeVerifier) {
-    console.warn(
-      "[Vercel OAuth] No code_verifier cookie found — PKCE may fail",
-    );
-  }
-
   try {
-    // Exchange code for tokens using the NEW Vercel token endpoint
+    // Exchange code for tokens using Vercel's token endpoint
     const params = new URLSearchParams({
       grant_type: "authorization_code",
       client_id: VERCEL_CLIENT_ID,
@@ -87,6 +102,7 @@ export async function GET(request: NextRequest) {
       return new NextResponse(
         buildPopupHTML(
           false,
+          undefined,
           err.error_description || err.error || "Token exchange failed",
         ),
         { status: 200, headers: { "Content-Type": "text/html" } },
@@ -98,32 +114,50 @@ export async function GET(request: NextRequest) {
 
     if (!accessToken) {
       return new NextResponse(
-        buildPopupHTML(false, "No access token received"),
+        buildPopupHTML(false, undefined, "No access token received"),
         { status: 200, headers: { "Content-Type": "text/html" } },
       );
     }
 
-    // Clear PKCE cookies
-    const res = new NextResponse(buildPopupHTML(true), {
+    // Fetch user info using the OAuth token to get the username
+    let username = "";
+    try {
+      const userInfoResp = await fetch(
+        "https://api.vercel.com/login/oauth/userinfo",
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      if (userInfoResp.ok) {
+        const userInfo = await userInfoResp.json();
+        username = userInfo.preferred_username || userInfo.name || "";
+      }
+    } catch {
+      // Non-critical — just won't have the username
+    }
+
+    // Clean up PKCE cookies
+    const res = new NextResponse(buildPopupHTML(true, username), {
       status: 200,
       headers: { "Content-Type": "text/html" },
     });
 
-    // Set the vercel_token cookie (30 days)
-    const expires = new Date();
-    expires.setDate(expires.getDate() + 30);
-
-    res.cookies.set("vercel_token", accessToken, {
-      httpOnly: false, // Accessible by frontend JS for cookie checks
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
-      expires,
-      sameSite: "lax",
-    });
-
-    // Clean up PKCE cookies
     res.cookies.set("vercel_oauth_code_verifier", "", { maxAge: 0 });
     res.cookies.set("vercel_oauth_state", "", { maxAge: 0 });
+
+    // Store the username so the UI can display it
+    if (username) {
+      const expires = new Date();
+      expires.setDate(expires.getDate() + 30);
+      res.cookies.set("vercel_username", username, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        path: "/",
+        expires,
+        sameSite: "lax",
+      });
+    }
 
     return res;
   } catch (error) {
@@ -131,6 +165,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(
       buildPopupHTML(
         false,
+        undefined,
         error instanceof Error ? error.message : "Internal Server Error",
       ),
       { status: 200, headers: { "Content-Type": "text/html" } },
@@ -140,25 +175,34 @@ export async function GET(request: NextRequest) {
 
 /**
  * Build HTML that posts a message to the opener and auto-closes.
- * If no opener (direct navigation), redirects to /builder.
+ * The message includes the verified username so the frontend can show it
+ * and prompt the user for a Personal Access Token.
  */
-function buildPopupHTML(success: boolean, errorMsg?: string): string {
+function buildPopupHTML(
+  success: boolean,
+  username?: string,
+  errorMsg?: string,
+): string {
   return `<!DOCTYPE html>
 <html>
 <head><title>Vercel Auth</title></head>
 <body>
-  <p>${success ? "✅ Vercel connected! This window will close automatically." : `❌ ${errorMsg || "Authentication failed"}`}</p>
+  <p>${success ? "✅ Vercel identity verified! This window will close automatically." : `❌ ${errorMsg || "Authentication failed"}`}</p>
   <script>
     (function() {
       try {
         if (window.opener) {
           window.opener.postMessage(
-            { type: "${success ? "vercel-auth-success" : "vercel-auth-error"}", error: ${JSON.stringify(errorMsg || "")} },
+            {
+              type: "${success ? "vercel-auth-success" : "vercel-auth-error"}",
+              username: ${JSON.stringify(username || "")},
+              error: ${JSON.stringify(errorMsg || "")},
+              needsToken: ${success ? "true" : "false"}
+            },
             window.location.origin
           );
           setTimeout(function() { window.close(); }, 500);
         } else {
-          // No opener — redirect to builder
           window.location.href = "/builder";
         }
       } catch(e) {
