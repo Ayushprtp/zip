@@ -7,19 +7,42 @@ const VERCEL_REDIRECT_URI =
   `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/auth/vercel/callback`;
 
 /**
- * Exchange code for access token.
+ * Vercel OAuth callback — exchanges the authorization code for an access token.
+ *
+ * Supports two modes:
+ *  1. **Popup mode** (default): Returns an HTML page that posts a message back
+ *     to the parent window and auto-closes. This mirrors the GitHub OAuth popup flow.
+ *  2. **Redirect mode** (fallback): If opened directly (no `window.opener`),
+ *     redirects to /builder with the token set as a cookie.
  */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code");
+  const error = request.nextUrl.searchParams.get("error");
+
+  // Handle OAuth errors (user denied, etc.)
+  if (error) {
+    const errorDescription =
+      request.nextUrl.searchParams.get("error_description") || error;
+    return new NextResponse(
+      buildPopupHTML(false, `Vercel authorization failed: ${errorDescription}`),
+      { status: 200, headers: { "Content-Type": "text/html" } },
+    );
+  }
 
   if (!code) {
-    return NextResponse.json({ error: "No code provided" }, { status: 400 });
+    return new NextResponse(
+      buildPopupHTML(false, "No authorization code received from Vercel"),
+      { status: 200, headers: { "Content-Type": "text/html" } },
+    );
   }
 
   if (!VERCEL_CLIENT_ID || !VERCEL_CLIENT_SECRET) {
-    return NextResponse.json(
-      { error: "Vercel OAuth is not configured on the server" },
-      { status: 500 },
+    return new NextResponse(
+      buildPopupHTML(
+        false,
+        "Vercel OAuth is not configured on the server. Set VERCEL_CLIENT_ID and VERCEL_CLIENT_SECRET.",
+      ),
+      { status: 200, headers: { "Content-Type": "text/html" } },
     );
   }
 
@@ -41,10 +64,11 @@ export async function GET(request: NextRequest) {
     );
 
     if (!response.ok) {
-      const error = await response.json();
-      return NextResponse.json(
-        { error: error.error_description || "Authentication failed" },
-        { status: 400 },
+      const err = await response.json().catch(() => ({}));
+      console.error("[Vercel OAuth] Token exchange failed:", err);
+      return new NextResponse(
+        buildPopupHTML(false, err.error_description || "Token exchange failed"),
+        { status: 200, headers: { "Content-Type": "text/html" } },
       );
     }
 
@@ -52,23 +76,23 @@ export async function GET(request: NextRequest) {
     const accessToken = data.access_token;
 
     if (!accessToken) {
-      return NextResponse.json(
-        { error: "No access token received" },
-        { status: 500 },
+      return new NextResponse(
+        buildPopupHTML(false, "No access token received"),
+        { status: 200, headers: { "Content-Type": "text/html" } },
       );
     }
 
-    // Redirect to the builder with success message/param
-    const redirectUrl = new URL("/builder", request.url);
-    // Setting cookie on the server side response
-    const res = NextResponse.redirect(redirectUrl);
-
-    // Set cookie (valid for 30 days)
+    // Set the vercel_token cookie (30 days)
     const expires = new Date();
     expires.setDate(expires.getDate() + 30);
 
+    const res = new NextResponse(buildPopupHTML(true), {
+      status: 200,
+      headers: { "Content-Type": "text/html" },
+    });
+
     res.cookies.set("vercel_token", accessToken, {
-      httpOnly: false, // Accessible by JS so existing frontend code can read it if needed
+      httpOnly: false, // Accessible by frontend JS for cookie checks
       secure: process.env.NODE_ENV === "production",
       path: "/",
       expires,
@@ -77,12 +101,45 @@ export async function GET(request: NextRequest) {
 
     return res;
   } catch (error) {
-    console.error("Vercel OAuth error:", error);
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Internal Server Error",
-      },
-      { status: 500 },
+    console.error("[Vercel OAuth] Callback error:", error);
+    return new NextResponse(
+      buildPopupHTML(
+        false,
+        error instanceof Error ? error.message : "Internal Server Error",
+      ),
+      { status: 200, headers: { "Content-Type": "text/html" } },
     );
   }
+}
+
+/**
+ * Build HTML that posts a message to the opener and auto-closes.
+ * If no opener (direct navigation), redirects to /builder.
+ */
+function buildPopupHTML(success: boolean, errorMsg?: string): string {
+  return `<!DOCTYPE html>
+<html>
+<head><title>Vercel Auth</title></head>
+<body>
+  <p>${success ? "✅ Vercel connected! This window will close automatically." : `❌ ${errorMsg || "Authentication failed"}`}</p>
+  <script>
+    (function() {
+      try {
+        if (window.opener) {
+          window.opener.postMessage(
+            { type: "${success ? "vercel-auth-success" : "vercel-auth-error"}", error: ${JSON.stringify(errorMsg || "")} },
+            window.location.origin
+          );
+          setTimeout(function() { window.close(); }, 500);
+        } else {
+          // No opener — redirect to builder
+          window.location.href = "/builder";
+        }
+      } catch(e) {
+        window.location.href = "/builder";
+      }
+    })();
+  </script>
+</body>
+</html>`;
 }

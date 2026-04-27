@@ -439,9 +439,13 @@ export function DeploymentPanel({
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {deploymentError ||
+                    {(
+                      deploymentError ||
                       deploymentStatus?.message ||
-                      "Unknown error"}
+                      "Unknown error"
+                    )
+                      .replace(/^MISSING_GITHUB_APP:\s*/i, "")
+                      .replace(/^VERCEL_NOT_CONFIGURED:\s*/i, "")}
                   </p>
 
                   {/* Show "Install App" prompt inside error if relevant */}
@@ -457,7 +461,9 @@ export function DeploymentPanel({
                       onClick={() => setShowInstallApp(true)}
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
-                      Install Vercel GitHub App
+                      {isTemporary
+                        ? "Fix: Install Vercel GitHub App"
+                        : "Install Vercel GitHub App"}
                     </Button>
                   )}
                 </div>
@@ -746,6 +752,7 @@ export function DeploymentPanel({
         open={showInstallApp}
         onOpenChange={setShowInstallApp}
         mode="install-app"
+        isTemporary={isTemporary}
       />
     </div>
   );

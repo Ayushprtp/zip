@@ -170,6 +170,16 @@ export function GitHubProjectSetup({
   const [tempProjectName, setTempProjectName] = useState("");
   const [tempFramework, setTempFramework] = useState<Template | null>(null);
 
+  // Vercel connection state
+  const [vercelConnected, setVercelConnected] = useState(false);
+  const [vercelUser, setVercelUser] = useState("");
+  const [showVercelTokenInput, setShowVercelTokenInput] = useState(false);
+  const [vercelToken, setVercelToken] = useState("");
+  const [vercelValidating, setVercelValidating] = useState(false);
+  const [vercelOAuthLoading, setVercelOAuthLoading] = useState(false);
+  const vercelPopupRef = useRef<Window | null>(null);
+  const vercelPollRef = useRef<NodeJS.Timeout | null>(null);
+
   // OAuth popup ref
   const popupRef = useRef<Window | null>(null);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -179,14 +189,14 @@ export function GitHubProjectSetup({
     if (!userGitHubConnected) {
       checkGitHubConnection();
     }
+    checkVercelConnection();
   }, [userGitHubConnected]);
 
   // Cleanup popup polling on unmount
   useEffect(() => {
     return () => {
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-      }
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      if (vercelPollRef.current) clearInterval(vercelPollRef.current);
     };
   }, []);
 
@@ -211,6 +221,131 @@ export function GitHubProjectSetup({
       setStep("connect");
     }
   };
+
+  const checkVercelConnection = async () => {
+    try {
+      // Check for user's vercel_token cookie
+      const cookies = document.cookie.split(";").map((c) => c.trim());
+      const vercelCookie = cookies.find((c) => c.startsWith("vercel_token="));
+      if (vercelCookie) {
+        const token = vercelCookie.split("=")[1];
+        if (token) {
+          // Validate the token
+          const resp = await fetch("https://api.vercel.com/v2/user", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (resp.ok) {
+            const data = await resp.json();
+            setVercelConnected(true);
+            setVercelUser(
+              data.user?.username || data.user?.name || "Connected",
+            );
+            return;
+          }
+        }
+      }
+      setVercelConnected(false);
+    } catch {
+      setVercelConnected(false);
+    }
+  };
+
+  const handleVercelTokenConnect = async () => {
+    if (!vercelToken.trim()) return;
+    setVercelValidating(true);
+    try {
+      const resp = await fetch("https://api.vercel.com/v2/user", {
+        headers: { Authorization: `Bearer ${vercelToken.trim()}` },
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        // Save token as cookie (30 days)
+        const d = new Date();
+        d.setTime(d.getTime() + 30 * 24 * 60 * 60 * 1000);
+        document.cookie = `vercel_token=${vercelToken.trim()};expires=${d.toUTCString()};path=/;SameSite=Strict;Secure`;
+        setVercelConnected(true);
+        setVercelUser(data.user?.username || data.user?.name || "Connected");
+        setShowVercelTokenInput(false);
+        setVercelToken("");
+        toast.success("Vercel connected!", {
+          description: `Signed in as @${data.user?.username || "user"}`,
+        });
+      } else {
+        toast.error("Invalid Vercel token");
+      }
+    } catch {
+      toast.error("Failed to validate token");
+    } finally {
+      setVercelValidating(false);
+    }
+  };
+
+  const handleVercelOAuthConnect = useCallback(async () => {
+    setVercelOAuthLoading(true);
+    try {
+      const resp = await fetch("/api/auth/vercel/login?popup=true");
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        if (err.error?.includes("VERCEL_CLIENT_ID")) {
+          toast.info("OAuth not configured — use token entry instead");
+          setShowVercelTokenInput(true);
+          setVercelOAuthLoading(false);
+          return;
+        }
+        throw new Error(err.error || "Failed to start Vercel OAuth");
+      }
+
+      const { authUrl } = await resp.json();
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.innerWidth - width) / 2;
+      const top = window.screenY + (window.innerHeight - height) / 2;
+
+      vercelPopupRef.current = window.open(
+        authUrl,
+        "vercel-oauth-setup",
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes`,
+      );
+
+      const handleMessage = (event: MessageEvent) => {
+        if (
+          event.origin !== window.location.origin ||
+          !event.data?.type?.startsWith("vercel-auth-")
+        )
+          return;
+        window.removeEventListener("message", handleMessage);
+        if (vercelPollRef.current) clearInterval(vercelPollRef.current);
+        try {
+          vercelPopupRef.current?.close();
+        } catch {}
+        vercelPopupRef.current = null;
+
+        if (event.data.type === "vercel-auth-success") {
+          toast.success("Vercel account connected!");
+          checkVercelConnection();
+        } else {
+          toast.error(event.data.error || "Vercel authorization failed");
+        }
+        setVercelOAuthLoading(false);
+      };
+      window.addEventListener("message", handleMessage);
+
+      vercelPollRef.current = setInterval(async () => {
+        if (vercelPopupRef.current?.closed) {
+          if (vercelPollRef.current) clearInterval(vercelPollRef.current);
+          window.removeEventListener("message", handleMessage);
+          vercelPopupRef.current = null;
+          await checkVercelConnection();
+          setVercelOAuthLoading(false);
+        }
+      }, 1000);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to start Vercel OAuth",
+      );
+      setVercelOAuthLoading(false);
+    }
+  }, []);
 
   const handleConnectGitHub = useCallback(async () => {
     setLoading(true);
@@ -1011,6 +1146,123 @@ export function GitHubProjectSetup({
                     </p>
                   </div>
                 </button>
+              </div>
+
+              {/* ── Vercel Deployment Status ───────────────────────── */}
+              <div className="rounded-xl border border-border/50 bg-muted/20 p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-5 h-5 rounded-md bg-black flex items-center justify-center">
+                    <span className="text-white text-[9px] font-bold">▲</span>
+                  </div>
+                  <span className="text-xs font-medium">Vercel Deployment</span>
+                  <div className="flex-1" />
+                  {vercelConnected ? (
+                    <Badge
+                      variant="outline"
+                      className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[10px] px-2 py-0.5"
+                    >
+                      <CheckCircle2 className="mr-1 h-2.5 w-2.5" />@{vercelUser}
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="bg-muted/30 text-muted-foreground border-border/30 text-[10px] px-2 py-0.5"
+                    >
+                      Using Flare-SH account
+                    </Badge>
+                  )}
+                </div>
+
+                {!vercelConnected && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      Deployments will use the shared Flare-SH Vercel account.
+                      Connect your own Vercel account for full ownership.
+                    </p>
+
+                    {!showVercelTokenInput ? (
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          size="sm"
+                          className="w-full h-9 text-xs gap-2 bg-black hover:bg-black/90 text-white"
+                          onClick={handleVercelOAuthConnect}
+                          disabled={vercelOAuthLoading}
+                        >
+                          {vercelOAuthLoading ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <div className="w-3.5 h-3.5 rounded-sm bg-white flex items-center justify-center">
+                              <span className="text-black text-[8px] font-bold">
+                                ▲
+                              </span>
+                            </div>
+                          )}
+                          {vercelOAuthLoading
+                            ? "Waiting for authorization..."
+                            : "Connect Vercel Account"}
+                        </Button>
+                        <button
+                          onClick={() => setShowVercelTokenInput(true)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1 justify-center"
+                        >
+                          <Key className="h-2.5 w-2.5" />
+                          Or paste access token manually
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2 animate-in fade-in-0 slide-in-from-top-2 duration-300">
+                        <p className="text-[10px] text-muted-foreground">
+                          Get a token from{" "}
+                          <a
+                            href="https://vercel.com/account/tokens"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-violet-400 hover:underline inline-flex items-center gap-0.5"
+                          >
+                            vercel.com/account/tokens{" "}
+                            <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        </p>
+                        <div className="flex gap-2">
+                          <Input
+                            type="password"
+                            placeholder="vcp_..."
+                            value={vercelToken}
+                            onChange={(e) => setVercelToken(e.target.value)}
+                            onKeyDown={(e) =>
+                              e.key === "Enter" && handleVercelTokenConnect()
+                            }
+                            className="h-8 text-xs font-mono"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={handleVercelTokenConnect}
+                            disabled={vercelValidating || !vercelToken.trim()}
+                            className="h-8 px-3"
+                          >
+                            {vercelValidating ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              "Connect"
+                            )}
+                          </Button>
+                        </div>
+                        <button
+                          onClick={() => setShowVercelTokenInput(false)}
+                          className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {vercelConnected && (
+                  <p className="text-[10px] text-emerald-400/70">
+                    ✓ Your projects will deploy to your own Vercel account
+                  </p>
+                )}
               </div>
             </div>
           )}

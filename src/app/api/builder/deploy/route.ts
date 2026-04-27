@@ -19,6 +19,25 @@ import { cookies } from "next/headers";
 
 const VERCEL_API_URL = "https://api.vercel.com";
 
+/**
+ * Check if a Vercel API error message indicates a missing GitHub integration.
+ * Vercel returns this error with various status codes (400, 403, 422, etc.),
+ * so we must check the message content.
+ */
+function isGitHubIntegrationError(msg: string, errorCode?: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("github integration") ||
+    lower.includes("install the github") ||
+    lower.includes("need to install") ||
+    lower.includes("git provider") ||
+    lower.includes("link a github repository") ||
+    errorCode === "repo_not_found" ||
+    errorCode === "git_provider_not_connected" ||
+    errorCode === "git_not_connected"
+  );
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function mapFramework(template: string): string | null {
@@ -273,12 +292,24 @@ async function deployViaGit(
             `A Vercel project named "${sanitizedName}" already exists on another account. Try a different project name.`,
           );
         }
-      } else if (createResp.status === 401 || createResp.status === 403) {
+      } else if (
+        createResp.status === 401 ||
+        createResp.status === 403 ||
+        isGitHubIntegrationError(msg, err.error?.code)
+      ) {
+        console.error(
+          `[Deploy] GitHub integration error (${createResp.status}):`,
+          JSON.stringify(err, null, 2),
+        );
         throw new Error(
-          "MISSING_GITHUB_APP: Vercel authentication failed or GitHub integration is missing. " +
-            "Please install the Vercel GitHub App to give Vercel access to your repositories.",
+          `MISSING_GITHUB_APP: ${msg || "Vercel cannot access the GitHub repository."}. ` +
+            `Please install the Vercel GitHub App (https://github.com/apps/vercel) and grant access to ${opts.repoOwner}/${opts.repoName}.`,
         );
       } else {
+        console.error(
+          `[Deploy] Project creation error (${createResp.status}):`,
+          JSON.stringify(err, null, 2),
+        );
         throw new Error(
           `Failed to create Vercel project: ${msg}. ` +
             `Make sure Vercel has GitHub integration and access to ${opts.repoOwner}/${opts.repoName}.`,
@@ -324,7 +355,7 @@ async function deployViaGit(
     if (
       deployResp.status === 403 ||
       deployResp.status === 404 ||
-      err.error?.code === "repo_not_found"
+      isGitHubIntegrationError(msg, err.error?.code)
     ) {
       throw new Error(
         `MISSING_GITHUB_APP: Failed to access repository ${opts.repoOwner}/${opts.repoName}. ` +

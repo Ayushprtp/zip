@@ -1623,6 +1623,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         onOpenChange={setShowVercelConnect}
         onConnected={() => handleDeploy()}
         mode={vercelConnectMode}
+        isTemporary={isTempWorkspace}
       />
     </div>
   );

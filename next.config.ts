@@ -19,11 +19,14 @@ export default () => {
       taint: true,
       authInterrupts: true,
     },
+    allowedDevOrigins: ["https://flare-sh.tech", "http://flare-sh.tech"],
     serverExternalPackages: [
       "curlconverter",
       "tree-sitter",
       "tree-sitter-bash",
       "web-tree-sitter",
+      "e2b",
+      "@e2b/code-interpreter",
     ],
     webpack: (config, { isServer }) => {
       if (!isServer) {
