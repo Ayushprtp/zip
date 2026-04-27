@@ -11,12 +11,10 @@ import { cookies } from "next/headers";
 
 const VERCEL_API_URL = "https://api.vercel.com";
 
-async function resolveToken(isTemporary?: boolean): Promise<string | null> {
+async function resolveToken(): Promise<string | null> {
   const cookieStore = await cookies();
-  let token = cookieStore.get("vercel_token")?.value;
-  if (!token && process.env.VERCEL_TEMP_TOKEN) {
-    if (isTemporary || !process.env.VERCEL_CLIENT_ID) token = process.env.VERCEL_TEMP_TOKEN;
-  }
+  const token =
+    cookieStore.get("vercel_token")?.value || process.env.VERCEL_TEMP_TOKEN;
   return token || null;
 }
 
@@ -36,7 +34,6 @@ export async function GET(request: NextRequest) {
   try {
     const sp = request.nextUrl.searchParams;
     const projectName = sp.get("projectName");
-    const isTemporary = sp.get("isTemporary") === "true";
 
     if (!projectName)
       return NextResponse.json(
@@ -44,7 +41,7 @@ export async function GET(request: NextRequest) {
         { status: 400 },
       );
 
-    const token = await resolveToken(isTemporary);
+    const token = await resolveToken();
     if (!token)
       return NextResponse.json(
         { error: "Vercel token not configured" },
@@ -85,7 +82,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectName, domain, isTemporary } = body;
+    const { projectName, domain } = body;
 
     if (!projectName || !domain)
       return NextResponse.json(
@@ -93,7 +90,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
 
-    const token = await resolveToken(isTemporary);
+    const token = await resolveToken();
     if (!token)
       return NextResponse.json(
         { error: "Vercel token not configured" },
@@ -140,7 +137,7 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectName, domain, isTemporary } = body;
+    const { projectName, domain } = body;
 
     if (!projectName || !domain)
       return NextResponse.json(
@@ -148,7 +145,7 @@ export async function DELETE(request: NextRequest) {
         { status: 400 },
       );
 
-    const token = await resolveToken(isTemporary);
+    const token = await resolveToken();
     if (!token)
       return NextResponse.json(
         { error: "Vercel token not configured" },

@@ -1,4 +1,16 @@
-import { BlendIcon } from "lucide-react";
+import {
+  BlendIcon,
+  BrainIcon,
+  CpuIcon,
+  SparklesIcon,
+  ZapIcon,
+  AtomIcon,
+  MoonIcon,
+  MonitorIcon,
+  CircuitBoardIcon,
+  RocketIcon,
+  BoxIcon,
+} from "lucide-react";
 import { ClaudeIcon } from "./claude-icon";
 import { GeminiIcon } from "./gemini-icon";
 import { GrokIcon } from "./grok-icon";
@@ -10,19 +22,40 @@ export function ModelProviderIcon({
   provider,
   className,
 }: { provider: string; className?: string }) {
-  return provider === "openai" ? (
-    <OpenAIIcon className={className} />
-  ) : provider === "xai" ? (
-    <GrokIcon className={className} />
-  ) : provider === "anthropic" ? (
-    <ClaudeIcon className={className} />
-  ) : provider === "google" ? (
-    <GeminiIcon className={className} />
-  ) : provider === "ollama" ? (
-    <OllamaIcon className={className} />
-  ) : provider === "openRouter" ? (
-    <OpenRouterIcon className={className} />
-  ) : (
-    <BlendIcon className={className} />
-  );
+  switch (provider) {
+    case "openai":
+      return <OpenAIIcon className={className} />;
+    case "xai":
+      return <GrokIcon className={className} />;
+    case "anthropic":
+      return <ClaudeIcon className={className} />;
+    case "google":
+      return <GeminiIcon className={className} />;
+    case "ollama":
+      return <OllamaIcon className={className} />;
+    case "openRouter":
+      return <OpenRouterIcon className={className} />;
+    case "deepseek":
+      return <BrainIcon className={className} />;
+    case "qwen":
+      return <SparklesIcon className={className} />;
+    case "meta":
+      return <AtomIcon className={className} />;
+    case "mistral":
+      return <ZapIcon className={className} />;
+    case "minimax":
+      return <BoxIcon className={className} />;
+    case "moonshot":
+      return <MoonIcon className={className} />;
+    case "microsoft":
+      return <MonitorIcon className={className} />;
+    case "nvidia":
+      return <CircuitBoardIcon className={className} />;
+    case "stepfun":
+      return <RocketIcon className={className} />;
+    case "glm":
+      return <CpuIcon className={className} />;
+    default:
+      return <BlendIcon className={className} />;
+  }
 }

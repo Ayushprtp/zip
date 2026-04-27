@@ -1,26 +1,26 @@
 /**
  * Deployment API Endpoint
  *
- * Deploys a project by connecting its GitHub repo to Vercel.
- * Since every project (user-owned or temporary) has a GitHub repo,
- * we always deploy via Git — no file uploading needed.
+ * Deploys a project by connecting its GitHub repo to Vercel via Git.
+ * Token priority:
+ *   1. User's personal vercel_token cookie (if they manually connected)
+ *   2. VERCEL_TEMP_TOKEN env var (Flare-SH centralized Vercel account)
  *
- * Requirements: 14.2, 14.3, 14.4
+ * For temporary workspace projects, the repo lives in the Flare-SH GitHub org
+ * and is always deployed via the centralized token.
+ *
+ * For user-owned projects, we try the user's cookie first. If missing, we use
+ * VERCEL_TEMP_TOKEN so users don't have to separately connect Vercel — their
+ * GitHub account is enough (Vercel has the GitHub integration via Flare-SH's app).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-// Vercel API configuration
 const VERCEL_API_URL = "https://api.vercel.com";
-
-
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-/**
- * Map internal template names to Vercel-recognized framework identifiers.
- */
 function mapFramework(template: string): string | null {
   const map: Record<string, string> = {
     nextjs: "nextjs",
@@ -35,9 +35,6 @@ function mapFramework(template: string): string | null {
   return map[template] ?? null;
 }
 
-/**
- * Sanitize project name for Vercel (lowercase, a-z0-9 and hyphens only).
- */
 function sanitizeProjectName(name: string): string {
   return (
     name
@@ -50,45 +47,37 @@ function sanitizeProjectName(name: string): string {
 }
 
 /**
- * Resolve the Vercel token from cookies or env.
+ * Resolve the Vercel token.
+ *
+ * Priority:
+ *  1. User's personal vercel_token cookie
+ *  2. VERCEL_TEMP_TOKEN (Flare-SH centralized account) — used for both
+ *     temp workspaces and user projects that haven't separately connected Vercel.
+ *
+ * Returns the token or throws with an instructional error.
  */
-async function resolveToken(isTemporary?: boolean): Promise<string> {
+async function resolveToken(): Promise<string> {
   const cookieStore = await cookies();
-  let token = cookieStore.get("vercel_token")?.value;
+  const userToken = cookieStore.get("vercel_token")?.value;
 
-  if (!token && process.env.VERCEL_TEMP_TOKEN) {
-    if (isTemporary || !process.env.VERCEL_CLIENT_ID) {
-      token = process.env.VERCEL_TEMP_TOKEN;
-      console.log(
-        "[Deploy] Using VERCEL_TEMP_TOKEN fallback for deployment",
-      );
-    }
+  if (userToken) {
+    console.log("[Deploy] Using user's personal Vercel token");
+    return userToken;
   }
 
-  if (!token) {
-    throw new Error(
-      "Vercel token not configured. Please connect your Vercel account first.",
-    );
+  const tempToken = process.env.VERCEL_TEMP_TOKEN;
+  if (tempToken) {
+    console.log("[Deploy] Using VERCEL_TEMP_TOKEN (Flare-SH Vercel account)");
+    return tempToken;
   }
-  return token;
+
+  throw new Error(
+    "VERCEL_NOT_CONFIGURED: No Vercel account connected. Please connect your Vercel account to deploy.",
+  );
 }
 
 // ── POST Handler ───────────────────────────────────────────────────────
 
-/**
- * POST /api/builder/deploy
- *
- * Body: {
- *   repoOwner: string,   — GitHub repo owner
- *   repoName: string,    — GitHub repo name
- *   branch?: string,     — Git branch (default: "main")
- *   projectName: string, — Display name / Vercel project name
- *   framework?: string,  — Internal template name (e.g. "react", "nextjs")
- *   buildCommand?: string,
- *   outputDirectory?: string,
- *   isTemporary?: boolean — true for temp-workspace projects
- * }
- */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -100,7 +89,6 @@ export async function POST(request: NextRequest) {
       framework,
       buildCommand,
       outputDirectory,
-      isTemporary,
     } = body as {
       repoOwner: string;
       repoName: string;
@@ -114,12 +102,15 @@ export async function POST(request: NextRequest) {
 
     if (!repoOwner || !repoName) {
       return NextResponse.json(
-        { error: "Repository owner and name are required" },
+        {
+          error:
+            "Repository owner and name are required. Please connect a GitHub repository first.",
+        },
         { status: 400 },
       );
     }
 
-    const token = await resolveToken(isTemporary);
+    const token = await resolveToken();
 
     const result = await deployViaGit(token, {
       repoOwner,
@@ -134,26 +125,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     console.error("Deployment error:", error);
-    return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "Deployment failed",
-      },
-      { status: 500 },
-    );
+    const message =
+      error instanceof Error ? error.message : "Deployment failed";
+    const status = message.startsWith("VERCEL_NOT_CONFIGURED") ? 401 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
-/**
- * DELETE /api/builder/deploy
- *
- * Deletes a Vercel deployment.
- * Query: ?deploymentId=...&isTemporary=...
- */
 export async function DELETE(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const deploymentId = searchParams.get("deploymentId");
-    const isTemporary = searchParams.get("isTemporary") === "true";
 
     if (!deploymentId) {
       return NextResponse.json(
@@ -162,23 +144,18 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const token = await resolveToken(isTemporary);
+    const token = await resolveToken();
 
     const response = await fetch(
       `${VERCEL_API_URL}/v13/deployments/${deploymentId}`,
       {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       },
     );
 
     if (!response.ok) {
-      // 404 is fine (already deleted)
-      if (response.status === 404) {
-        return NextResponse.json({ success: true });
-      }
+      if (response.status === 404) return NextResponse.json({ success: true });
       const error = await response.json().catch(() => ({}));
       throw new Error(error.error?.message || "Failed to delete deployment");
     }
@@ -215,7 +192,7 @@ interface GitDeployOpts {
  *
  * 1. Check if a Vercel project with this name already exists.
  * 2. If not, create one linked to the GitHub repo → Vercel auto-deploys.
- * 3. Find the latest deployment for the project.
+ * 3. Explicitly trigger a deployment from the branch.
  * 4. Return the deployment ID + predicted production URL.
  */
 async function deployViaGit(
@@ -256,17 +233,11 @@ async function deployViaGit(
     };
 
     if (framework) {
-      // When Vercel recognizes the framework, it auto-detects the correct
-      // build command and output directory. Don't override them — doing so
-      // with e.g. "npm run build" can break frameworks that use custom
-      // build pipelines (Next.js, Nuxt, Gatsby, etc.).
       projectBody.framework = framework;
     } else {
-      // Unknown framework — pass explicit build settings
       if (opts.buildCommand) projectBody.buildCommand = opts.buildCommand;
-      if (opts.outputDirectory) {
+      if (opts.outputDirectory)
         projectBody.outputDirectory = opts.outputDirectory;
-      }
     }
 
     console.log(
@@ -287,32 +258,43 @@ async function deployViaGit(
       const msg = err.error?.message || createResp.statusText;
 
       if (createResp.status === 409) {
-        console.warn(`[Deploy] Project name "${sanitizedName}" is taken.`);
+        // Project exists on another account — re-fetch and re-use
+        const refetch = await fetch(
+          `${VERCEL_API_URL}/v9/projects/${sanitizedName}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        if (refetch.ok) {
+          project = await refetch.json();
+          console.log(
+            `[Deploy] Re-using existing project after 409: ${project.id}`,
+          );
+        } else {
+          throw new Error(
+            `A Vercel project named "${sanitizedName}" already exists on another account. Try a different project name.`,
+          );
+        }
+      } else if (createResp.status === 401 || createResp.status === 403) {
         throw new Error(
-          `A Vercel project named "${sanitizedName}" already exists on another account. Try a different project name.`,
+          "MISSING_GITHUB_APP: Vercel authentication failed or GitHub integration is missing. " +
+            "Please install the Vercel GitHub App to give Vercel access to your repositories.",
+        );
+      } else {
+        throw new Error(
+          `Failed to create Vercel project: ${msg}. ` +
+            `Make sure Vercel has GitHub integration and access to ${opts.repoOwner}/${opts.repoName}.`,
         );
       }
-      if (createResp.status === 401 || createResp.status === 403) {
-        throw new Error(
-          "Vercel authentication failed. Please reconnect your Vercel account.",
-        );
-      }
-
-      throw new Error(
-        `Failed to create Vercel project: ${msg}. ` +
-          `Make sure your Vercel account has GitHub integration and access to ${opts.repoOwner}/${opts.repoName}.`,
-      );
     }
 
-    project = await createResp.json();
-    console.log(`[Deploy] Created Vercel project: ${project.id}`);
+    if (!project) {
+      project = await createResp.json();
+      console.log(`[Deploy] Created Vercel project: ${project.id}`);
+    }
   }
 
   // ── 3. Explicitly trigger a deployment ──────────────────────────
-  // Don't rely on auto-deployment (webhook-based) — it can take 30+ seconds.
-  // Instead, explicitly create a deployment from the repo's branch.
   console.log(
-    `[Deploy] Triggering deployment for project "${sanitizedName}" from ${opts.repoOwner}/${opts.repoName}@${opts.branch}`,
+    `[Deploy] Triggering deployment for "${sanitizedName}" from ${opts.repoOwner}/${opts.repoName}@${opts.branch}`,
   );
 
   const deployBody: Record<string, unknown> = {
@@ -339,14 +321,14 @@ async function deployViaGit(
     const msg = err.error?.message || deployResp.statusText;
     console.error("[Deploy] Failed to create deployment:", err);
 
-    // Check for permission/access errors
     if (
       deployResp.status === 403 ||
       deployResp.status === 404 ||
       err.error?.code === "repo_not_found"
     ) {
       throw new Error(
-        `MISSING_GITHUB_APP: Failed to access repository. Please ensure the Vercel GitHub App is installed and has access to ${opts.repoOwner}/${opts.repoName}.`,
+        `MISSING_GITHUB_APP: Failed to access repository ${opts.repoOwner}/${opts.repoName}. ` +
+          `Please install the Vercel GitHub App (https://github.com/apps/vercel) and grant access to this repository.`,
       );
     }
 

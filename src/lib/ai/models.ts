@@ -552,112 +552,183 @@ function CustomModel(modelId: string): any {
   };
 }
 
+// --- Models that should be skipped (non-chat: image gen, video gen, special) ---
+const NON_CHAT_MODEL_PATTERNS = [
+  // Image generation models
+  "flux",
+  "flux_dev",
+  "flux_pro",
+  "flux_realism",
+  "seedream",
+  "zimage",
+  "grok-imagine",
+  "stable diffusion",
+  "seaart",
+  "wai-ani",
+  "anime 2d",
+  "furry 2d",
+  "pixar 3d",
+  "potret realistis",
+  "realistis asia",
+  "realistis barat",
+  "realistis seksi",
+  "realitas baru",
+  "seni epik",
+  "desain seni",
+  // Video generation models
+  "sora",
+  "veo",
+  "wan",
+  "kling",
+  "kling_video",
+  "grok-imagine-1.0-video",
+];
+
+function isNonChatModel(modelId: string): boolean {
+  const lowerId = modelId.toLowerCase();
+  return NON_CHAT_MODEL_PATTERNS.some(
+    (pattern) => lowerId === pattern || lowerId.includes(pattern),
+  );
+}
+
 // --- Helper: Categorize a model ID into a provider group ---
 function categorizeModel(modelId: string): { provider: string; name: string } {
   // Models with explicit provider prefix (e.g. "anthropic/claude-opus-4.5")
   const slashIndex = modelId.indexOf("/");
   if (slashIndex !== -1) {
-    return {
-      provider: modelId.substring(0, slashIndex),
-      name: modelId.substring(slashIndex + 1),
+    const provider = modelId.substring(0, slashIndex);
+    const name = modelId.substring(slashIndex + 1);
+    // Map provider prefixes to known providers
+    const providerMap: Record<string, string> = {
+      anthropic: "anthropic",
+      openai: "openai",
+      google: "google",
+      xai: "xai",
+      deepseek: "deepseek",
+      "deepseek-ai": "deepseek",
+      glm: "glm",
+      "z-ai": "glm",
+      "zai-org": "glm",
+      qwen: "qwen",
+      moonshotai: "moonshot",
+      minimaxai: "minimax",
+      neuralmagic: "meta",
+      "stepfun-ai": "stepfun",
+      nv: "nvidia",
+      Qwen: "qwen",
     };
+    const mappedProvider = providerMap[provider] || provider;
+    return { provider: mappedProvider, name };
   }
 
   // Models without prefix - categorize by known patterns
-  if (modelId.startsWith("glm-") || modelId === "chatglm")
+  if (
+    modelId.startsWith("glm-") ||
+    modelId.startsWith("glm-") ||
+    modelId === "chatglm"
+  )
     return { provider: "glm", name: modelId };
-  if (modelId.startsWith("z1-")) return { provider: "custom", name: modelId };
+  if (modelId.startsWith("z1-")) return { provider: "glm", name: modelId };
   if (modelId.startsWith("0808-") || modelId.startsWith("dr-"))
     return { provider: "custom", name: modelId };
+
+  // Categorize by model name patterns
+  const lowerId = modelId.toLowerCase();
+  if (lowerId.includes("claude"))
+    return { provider: "anthropic", name: modelId };
+  if (lowerId.includes("gpt") || lowerId.includes("chatgpt"))
+    return { provider: "openai", name: modelId };
+  if (lowerId.includes("gemini")) return { provider: "google", name: modelId };
+  if (lowerId.includes("gemma")) return { provider: "google", name: modelId };
+  if (lowerId.includes("grok") && !lowerId.includes("imagine"))
+    return { provider: "xai", name: modelId };
+  if (lowerId.includes("deepseek"))
+    return { provider: "deepseek", name: modelId };
+  if (lowerId.includes("qwen")) return { provider: "qwen", name: modelId };
+  if (lowerId.includes("llama")) return { provider: "meta", name: modelId };
+  if (lowerId.includes("mistral") || lowerId.includes("devstral"))
+    return { provider: "mistral", name: modelId };
+  if (lowerId.includes("minimax"))
+    return { provider: "minimax", name: modelId };
+  if (lowerId.includes("kimi")) return { provider: "moonshot", name: modelId };
+  if (lowerId.includes("phi")) return { provider: "microsoft", name: modelId };
+  if (lowerId.includes("nemotron"))
+    return { provider: "nvidia", name: modelId };
+  if (lowerId.includes("glm") || lowerId.includes("chatglm"))
+    return { provider: "glm", name: modelId };
+  if (lowerId.includes("translategemma"))
+    return { provider: "google", name: modelId };
 
   // Fallback
   return { provider: "custom", name: modelId };
 }
 
-// --- Build models from the known API model list ---
-// We fetch models from the API at startup time and cache them.
-// For the initial static build, we use a hardcoded list that matches
-// the API's current models (from /v1/models).
-
-const KNOWN_MODEL_IDS = [
-  "0808-360b-dr",
-  "anthropic/claude-haiku-4.5",
-  "anthropic/claude-opus-4.5",
-  "anthropic/claude-sonnet-4.5",
-  "chatglm",
-  "glm-4-32b",
-  "glm-4.1v-9b-thinking",
-  "glm-4.5",
-  "glm-4.5-air",
-  "glm-4.5v",
-  "glm-4.6",
-  "glm-4.6v",
-  "glm-4.7",
-  "google/gemini-2.5-flash-lite",
-  "google/gemini-3-pro",
-  "openai/gpt-4.1-mini",
-  "openai/gpt-5.2",
-  "reasoning/claude-3.7-sonnet",
-  "reasoning/grok-code-fast",
-  "xai/grok-4.1-fast",
-  "z1-32b",
-  "z1-rumination",
-  // Void models (used by builder page)
-  "void/claude-3-7-sonnet-20250219",
-  "void/claude-3-5-sonnet-20241022",
-  "void/gpt-4o",
-  "void/o1",
-  "void/grok-3",
-  "void/deepseek-r1",
-];
-
-// Build staticModels dynamically from the known model list
+// --- Build models from the API model list ---
 const staticModels: Record<string, Record<string, any>> = {};
 
-for (const modelId of KNOWN_MODEL_IDS) {
-  const { provider, name } = categorizeModel(modelId);
-  if (!staticModels[provider]) {
-    staticModels[provider] = {};
-  }
-  staticModels[provider][name] = CustomModel(modelId);
-}
+// Initialize staticModels with fetched models from API
+async function initializeModelsFromAPI() {
+  if (!FLARE_API_KEY) return;
 
-// --- Dynamic model fetching (background refresh) ---
-let dynamicModelsLoaded = false;
-
-async function fetchAndRegisterModels() {
-  if (!FLARE_API_KEY || dynamicModelsLoaded) return;
   try {
     const resp = await fetch(`${FLARE_BASE_URL}/models`, {
       headers: { Authorization: `Bearer ${FLARE_API_KEY}` },
       signal: AbortSignal.timeout(10000),
     });
-    if (!resp.ok) return;
+
+    if (!resp.ok) {
+      console.error("Failed to fetch models from API:", resp.status);
+      return;
+    }
+
     const data = await resp.json();
     if (!data?.data || !Array.isArray(data.data)) return;
+
+    // Clear existing models before repopulating (for refresh)
+    for (const key of Object.keys(staticModels)) {
+      delete staticModels[key];
+    }
+
+    let chatModelCount = 0;
+    let skippedCount = 0;
 
     for (const model of data.data) {
       const modelId = model.id;
       if (!modelId) continue;
+
+      // Skip non-chat models (image/video generation, etc.)
+      if (isNonChatModel(modelId)) {
+        skippedCount++;
+        continue;
+      }
+
       const { provider, name } = categorizeModel(modelId);
       if (!staticModels[provider]) {
         staticModels[provider] = {};
       }
-      // Only add if not already present (don't overwrite)
-      if (!staticModels[provider][name]) {
-        staticModels[provider][name] = CustomModel(modelId);
-      }
+      staticModels[provider][name] = CustomModel(modelId);
+      chatModelCount++;
     }
-    dynamicModelsLoaded = true;
-    // Rebuild modelsInfo cache
+
     rebuildModelsInfo();
+    console.log(
+      `[Flare] Loaded ${chatModelCount} chat models across ${Object.keys(staticModels).length} providers (skipped ${skippedCount} non-chat models)`,
+    );
   } catch (err) {
-    console.error("Failed to fetch models from API:", err);
+    console.error("Failed to initialize models from API:", err);
   }
 }
 
-// Fire-and-forget model fetch on startup
-fetchAndRegisterModels();
+// Fire-and-forget initialization on module load
+initializeModelsFromAPI();
+
+// Periodically refresh models every 5 minutes
+const MODEL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+setInterval(() => {
+  initializeModelsFromAPI().catch((err) =>
+    console.error("Periodic model refresh failed:", err),
+  );
+}, MODEL_REFRESH_INTERVAL_MS);
 
 // --- File part support ---
 const staticFilePartSupportByModel = new Map<any, readonly string[]>();
@@ -683,14 +754,22 @@ export const isToolCallUnsupportedModel = (_model: any) => {
 };
 
 export const isImageInputUnsupportedModel = (model: any) => {
-  return (
-    !model?.modelId?.includes("gemini") &&
-    !model?.modelId?.includes("glm") &&
-    !model?.modelId?.includes("gpt") &&
-    !model?.modelId?.includes("z1") &&
-    !model?.modelId?.includes("claude") &&
-    !model?.modelId?.includes("grok")
-  );
+  const id = model?.modelId?.toLowerCase() || "";
+  // These model families are known to support image/vision input
+  const visionCapablePatterns = [
+    "gemini",
+    "gemma",
+    "glm",
+    "gpt",
+    "z1",
+    "claude",
+    "grok",
+    "qwen3-vl",
+    "qwen3.5-omni",
+    "glm-4.5v",
+    "glm-4.6v",
+  ];
+  return !visionCapablePatterns.some((p) => id.includes(p));
 };
 
 export const getFilePartSupportedMimeTypes = (model: any) => {
@@ -699,22 +778,43 @@ export const getFilePartSupportedMimeTypes = (model: any) => {
 
 // --- Default Model ---
 export const DEFAULT_CHAT_MODEL: ChatModel = {
-  provider: "openai",
-  model: "gpt-4.1-mini",
+  provider: "anthropic",
+  model: "claude-sonnet-4.6",
 };
 
 // --- Models Info Builder ---
+// Provider sort order: popular providers first
+const PROVIDER_ORDER: Record<string, number> = {
+  anthropic: 0,
+  openai: 1,
+  google: 2,
+  xai: 3,
+  deepseek: 4,
+  qwen: 5,
+  meta: 6,
+  mistral: 7,
+  glm: 8,
+  minimax: 9,
+  moonshot: 10,
+  microsoft: 11,
+  nvidia: 12,
+  stepfun: 13,
+  custom: 99,
+};
+
 function buildModelsInfo() {
-  return Object.entries(staticModels).map(([provider, models]) => ({
-    provider,
-    models: Object.entries(models).map(([name, model]) => ({
-      name,
-      isToolCallUnsupported: isToolCallUnsupportedModel(model),
-      isImageInputUnsupported: isImageInputUnsupportedModel(model),
-      supportedFileMimeTypes: [...getFilePartSupportedMimeTypes(model)],
-    })),
-    hasAPIKey: true,
-  }));
+  return Object.entries(staticModels)
+    .sort(([a], [b]) => (PROVIDER_ORDER[a] ?? 50) - (PROVIDER_ORDER[b] ?? 50))
+    .map(([provider, models]) => ({
+      provider,
+      models: Object.entries(models).map(([name, model]) => ({
+        name,
+        isToolCallUnsupported: isToolCallUnsupportedModel(model),
+        isImageInputUnsupported: isImageInputUnsupportedModel(model),
+        supportedFileMimeTypes: [...getFilePartSupportedMimeTypes(model)],
+      })),
+      hasAPIKey: true,
+    }));
 }
 
 let cachedModelsInfo = buildModelsInfo();

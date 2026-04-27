@@ -14,8 +14,6 @@ import { cookies } from "next/headers";
 // Vercel API configuration
 const VERCEL_API_URL = "https://api.vercel.com";
 
-
-
 /**
  * GET /api/builder/deploy/status?deploymentId=xxx&platform=vercel&isTemporary=true
  *
@@ -63,15 +61,11 @@ export async function GET(request: NextRequest) {
  */
 async function checkVercelStatus(
   deploymentId: string,
-  isTemporary: boolean,
+  _isTemporary: boolean,
 ): Promise<any> {
   const cookieStore = await cookies();
-  let token = cookieStore.get("vercel_token")?.value;
-
-  // For temporary workspace projects, fall back to the server-side env token
-  if (!token && process.env.VERCEL_TEMP_TOKEN) {
-    if (isTemporary || !process.env.VERCEL_CLIENT_ID) token = process.env.VERCEL_TEMP_TOKEN;
-  }
+  const token =
+    cookieStore.get("vercel_token")?.value || process.env.VERCEL_TEMP_TOKEN;
 
   if (!token) {
     throw new Error("Vercel token not configured");

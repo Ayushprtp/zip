@@ -400,6 +400,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const [deploymentLogs, setDeploymentLogs] = useState<string[]>([]);
   const [showDeployPanel, setShowDeployPanel] = useState(false);
   const [showVercelConnect, setShowVercelConnect] = useState(false);
+  const [vercelConnectMode, setVercelConnectMode] = useState<
+    "connect" | "install-app"
+  >("connect");
 
   // Chat mode
   const [chatMode, setChatMode] = useState<ChatMode>("agent");
@@ -728,22 +731,35 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       const errorMessage =
         error instanceof Error ? error.message : "Deployment failed";
 
+      if (errorMessage.includes("MISSING_GITHUB_APP")) {
+        // Vercel can't access the GitHub repo — guide user to install Vercel GitHub App
+        setShowDeployPanel(false);
+        setVercelConnectMode("install-app");
+        setShowVercelConnect(true);
+        return;
+      }
+
+      if (errorMessage.includes("VERCEL_NOT_CONFIGURED")) {
+        setShowDeployPanel(false);
+        setVercelConnectMode("connect");
+        setShowVercelConnect(true);
+        return;
+      }
+
       if (errorMessage.includes("Vercel token not configured")) {
-        // For temp workspaces, show a more helpful message
         if (isTempWorkspace) {
           setDeploymentError(
             "Vercel deployment token not configured on the server. Ask the admin to set VERCEL_TEMP_TOKEN in .env.",
           );
           toast.error("Server-side Vercel token missing for temp workspace");
         } else {
-          setShowVercelConnect(true);
           setShowDeployPanel(false);
+          setShowVercelConnect(true);
         }
         return;
       }
 
       setDeploymentError(errorMessage);
-      // Capture build logs (attached by deployment-service)
       if ((error as any).buildLogs && Array.isArray((error as any).buildLogs)) {
         setDeploymentLogs((error as any).buildLogs);
       }
@@ -1606,6 +1622,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         open={showVercelConnect}
         onOpenChange={setShowVercelConnect}
         onConnected={() => handleDeploy()}
+        mode={vercelConnectMode}
       />
     </div>
   );

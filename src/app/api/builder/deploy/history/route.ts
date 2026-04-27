@@ -15,7 +15,6 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const projectName = searchParams.get("projectName");
-    const isTemporary = searchParams.get("isTemporary") === "true";
 
     if (!projectName) {
       return NextResponse.json(
@@ -26,14 +25,10 @@ export async function GET(request: NextRequest) {
 
     const cookieStore = await cookies();
     let token = cookieStore.get("vercel_token")?.value;
-    if (!token && process.env.VERCEL_TEMP_TOKEN) {
-      if (isTemporary || !process.env.VERCEL_CLIENT_ID) token = process.env.VERCEL_TEMP_TOKEN;
-    }
+    if (!token) token = process.env.VERCEL_TEMP_TOKEN;
     if (!token) {
-      return NextResponse.json(
-        { error: "Vercel token not configured" },
-        { status: 401 },
-      );
+      // Return empty history rather than an auth error — UI should handle gracefully
+      return NextResponse.json({ deployments: [], projectExists: false });
     }
 
     // Sanitize project name (same logic as deploy route)
