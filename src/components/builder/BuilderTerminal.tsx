@@ -30,14 +30,14 @@ export function BuilderTerminal({
     {
       id: 0,
       type: "info",
-      content:
-        "Flare Builder Terminal v1.0 — Type 'help' for available commands",
+      content: "Flare Builder Terminal v2.0 — E2B Sandbox + Claude Code + Git",
       timestamp: Date.now(),
     },
     {
       id: 1,
       type: "info",
-      content: "Connected to Sandpack sandbox environment",
+      content:
+        "Type 'help' for commands • 'run <file>' for E2B • 'ai <prompt>' for Claude Code",
       timestamp: Date.now(),
     },
   ]);
@@ -192,6 +192,44 @@ export function BuilderTerminal({
             {
               type: "output",
               content: "  history           Show command history",
+            },
+            { type: "info", content: "" },
+            { type: "info", content: "── E2B Sandbox ──" },
+            {
+              type: "output",
+              content: "  run <file>        Run file in E2B cloud sandbox",
+            },
+            {
+              type: "output",
+              content: "  run:py <code>     Run inline Python",
+            },
+            {
+              type: "output",
+              content: "  exec <cmd>        Execute shell command in sandbox",
+            },
+            { type: "info", content: "" },
+            { type: "info", content: "── Git ──" },
+            {
+              type: "output",
+              content: "  git commit [msg]  Auto-commit all changes",
+            },
+            {
+              type: "output",
+              content: "  git log           Show commit history",
+            },
+            {
+              type: "output",
+              content: "  git status        Show changed files",
+            },
+            {
+              type: "output",
+              content: "  git diff          Show file changes",
+            },
+            { type: "info", content: "" },
+            { type: "info", content: "── AI ──" },
+            {
+              type: "output",
+              content: "  ai <prompt>       Ask Claude Code for help",
             },
           ]);
           break;
@@ -609,6 +647,288 @@ export function BuilderTerminal({
               })),
             );
           }
+          break;
+        }
+
+        // ─── E2B Sandbox Execution ──────────────────────────────────────
+        case "run": {
+          // run <file> — Execute a file in E2B sandbox
+          if (!args[0]) {
+            addLine("error", "run: missing file operand. Usage: run <file>");
+            addLine("info", "  run app.js       — Run JavaScript file");
+            addLine("info", "  run script.py    — Run Python file");
+            addLine("info", "  run:py 'code'    — Run inline Python");
+            break;
+          }
+          const runPath = resolvePath(args[0]);
+          const runContent = state.files[runPath];
+          if (runContent === undefined) {
+            addLine("error", `run: ${args[0]}: No such file`);
+            break;
+          }
+          const ext = runPath.split(".").pop()?.toLowerCase() || "";
+          const langMap: Record<string, string> = {
+            js: "javascript",
+            jsx: "javascript",
+            ts: "javascript",
+            tsx: "javascript",
+            py: "python",
+            sh: "shell",
+            bash: "shell",
+          };
+          const runLang = langMap[ext] || "shell";
+          addLine(
+            "info",
+            `⚡ Running ${args[0]} in E2B sandbox (${runLang})...`,
+          );
+
+          fetch("/api/sandbox", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code: runContent,
+              language: runLang,
+              timeout: 30000,
+            }),
+          })
+            .then((r) => r.json())
+            .then((result) => {
+              if (result.stdout) addLine("output", result.stdout);
+              if (result.stderr) addLine("error", result.stderr);
+              if (result.error) addLine("error", `Exit: ${result.error}`);
+              else
+                addLine(
+                  "success",
+                  `✓ Completed in ${result.executionTimeMs}ms`,
+                );
+            })
+            .catch((err) => addLine("error", `Sandbox error: ${err.message}`));
+          break;
+        }
+
+        case "run:py": {
+          // Inline python execution
+          const pyCode = args.join(" ");
+          if (!pyCode) {
+            addLine(
+              "error",
+              "run:py: missing code. Usage: run:py print('hello')",
+            );
+            break;
+          }
+          addLine("info", "⚡ Running Python in E2B sandbox...");
+          fetch("/api/sandbox", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: pyCode, language: "python" }),
+          })
+            .then((r) => r.json())
+            .then((result) => {
+              if (result.stdout) addLine("output", result.stdout);
+              if (result.stderr) addLine("error", result.stderr);
+              if (!result.error)
+                addLine("success", `✓ Done (${result.executionTimeMs}ms)`);
+            })
+            .catch((err) => addLine("error", `Sandbox error: ${err.message}`));
+          break;
+        }
+
+        case "exec": {
+          // exec <shell command> — Execute in E2B sandbox
+          const shellCmd = args.join(" ");
+          if (!shellCmd) {
+            addLine("error", "exec: missing command. Usage: exec ls -la");
+            break;
+          }
+          addLine("info", `⚡ Executing in E2B sandbox: ${shellCmd}`);
+          fetch("/api/sandbox", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code: shellCmd, language: "shell" }),
+          })
+            .then((r) => r.json())
+            .then((result) => {
+              if (result.stdout) addLine("output", result.stdout);
+              if (result.stderr) addLine("error", result.stderr);
+              if (!result.error)
+                addLine("success", `✓ Done (${result.executionTimeMs}ms)`);
+            })
+            .catch((err) => addLine("error", `Sandbox error: ${err.message}`));
+          break;
+        }
+
+        // ─── Git Commands ────────────────────────────────────────────────
+        case "git": {
+          const gitSubcmd = args[0];
+          if (!gitSubcmd) {
+            addLines([
+              { type: "info", content: "Git commands:" },
+              {
+                type: "output",
+                content: "  git commit [msg]  Auto-commit all changes",
+              },
+              {
+                type: "output",
+                content: "  git log           Show commit history",
+              },
+              {
+                type: "output",
+                content: "  git status        Show changed files",
+              },
+              {
+                type: "output",
+                content: "  git diff          Show file changes",
+              },
+            ]);
+            break;
+          }
+
+          if (gitSubcmd === "commit") {
+            const msg =
+              args.slice(1).join(" ") ||
+              `AI Builder: updated ${Object.keys(state.files).length} files`;
+            addLine("info", `📝 Committing: ${msg}`);
+            const projectPath = `builder-${Date.now().toString(36)}`;
+            fetch("/api/git/auto-commit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                projectPath,
+                files: Object.entries(state.files)
+                  .filter(([p]) => !p.startsWith("/.flare-sh/"))
+                  .map(([path, content]) => ({
+                    path: path.replace(/^\//, ""),
+                    content,
+                  })),
+                message: msg,
+                agentId: "builder-terminal",
+              }),
+            })
+              .then((r) => r.json())
+              .then((result) => {
+                if (result.committed) {
+                  addLine(
+                    "success",
+                    `✓ Committed: ${result.sha?.slice(0, 7)} — ${result.log || msg}`,
+                  );
+                  addLine(
+                    "info",
+                    `  ${result.files?.length || 0} file(s) changed`,
+                  );
+                } else {
+                  addLine("info", result.message || "No changes to commit");
+                }
+              })
+              .catch((err) => addLine("error", `Git error: ${err.message}`));
+          } else if (gitSubcmd === "log") {
+            addLine("info", "📋 Recent commits:");
+            fetch("/api/git/auto-commit?projectPath=default")
+              .then((r) => r.json())
+              .then((data) => {
+                if (!data.commits || data.commits.length === 0) {
+                  addLine("output", "  (no commits yet)");
+                } else {
+                  data.commits.slice(0, 15).forEach((c: any) => {
+                    addLine(
+                      "output",
+                      `  ${c.sha?.slice(0, 7) || "-------"} ${c.message || "(no message)"}`,
+                    );
+                  });
+                }
+              })
+              .catch(() => addLine("error", "Failed to load git log"));
+          } else if (gitSubcmd === "status") {
+            const fileCount = Object.keys(state.files).filter(
+              (f) => !f.startsWith("/.flare-sh/"),
+            ).length;
+            addLines([
+              { type: "info", content: "── Git Status ──" },
+              { type: "output", content: `  Tracked files: ${fileCount}` },
+              {
+                type: "output",
+                content: `  All files are staged for next commit`,
+              },
+            ]);
+          } else if (gitSubcmd === "diff") {
+            addLine("info", "Current project files:");
+            Object.keys(state.files)
+              .filter((f) => !f.startsWith("/.flare-sh/"))
+              .sort()
+              .forEach((f) => {
+                addLine("output", `  M ${f} (${state.files[f].length} bytes)`);
+              });
+          } else {
+            addLine("error", `git: unknown subcommand '${gitSubcmd}'`);
+          }
+          break;
+        }
+
+        // ─── AI Code Agent (Claude Code) ─────────────────────────────────
+        case "ai": {
+          const aiPrompt = args.join(" ");
+          if (!aiPrompt) {
+            addLine("error", "ai: missing prompt. Usage: ai <prompt>");
+            addLine("info", "  ai fix the bug in App.tsx");
+            addLine("info", "  ai add a dark mode toggle");
+            addLine("info", "  ai explain the useEffect hook");
+            break;
+          }
+          addLine("info", `🤖 Claude Code: ${aiPrompt}`);
+          addLine("info", "  Thinking...");
+
+          fetch("/api/claude-code", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: aiPrompt,
+              projectContext: {
+                files: Object.entries(state.files)
+                  .filter(([p]) => !p.startsWith("/.flare-sh/"))
+                  .slice(0, 10)
+                  .map(([path, content]) => ({
+                    path,
+                    content: content.slice(0, 3000),
+                  })),
+              },
+            }),
+          })
+            .then(async (resp) => {
+              if (!resp.ok) throw new Error(`API error: ${resp.status}`);
+              const reader = resp.body?.getReader();
+              if (!reader) throw new Error("No response body");
+              const decoder = new TextDecoder();
+              let fullContent = "";
+              let buffer = "";
+
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+                for (const line of lines) {
+                  if (!line.startsWith("data: ")) continue;
+                  const dataStr = line.slice(6).trim();
+                  if (dataStr === "[DONE]") continue;
+                  try {
+                    const json = JSON.parse(dataStr);
+                    const delta = json.choices?.[0]?.delta?.content;
+                    if (delta) fullContent += delta;
+                  } catch {
+                    /* skip */
+                  }
+                }
+              }
+
+              if (fullContent) {
+                const responseLines = fullContent.split("\n");
+                responseLines.forEach((l) => addLine("output", l));
+                addLine("success", "✓ Claude Code response complete");
+              } else {
+                addLine("error", "No response from Claude Code");
+              }
+            })
+            .catch((err) => addLine("error", `AI error: ${err.message}`));
           break;
         }
 

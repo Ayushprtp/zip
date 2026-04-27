@@ -105,21 +105,9 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
         <SidebarMenu>
           <Tooltip>
             <SidebarMenuItem>
-              <Link href="/claude-code">
-                <SidebarMenuButton className="font-semibold">
-                  <Code2 className="size-4" />
-                  Claude Code
-                </SidebarMenuButton>
-              </Link>
-            </SidebarMenuItem>
-          </Tooltip>
-        </SidebarMenu>
-        <SidebarMenu>
-          <Tooltip>
-            <SidebarMenuItem>
               <Link href="/builder">
                 <SidebarMenuButton className="font-semibold">
-                  <FolderOpenIcon className="size-4" />
+                  <Code2 className="size-4" />
                   AI Builder
                 </SidebarMenuButton>
               </Link>
