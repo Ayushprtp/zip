@@ -1,14 +1,14 @@
-import { initializeAgenticSystem } from '~/lib/agentic';
-import { executeTool } from '~/lib/agentic/executor';
-import { agenticRegistry } from '~/lib/agentic/registry';
+import { initializeAgenticSystem } from "~/lib/agentic";
+import { executeTool } from "~/lib/agentic/executor";
+import { agenticRegistry } from "~/lib/agentic/registry";
 import {
   getAgentContinuation,
   hasAgentContinuation,
   resumeAgentWithMessage,
   runAgent,
   type AgentProgressEvent,
-} from '~/lib/agentic/agents/runner';
-import { agentsStore } from '~/lib/agentic/stores';
+} from "~/lib/agentic/agents/runner";
+import { agentsStore } from "~/lib/agentic/stores";
 import type {
   AgentState,
   PermissionPolicyConfig,
@@ -16,7 +16,7 @@ import type {
   TaskType,
   ToolResult,
   ToolUseContext,
-} from '~/lib/agentic/types';
+} from "~/lib/agentic/types";
 import {
   appendRuntimeTaskOutput,
   abortRuntimeTask,
@@ -31,16 +31,16 @@ import {
   setRuntimeSessionToolState,
   setRuntimeTaskAbortController,
   type RuntimeTaskState,
-} from './session-state';
+} from "./session-state";
 import {
   listRuntimeEvents,
   publishRuntimeEvent,
   type RuntimeEvent,
-} from './event-stream';
+} from "./event-stream";
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-const DEFAULT_WORK_DIR = '/home/project';
-const DEFAULT_API_BASE_URL = 'https://api.flare.tech/v1';
+const DEFAULT_MODEL = "claude-sonnet-4-20250514";
+const DEFAULT_WORK_DIR = "/home/project";
+const DEFAULT_API_BASE_URL = "https://api.flare-sh.tech/v1";
 
 export interface RuntimeEnvironmentConfig {
   apiKey?: string;
@@ -56,7 +56,7 @@ export interface RuntimeEnvironmentConfig {
 
 export interface RuntimeTaskOutput {
   taskId: string;
-  status: TaskStatus | 'not_found';
+  status: TaskStatus | "not_found";
   output: string[];
   totalLines: number;
   offset: number;
@@ -117,7 +117,7 @@ function safeStringify(value: unknown): string {
   try {
     return JSON.stringify(value, null, 2);
   } catch {
-    return '[unserializable output]';
+    return "[unserializable output]";
   }
 }
 
@@ -126,85 +126,107 @@ function toErrorMessage(error: unknown): string {
     return error.message;
   }
 
-  if (typeof error === 'string') {
+  if (typeof error === "string") {
     return error;
   }
 
-  return 'Unknown runtime error';
+  return "Unknown runtime error";
 }
 
-function formatBrowserProgressLine(progressType: string, data: Record<string, unknown>): string | undefined {
+function formatBrowserProgressLine(
+  progressType: string,
+  data: Record<string, unknown>,
+): string | undefined {
   switch (progressType) {
-    case 'browser_scope_check_start': {
-      const phase = typeof data.phase === 'string' ? data.phase : 'initial';
-      const url = typeof data.url === 'string' ? data.url : 'unknown-url';
+    case "browser_scope_check_start": {
+      const phase = typeof data.phase === "string" ? data.phase : "initial";
+      const url = typeof data.url === "string" ? data.url : "unknown-url";
       return `Browser scope check (${phase}): ${url}`;
     }
 
-    case 'browser_scope_check_complete': {
-      const phase = typeof data.phase === 'string' ? data.phase : 'initial';
-      const url = typeof data.normalizedUrl === 'string' ? data.normalizedUrl : 'unknown-url';
-      const allowedBy = typeof data.allowedBy === 'string' ? data.allowedBy : 'unknown';
+    case "browser_scope_check_complete": {
+      const phase = typeof data.phase === "string" ? data.phase : "initial";
+      const url =
+        typeof data.normalizedUrl === "string"
+          ? data.normalizedUrl
+          : "unknown-url";
+      const allowedBy =
+        typeof data.allowedBy === "string" ? data.allowedBy : "unknown";
       return `Browser scope allowed (${phase}): ${url} via ${allowedBy}`;
     }
 
-    case 'browser_approval_required': {
-      const normalizedUrl = typeof data.normalizedUrl === 'string' ? data.normalizedUrl : 'unknown-url';
+    case "browser_approval_required": {
+      const normalizedUrl =
+        typeof data.normalizedUrl === "string"
+          ? data.normalizedUrl
+          : "unknown-url";
       return `Browser approval required: ${normalizedUrl}`;
     }
 
-    case 'browser_approval_resolved': {
-      const normalizedUrl = typeof data.normalizedUrl === 'string' ? data.normalizedUrl : 'unknown-url';
-      const decision = typeof data.decision === 'string' ? data.decision : 'unknown';
+    case "browser_approval_resolved": {
+      const normalizedUrl =
+        typeof data.normalizedUrl === "string"
+          ? data.normalizedUrl
+          : "unknown-url";
+      const decision =
+        typeof data.decision === "string" ? data.decision : "unknown";
       return `Browser approval decision: ${decision} (${normalizedUrl})`;
     }
 
-    case 'browser_action_start': {
-      const action = typeof data.action === 'string' ? data.action : 'unknown';
-      const url = typeof data.normalizedUrl === 'string' ? data.normalizedUrl : 'unknown-url';
+    case "browser_action_start": {
+      const action = typeof data.action === "string" ? data.action : "unknown";
+      const url =
+        typeof data.normalizedUrl === "string"
+          ? data.normalizedUrl
+          : "unknown-url";
       return `Browser action started: ${action} ${url}`;
     }
 
-    case 'browser_server_request_start': {
-      const action = typeof data.action === 'string' ? data.action : 'unknown';
-      const endpoint = typeof data.endpoint === 'string' ? data.endpoint : 'unknown-endpoint';
+    case "browser_server_request_start": {
+      const action = typeof data.action === "string" ? data.action : "unknown";
+      const endpoint =
+        typeof data.endpoint === "string" ? data.endpoint : "unknown-endpoint";
       return `Browser server request: ${action} -> ${endpoint}`;
     }
 
-    case 'browser_server_response_received': {
-      const action = typeof data.action === 'string' ? data.action : 'unknown';
+    case "browser_server_response_received": {
+      const action = typeof data.action === "string" ? data.action : "unknown";
       const status = Number.isFinite(data.status) ? Number(data.status) : 0;
       return `Browser server response: ${action} status ${status}`;
     }
 
-    case 'browser_request_start': {
-      const url = typeof data.url === 'string' ? data.url : 'unknown-url';
+    case "browser_request_start": {
+      const url = typeof data.url === "string" ? data.url : "unknown-url";
       return `Browser request started: ${url}`;
     }
 
-    case 'browser_response_received': {
+    case "browser_response_received": {
       const status = Number.isFinite(data.status) ? Number(data.status) : 0;
-      const action = typeof data.action === 'string' ? data.action : 'navigate';
-      const finalUrl = typeof data.finalUrl === 'string' ? data.finalUrl : 'unknown-url';
+      const action = typeof data.action === "string" ? data.action : "navigate";
+      const finalUrl =
+        typeof data.finalUrl === "string" ? data.finalUrl : "unknown-url";
       return `Browser response received (${action}): ${status} ${finalUrl}`;
     }
 
-    case 'browser_extract_complete': {
-      const action = typeof data.action === 'string' ? data.action : 'navigate';
-      const charCount = Number.isFinite(data.charCount) ? Number(data.charCount) : 0;
+    case "browser_extract_complete": {
+      const action = typeof data.action === "string" ? data.action : "navigate";
+      const charCount = Number.isFinite(data.charCount)
+        ? Number(data.charCount)
+        : 0;
       const truncated = Boolean(data.truncated);
-      return `Browser extraction complete (${action}): ${charCount} chars${truncated ? ' (truncated)' : ''}`;
+      return `Browser extraction complete (${action}): ${charCount} chars${truncated ? " (truncated)" : ""}`;
     }
 
-    case 'browser_action_complete': {
-      const action = typeof data.action === 'string' ? data.action : 'unknown';
+    case "browser_action_complete": {
+      const action = typeof data.action === "string" ? data.action : "unknown";
       const status = Number.isFinite(data.status) ? Number(data.status) : 0;
       return `Browser action complete: ${action} (status ${status})`;
     }
 
-    case 'browser_error': {
-      const phase = typeof data.phase === 'string' ? data.phase : 'unknown';
-      const error = typeof data.error === 'string' ? data.error : 'Unknown browser error';
+    case "browser_error": {
+      const phase = typeof data.phase === "string" ? data.phase : "unknown";
+      const error =
+        typeof data.error === "string" ? data.error : "Unknown browser error";
       return `Browser step failed (${phase}): ${error}`;
     }
 
@@ -230,7 +252,7 @@ function mapToolProgress(
 
   const data = progress.data || {};
 
-  if (toolName === 'browser') {
+  if (toolName === "browser") {
     const line = formatBrowserProgressLine(progress.type, data);
 
     if (line) {
@@ -239,13 +261,13 @@ function mapToolProgress(
   }
 
   publishRuntimeEvent({
-    type: 'runtime:tool_progress',
+    type: "runtime:tool_progress",
     sessionId: task.sessionId,
     taskId,
     data: {
       toolName,
       progressType: progress.type,
-      toolUseId: progress.toolUseId || '',
+      toolUseId: progress.toolUseId || "",
       progress: data,
     },
   });
@@ -258,7 +280,7 @@ function resolveSession(sessionId?: string): string {
 
   if (!existed) {
     publishRuntimeEvent({
-      type: 'runtime:session_created',
+      type: "runtime:session_created",
       sessionId: session.id,
       data: {
         sessionId: session.id,
@@ -270,7 +292,9 @@ function resolveSession(sessionId?: string): string {
   return session.id;
 }
 
-function createRuntimeToolStateAccess(sessionId: string): Pick<ToolUseContext, 'persistState' | 'loadState'> {
+function createRuntimeToolStateAccess(
+  sessionId: string,
+): Pick<ToolUseContext, "persistState" | "loadState"> {
   return {
     persistState: (key: string, value: unknown) => {
       const normalizedKey = key.trim();
@@ -302,7 +326,7 @@ function appendTaskLine(taskId: string, line: string): void {
   }
 
   publishRuntimeEvent({
-    type: 'runtime:task_output',
+    type: "runtime:task_output",
     sessionId: task.sessionId,
     taskId,
     data: {
@@ -312,7 +336,11 @@ function appendTaskLine(taskId: string, line: string): void {
   });
 }
 
-function setTaskStatus(taskId: string, status: TaskStatus, update?: Partial<RuntimeTaskState>): RuntimeTaskState | undefined {
+function setTaskStatus(
+  taskId: string,
+  status: TaskStatus,
+  update?: Partial<RuntimeTaskState>,
+): RuntimeTaskState | undefined {
   const task = getRuntimeTask(taskId);
 
   if (!task) {
@@ -326,7 +354,7 @@ function setTaskStatus(taskId: string, status: TaskStatus, update?: Partial<Runt
 
   if (next) {
     publishRuntimeEvent({
-      type: 'runtime:task_updated',
+      type: "runtime:task_updated",
       sessionId: next.sessionId,
       taskId: next.id,
       data: {
@@ -339,7 +367,10 @@ function setTaskStatus(taskId: string, status: TaskStatus, update?: Partial<Runt
   return next;
 }
 
-function updateTask(taskId: string, update: Partial<RuntimeTaskState>): RuntimeTaskState | undefined {
+function updateTask(
+  taskId: string,
+  update: Partial<RuntimeTaskState>,
+): RuntimeTaskState | undefined {
   const task = getRuntimeTask(taskId);
 
   if (!task) {
@@ -349,7 +380,7 @@ function updateTask(taskId: string, update: Partial<RuntimeTaskState>): RuntimeT
   Object.assign(task, update);
 
   publishRuntimeEvent({
-    type: 'runtime:task_updated',
+    type: "runtime:task_updated",
     sessionId: task.sessionId,
     taskId: task.id,
     data: {
@@ -361,15 +392,27 @@ function updateTask(taskId: string, update: Partial<RuntimeTaskState>): RuntimeT
   return task;
 }
 
-function resolveApiConfig(config?: RuntimeEnvironmentConfig): RuntimeEnvironmentConfig {
-  const env = typeof process !== 'undefined' ? process.env : {};
+function resolveApiConfig(
+  config?: RuntimeEnvironmentConfig,
+): RuntimeEnvironmentConfig {
+  const env = typeof process !== "undefined" ? process.env : {};
 
-  const apiKey = config?.apiKey || env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || env.ANTHROPIC_API_KEY;
-  const apiBaseUrl = config?.apiBaseUrl || env.OPENAI_API_BASE_URL || DEFAULT_API_BASE_URL;
+  const apiKey =
+    config?.apiKey ||
+    env.OPENAI_API_KEY ||
+    env.VITE_OPENAI_API_KEY ||
+    env.ANTHROPIC_API_KEY;
+  const apiBaseUrl =
+    config?.apiBaseUrl || env.OPENAI_API_BASE_URL || DEFAULT_API_BASE_URL;
 
-  const configuredPreviewBaseUrls = config?.previewBaseUrls ||
-    env.BROWSER_PREVIEW_BASE_URLS?.split(',').map((value) => value.trim()).filter(Boolean) ||
-    env.PREVIEW_BASE_URLS?.split(',').map((value) => value.trim()).filter(Boolean) ||
+  const configuredPreviewBaseUrls =
+    config?.previewBaseUrls ||
+    env.BROWSER_PREVIEW_BASE_URLS?.split(",")
+      .map((value) => value.trim())
+      .filter(Boolean) ||
+    env.PREVIEW_BASE_URLS?.split(",")
+      .map((value) => value.trim())
+      .filter(Boolean) ||
     [];
 
   const extensionBridgeSessionId =
@@ -389,9 +432,14 @@ function resolveApiConfig(config?: RuntimeEnvironmentConfig): RuntimeEnvironment
     apiBaseUrl,
     model: config?.model || env.OPENAI_MODEL || DEFAULT_MODEL,
     workDir: config?.workDir || DEFAULT_WORK_DIR,
-    browserServerUrl: config?.browserServerUrl || env.BROWSER_SERVER_URL || env.VITE_BROWSER_SERVER_URL,
+    browserServerUrl:
+      config?.browserServerUrl ||
+      env.BROWSER_SERVER_URL ||
+      env.VITE_BROWSER_SERVER_URL,
     browserServerApiKey:
-      config?.browserServerApiKey || env.BROWSER_SERVER_API_KEY || env.VITE_BROWSER_SERVER_API_KEY,
+      config?.browserServerApiKey ||
+      env.BROWSER_SERVER_API_KEY ||
+      env.VITE_BROWSER_SERVER_API_KEY,
     previewBaseUrls: configuredPreviewBaseUrls,
     browserExtensionBridgeSessionId: extensionBridgeSessionId,
     browserExtensionName: extensionName,
@@ -400,7 +448,7 @@ function resolveApiConfig(config?: RuntimeEnvironmentConfig): RuntimeEnvironment
 
 function ensureAgentApiKey(config: RuntimeEnvironmentConfig): string {
   if (!config.apiKey) {
-    throw new Error('No API key configured for agent runtime.');
+    throw new Error("No API key configured for agent runtime.");
   }
 
   return config.apiKey;
@@ -414,15 +462,15 @@ function mapAgentProgress(taskId: string, event: AgentProgressEvent): void {
   }
 
   switch (event.type) {
-    case 'agent:started': {
+    case "agent:started": {
       updateTask(taskId, {
-        status: 'running',
+        status: "running",
         agentId: event.agent.id,
         agentType: event.agent.agentType,
       });
 
       publishRuntimeEvent({
-        type: 'runtime:agent_started',
+        type: "runtime:agent_started",
         sessionId: task.sessionId,
         taskId,
         data: {
@@ -432,11 +480,11 @@ function mapAgentProgress(taskId: string, event: AgentProgressEvent): void {
       break;
     }
 
-    case 'agent:message': {
+    case "agent:message": {
       appendTaskLine(taskId, event.message);
 
       publishRuntimeEvent({
-        type: 'runtime:agent_message',
+        type: "runtime:agent_message",
         sessionId: task.sessionId,
         taskId,
         data: event,
@@ -444,11 +492,11 @@ function mapAgentProgress(taskId: string, event: AgentProgressEvent): void {
       break;
     }
 
-    case 'agent:tool_start': {
+    case "agent:tool_start": {
       appendTaskLine(taskId, `Running tool: ${event.toolCall.toolName}`);
 
       publishRuntimeEvent({
-        type: 'runtime:agent_tool_start',
+        type: "runtime:agent_tool_start",
         sessionId: task.sessionId,
         taskId,
         data: event,
@@ -456,11 +504,14 @@ function mapAgentProgress(taskId: string, event: AgentProgressEvent): void {
       break;
     }
 
-    case 'agent:tool_complete': {
-      appendTaskLine(taskId, `Tool finished: ${event.toolCall.toolName} (${event.toolCall.status})`);
+    case "agent:tool_complete": {
+      appendTaskLine(
+        taskId,
+        `Tool finished: ${event.toolCall.toolName} (${event.toolCall.status})`,
+      );
 
       publishRuntimeEvent({
-        type: 'runtime:agent_tool_complete',
+        type: "runtime:agent_tool_complete",
         sessionId: task.sessionId,
         taskId,
         data: event,
@@ -468,9 +519,9 @@ function mapAgentProgress(taskId: string, event: AgentProgressEvent): void {
       break;
     }
 
-    case 'agent:paused': {
+    case "agent:paused": {
       publishRuntimeEvent({
-        type: 'runtime:agent_paused',
+        type: "runtime:agent_paused",
         sessionId: task.sessionId,
         taskId,
         data: event,
@@ -478,9 +529,9 @@ function mapAgentProgress(taskId: string, event: AgentProgressEvent): void {
       break;
     }
 
-    case 'agent:complete': {
+    case "agent:complete": {
       publishRuntimeEvent({
-        type: 'runtime:agent_complete',
+        type: "runtime:agent_complete",
         sessionId: task.sessionId,
         taskId,
         data: event,
@@ -490,21 +541,25 @@ function mapAgentProgress(taskId: string, event: AgentProgressEvent): void {
   }
 }
 
-function finalizeAgentTask(taskId: string, agentState?: AgentState, error?: string): RuntimeTaskState | undefined {
+function finalizeAgentTask(
+  taskId: string,
+  agentState?: AgentState,
+  error?: string,
+): RuntimeTaskState | undefined {
   const task = getRuntimeTask(taskId);
 
   if (!task) {
     return undefined;
   }
 
-  if (task.status === 'killed') {
+  if (task.status === "killed") {
     clearRuntimeTaskAbortController(taskId);
     return task;
   }
 
   if (error) {
     appendTaskLine(taskId, `Error: ${error}`);
-    const updated = setTaskStatus(taskId, 'failed', {
+    const updated = setTaskStatus(taskId, "failed", {
       error,
       result: agentState,
     });
@@ -513,8 +568,8 @@ function finalizeAgentTask(taskId: string, agentState?: AgentState, error?: stri
   }
 
   if (!agentState) {
-    const updated = setTaskStatus(taskId, 'failed', {
-      error: 'Agent finished without state',
+    const updated = setTaskStatus(taskId, "failed", {
+      error: "Agent finished without state",
     });
     clearRuntimeTaskAbortController(taskId);
     return updated;
@@ -528,11 +583,12 @@ function finalizeAgentTask(taskId: string, agentState?: AgentState, error?: stri
     appendTaskLine(taskId, `Error: ${agentState.error}`);
   }
 
-  const status: TaskStatus = agentState.status === 'completed'
-    ? 'completed'
-    : agentState.status === 'killed'
-      ? 'killed'
-      : 'failed';
+  const status: TaskStatus =
+    agentState.status === "completed"
+      ? "completed"
+      : agentState.status === "killed"
+        ? "killed"
+        : "failed";
 
   const updated = setTaskStatus(taskId, status, {
     agentId: agentState.id,
@@ -556,19 +612,19 @@ function finalizeToolTask(
     return undefined;
   }
 
-  if (task.status === 'killed') {
+  if (task.status === "killed") {
     clearRuntimeTaskAbortController(taskId);
     return task;
   }
 
   if (thrownError) {
     appendTaskLine(taskId, `Error: ${thrownError}`);
-    const updated = setTaskStatus(taskId, 'failed', {
+    const updated = setTaskStatus(taskId, "failed", {
       error: thrownError,
     });
     clearRuntimeTaskAbortController(taskId);
     publishRuntimeEvent({
-      type: 'runtime:tool_failed',
+      type: "runtime:tool_failed",
       sessionId: task.sessionId,
       taskId,
       data: {
@@ -580,17 +636,17 @@ function finalizeToolTask(
   }
 
   if (!result) {
-    const updated = setTaskStatus(taskId, 'failed', {
-      error: 'Tool finished without result',
+    const updated = setTaskStatus(taskId, "failed", {
+      error: "Tool finished without result",
     });
     clearRuntimeTaskAbortController(taskId);
     publishRuntimeEvent({
-      type: 'runtime:tool_failed',
+      type: "runtime:tool_failed",
       sessionId: task.sessionId,
       taskId,
       data: {
         toolName: task.toolName,
-        error: 'Tool finished without result',
+        error: "Tool finished without result",
       },
     });
     return updated;
@@ -599,7 +655,7 @@ function finalizeToolTask(
   if (result.success) {
     appendTaskLine(taskId, safeStringify(result.data));
 
-    const updated = setTaskStatus(taskId, 'completed', {
+    const updated = setTaskStatus(taskId, "completed", {
       result: result.data,
       error: undefined,
     });
@@ -607,7 +663,7 @@ function finalizeToolTask(
     clearRuntimeTaskAbortController(taskId);
 
     publishRuntimeEvent({
-      type: 'runtime:tool_completed',
+      type: "runtime:tool_completed",
       sessionId: task.sessionId,
       taskId,
       data: {
@@ -619,10 +675,10 @@ function finalizeToolTask(
     return updated;
   }
 
-  const error = result.error || 'Tool execution failed';
+  const error = result.error || "Tool execution failed";
   appendTaskLine(taskId, `Error: ${error}`);
 
-  const updated = setTaskStatus(taskId, 'failed', {
+  const updated = setTaskStatus(taskId, "failed", {
     error,
     result: result.data,
   });
@@ -630,7 +686,7 @@ function finalizeToolTask(
   clearRuntimeTaskAbortController(taskId);
 
   publishRuntimeEvent({
-    type: 'runtime:tool_failed',
+    type: "runtime:tool_failed",
     sessionId: task.sessionId,
     taskId,
     data: {
@@ -663,15 +719,17 @@ export function listRegisteredTools() {
   return agenticRegistry.getAllTools().map((tool) => ({
     name: tool.name,
     displayName: tool.displayName,
-    description: tool.description.split('\n')[0],
+    description: tool.description.split("\n")[0],
     category: tool.category,
     isReadOnly: tool.isReadOnly,
-    searchHint: tool.searchHint || '',
+    searchHint: tool.searchHint || "",
   }));
 }
 
 export function listRuntimeAgentStates(): AgentState[] {
-  return Object.values(agentsStore.get()).sort((a, b) => b.startTime - a.startTime);
+  return Object.values(agentsStore.get()).sort(
+    (a, b) => b.startTime - a.startTime,
+  );
 }
 
 export function getRuntimeAgentState(agentId: string): AgentState | undefined {
@@ -696,14 +754,19 @@ export async function spawnRuntimeAgent(
   const prompt = request.prompt?.trim();
 
   if (!agentType || !prompt) {
-    throw new Error('Missing required fields: agentType, prompt');
+    throw new Error("Missing required fields: agentType, prompt");
   }
 
   const agentDefinition = agenticRegistry.getAgent(agentType);
 
   if (!agentDefinition) {
-    const available = agenticRegistry.getAllAgents().map((agent) => agent.agentType).join(', ');
-    throw new Error(`Unknown agent type: ${agentType}. Available: ${available}`);
+    const available = agenticRegistry
+      .getAllAgents()
+      .map((agent) => agent.agentType)
+      .join(", ");
+    throw new Error(
+      `Unknown agent type: ${agentType}. Available: ${available}`,
+    );
   }
 
   const runtimeConfig = resolveApiConfig({
@@ -716,18 +779,20 @@ export async function spawnRuntimeAgent(
   const sessionId = resolveSession(request.sessionId);
   const task = createRuntimeTask({
     sessionId,
-    type: 'agent',
-    kind: 'agent',
-    description: request.description || `${agentDefinition.displayName}: ${prompt.slice(0, 80)}`,
+    type: "agent",
+    kind: "agent",
+    description:
+      request.description ||
+      `${agentDefinition.displayName}: ${prompt.slice(0, 80)}`,
     agentType,
   });
 
   const abortController = new AbortController();
   setRuntimeTaskAbortController(task.id, abortController);
-  setTaskStatus(task.id, 'running');
+  setTaskStatus(task.id, "running");
 
   publishRuntimeEvent({
-    type: 'runtime:task_created',
+    type: "runtime:task_created",
     sessionId,
     taskId: task.id,
     data: task,
@@ -747,7 +812,8 @@ export async function spawnRuntimeAgent(
     browserServerUrl: runtimeConfig.browserServerUrl,
     browserServerApiKey: runtimeConfig.browserServerApiKey,
     previewBaseUrls: runtimeConfig.previewBaseUrls,
-    browserExtensionBridgeSessionId: runtimeConfig.browserExtensionBridgeSessionId,
+    browserExtensionBridgeSessionId:
+      runtimeConfig.browserExtensionBridgeSessionId,
     browserExtensionName: runtimeConfig.browserExtensionName,
   };
 
@@ -786,7 +852,9 @@ export async function spawnRuntimeAgent(
 
   const finalizedTask = await run();
   const currentTask = finalizedTask ?? getRuntimeTask(task.id) ?? task;
-  const agent = currentTask.agentId ? getRuntimeAgentState(currentTask.agentId) : undefined;
+  const agent = currentTask.agentId
+    ? getRuntimeAgentState(currentTask.agentId)
+    : undefined;
 
   return {
     sessionId,
@@ -807,7 +875,7 @@ export async function resumeRuntimeAgent(
   const message = request.message?.trim();
 
   if (!agentId || !message) {
-    throw new Error('Missing required fields: agentId, message');
+    throw new Error("Missing required fields: agentId, message");
   }
 
   if (!hasAgentContinuation(agentId)) {
@@ -824,17 +892,17 @@ export async function resumeRuntimeAgent(
   const sessionId = resolveSession(request.sessionId);
   const task = createRuntimeTask({
     sessionId,
-    type: 'agent',
-    kind: 'agent',
+    type: "agent",
+    kind: "agent",
     description: request.description || `Resume agent ${agentId}`,
   });
 
   const abortController = new AbortController();
   setRuntimeTaskAbortController(task.id, abortController);
-  setTaskStatus(task.id, 'running', { agentId });
+  setTaskStatus(task.id, "running", { agentId });
 
   publishRuntimeEvent({
-    type: 'runtime:task_created',
+    type: "runtime:task_created",
     sessionId,
     taskId: task.id,
     data: task,
@@ -868,7 +936,9 @@ export async function resumeRuntimeAgent(
 
   const finalizedTask = await run();
   const currentTask = finalizedTask ?? getRuntimeTask(task.id) ?? task;
-  const agent = currentTask.agentId ? getRuntimeAgentState(currentTask.agentId) : undefined;
+  const agent = currentTask.agentId
+    ? getRuntimeAgentState(currentTask.agentId)
+    : undefined;
 
   return {
     sessionId,
@@ -888,7 +958,7 @@ export async function executeRuntimeTool(
   const toolName = request.toolName?.trim();
 
   if (!toolName) {
-    throw new Error('Missing required field: toolName');
+    throw new Error("Missing required field: toolName");
   }
 
   const tool = agenticRegistry.getTool(toolName);
@@ -904,28 +974,28 @@ export async function executeRuntimeTool(
   });
 
   const sessionId = resolveSession(request.sessionId);
-  const type: TaskType = toolName === 'bash' ? 'shell' : 'background';
+  const type: TaskType = toolName === "bash" ? "shell" : "background";
   const task = createRuntimeTask({
     sessionId,
     type,
-    kind: 'tool',
+    kind: "tool",
     description: request.description || `Tool: ${toolName}`,
     toolName,
   });
 
   const abortController = new AbortController();
   setRuntimeTaskAbortController(task.id, abortController);
-  setTaskStatus(task.id, 'running');
+  setTaskStatus(task.id, "running");
 
   publishRuntimeEvent({
-    type: 'runtime:task_created',
+    type: "runtime:task_created",
     sessionId,
     taskId: task.id,
     data: task,
   });
 
   publishRuntimeEvent({
-    type: 'runtime:tool_started',
+    type: "runtime:tool_started",
     sessionId,
     taskId: task.id,
     data: {
@@ -948,7 +1018,8 @@ export async function executeRuntimeTool(
     browserServerUrl: runtimeConfig.browserServerUrl,
     browserServerApiKey: runtimeConfig.browserServerApiKey,
     previewBaseUrls: runtimeConfig.previewBaseUrls,
-    browserExtensionBridgeSessionId: runtimeConfig.browserExtensionBridgeSessionId,
+    browserExtensionBridgeSessionId:
+      runtimeConfig.browserExtensionBridgeSessionId,
     browserExtensionName: runtimeConfig.browserExtensionName,
   };
 
@@ -960,7 +1031,10 @@ export async function executeRuntimeTool(
         context,
         (progress) => mapToolProgress(task.id, toolName, progress),
       );
-      const finalizedTask = finalizeToolTask(task.id, result as ToolResult<unknown>);
+      const finalizedTask = finalizeToolTask(
+        task.id,
+        result as ToolResult<unknown>,
+      );
 
       return {
         task: finalizedTask ?? getRuntimeTask(task.id) ?? task,
@@ -1009,17 +1083,23 @@ export function listRuntimeTasksSnapshot(input?: {
   });
 }
 
-export function getRuntimeTaskSnapshot(taskId: string): RuntimeTaskState | undefined {
+export function getRuntimeTaskSnapshot(
+  taskId: string,
+): RuntimeTaskState | undefined {
   return getRuntimeTask(taskId);
 }
 
-export function getRuntimeTaskOutput(taskId: string, offset = 0, limit = 200): RuntimeTaskOutput {
+export function getRuntimeTaskOutput(
+  taskId: string,
+  offset = 0,
+  limit = 200,
+): RuntimeTaskOutput {
   const task = getRuntimeTask(taskId);
 
   if (!task) {
     return {
       taskId,
-      status: 'not_found',
+      status: "not_found",
       output: [],
       totalLines: 0,
       offset: 0,
@@ -1045,7 +1125,10 @@ export function getRuntimeTaskOutput(taskId: string, offset = 0, limit = 200): R
   };
 }
 
-export function abortRuntimeExecution(input: { taskId?: string; agentId?: string }): RuntimeAbortResult {
+export function abortRuntimeExecution(input: {
+  taskId?: string;
+  agentId?: string;
+}): RuntimeAbortResult {
   const taskId = input.taskId?.trim();
 
   if (taskId) {
@@ -1059,7 +1142,7 @@ export function abortRuntimeExecution(input: { taskId?: string; agentId?: string
     }
 
     publishRuntimeEvent({
-      type: 'runtime:task_updated',
+      type: "runtime:task_updated",
       sessionId: task.sessionId,
       taskId: task.id,
       data: {
@@ -1096,7 +1179,7 @@ export function abortRuntimeExecution(input: { taskId?: string; agentId?: string
     }
 
     publishRuntimeEvent({
-      type: 'runtime:task_updated',
+      type: "runtime:task_updated",
       sessionId: task.sessionId,
       taskId: task.id,
       data: {
@@ -1113,7 +1196,7 @@ export function abortRuntimeExecution(input: { taskId?: string; agentId?: string
 
   return {
     success: false,
-    error: 'Provide taskId or agentId to abort execution',
+    error: "Provide taskId or agentId to abort execution",
   };
 }
 

@@ -231,6 +231,7 @@ When generating or modifying code:
 4. Follow best practices and modern standards
 5. Add helpful comments
 6. Ensure code is production-ready
+7. For Next.js projects, always include "engines": { "node": ">=18.17.0" } in package.json to ensure compatibility with Nodebox runtime.
 
 Example response format:
 \`\`\`filepath:/src/App.jsx

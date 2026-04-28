@@ -6,10 +6,10 @@
  * either recurring (cron schedule) or one-shot.
  */
 
-import type { Tool, ToolResult, ToolUseContext } from '../types';
-import { generateId } from '../executor';
-import { runAgent } from '../agents/runner';
-import { agenticRegistry } from '../registry';
+import type { Tool, ToolResult, ToolUseContext } from "../types";
+import { generateId } from "../executor";
+import { runAgent } from "../agents/runner";
+import { agenticRegistry } from "../registry";
 
 // ─── In-memory cron store ────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ interface CronJob {
   nextRun?: number;
   lastRun?: number;
   runCount: number;
-  status: 'active' | 'paused' | 'completed';
+  status: "active" | "paused" | "completed";
   running?: boolean;
   lastError?: string;
 }
@@ -33,7 +33,11 @@ const schedulerRunning = new Set<string>();
 const SCHEDULER_TICK_MS = 15_000;
 const MAX_RECURRING_JOB_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
-function parseCronField(field: string, min: number, max: number): Set<number> | null {
+function parseCronField(
+  field: string,
+  min: number,
+  max: number,
+): Set<number> | null {
   const result = new Set<number>();
 
   const addRange = (start: number, end: number, step: number) => {
@@ -44,29 +48,32 @@ function parseCronField(field: string, min: number, max: number): Set<number> | 
     }
   };
 
-  const parts = field.split(',').map((p) => p.trim()).filter(Boolean);
+  const parts = field
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   for (const part of parts) {
-    if (part === '*') {
+    if (part === "*") {
       addRange(min, max, 1);
       continue;
     }
 
-    if (part.includes('/')) {
-      const [base, stepRaw] = part.split('/');
+    if (part.includes("/")) {
+      const [base, stepRaw] = part.split("/");
       const step = Number.parseInt(stepRaw, 10);
 
       if (!Number.isFinite(step) || step <= 0) {
         return null;
       }
 
-      if (!base || base === '*') {
+      if (!base || base === "*") {
         addRange(min, max, step);
         continue;
       }
 
-      if (base.includes('-')) {
-        const [startRaw, endRaw] = base.split('-');
+      if (base.includes("-")) {
+        const [startRaw, endRaw] = base.split("-");
         const start = Number.parseInt(startRaw, 10);
         const end = Number.parseInt(endRaw, 10);
 
@@ -87,8 +94,8 @@ function parseCronField(field: string, min: number, max: number): Set<number> | 
       continue;
     }
 
-    if (part.includes('-')) {
-      const [startRaw, endRaw] = part.split('-');
+    if (part.includes("-")) {
+      const [startRaw, endRaw] = part.split("-");
       const start = Number.parseInt(startRaw, 10);
       const end = Number.parseInt(endRaw, 10);
 
@@ -177,23 +184,27 @@ async function executeScheduledPrompt(job: CronJob): Promise<void> {
   job.running = true;
 
   try {
-    const worker = agenticRegistry.getAgent('worker') || agenticRegistry.getAgent('coder');
+    const worker =
+      agenticRegistry.getAgent("worker") || agenticRegistry.getAgent("coder");
     if (!worker) {
-      job.lastError = 'No worker or coder agent available for cron execution';
+      job.lastError = "No worker or coder agent available for cron execution";
       return;
     }
 
-    const model = (typeof process !== 'undefined' ? process.env.OPENAI_MODEL : undefined) || 'claude-sonnet-4-20250514';
-    const env = typeof process !== 'undefined' ? process.env : {};
-    const apiKey = env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || '';
-    const apiBaseUrl = env.OPENAI_API_BASE_URL || 'https://api.flare.tech/v1';
+    const model =
+      (typeof process !== "undefined" ? process.env.OPENAI_MODEL : undefined) ||
+      "claude-sonnet-4-20250514";
+    const env = typeof process !== "undefined" ? process.env : {};
+    const apiKey = env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || "";
+    const apiBaseUrl =
+      env.OPENAI_API_BASE_URL || "https://api.flare-sh.tech/v1";
 
     if (!apiKey) {
-      job.lastError = 'No API key configured for scheduled execution';
+      job.lastError = "No API key configured for scheduled execution";
       return;
     }
 
-    const schedulerPrompt = `# Scheduled Cron Job\n\nJob ID: ${job.id}\nCron: ${job.cron}\nRecurring: ${job.recurring ? 'yes' : 'no'}\nRun count before this run: ${job.runCount}\n\n## Task\n${job.prompt}`;
+    const schedulerPrompt = `# Scheduled Cron Job\n\nJob ID: ${job.id}\nCron: ${job.cron}\nRecurring: ${job.recurring ? "yes" : "no"}\nRun count before this run: ${job.runCount}\n\n## Task\n${job.prompt}`;
 
     const result = await runAgent({
       agentDefinition: worker,
@@ -201,7 +212,7 @@ async function executeScheduledPrompt(job: CronJob): Promise<void> {
       description: `Scheduled cron job ${job.id}`,
       model,
       sandboxContext: makeExecutionContext({
-        workDir: '/home/project',
+        workDir: "/home/project",
         model,
         apiKey,
         apiBaseUrl,
@@ -211,25 +222,28 @@ async function executeScheduledPrompt(job: CronJob): Promise<void> {
       isBackground: true,
     });
 
-    job.lastError = result.status === 'failed' ? result.error || 'Scheduled run failed' : undefined;
+    job.lastError =
+      result.status === "failed"
+        ? result.error || "Scheduled run failed"
+        : undefined;
   } catch (error: any) {
-    job.lastError = error?.message || 'Scheduled run failed';
+    job.lastError = error?.message || "Scheduled run failed";
   } finally {
     job.lastRun = Date.now();
     job.runCount += 1;
     job.running = false;
 
     if (!job.recurring) {
-      job.status = 'completed';
+      job.status = "completed";
       cronJobs.delete(job.id);
     } else if (Date.now() - job.createdAt >= MAX_RECURRING_JOB_AGE_MS) {
-      job.status = 'completed';
+      job.status = "completed";
       cronJobs.delete(job.id);
     } else {
       job.nextRun = nextRunAfter(job.cron, Date.now());
       if (!job.nextRun) {
-        job.status = 'paused';
-        job.lastError = 'Could not compute next run for cron expression';
+        job.status = "paused";
+        job.lastError = "Could not compute next run for cron expression";
       }
     }
 
@@ -246,7 +260,7 @@ function startSchedulerLoop() {
     const now = Date.now();
 
     const dueJobs = Array.from(cronJobs.values()).filter((job) => {
-      if (job.status !== 'active') {
+      if (job.status !== "active") {
         return false;
       }
 
@@ -258,7 +272,7 @@ function startSchedulerLoop() {
         job.nextRun = nextRunAfter(job.cron, now - 60_000);
       }
 
-      return typeof job.nextRun === 'number' && job.nextRun <= now;
+      return typeof job.nextRun === "number" && job.nextRun <= now;
     });
 
     if (dueJobs.length > 0) {
@@ -285,8 +299,8 @@ export interface CronCreateInput {
 }
 
 export const CronCreateTool: Tool<CronCreateInput, CronJob> = {
-  name: 'cron_create',
-  displayName: 'Schedule Task',
+  name: "cron_create",
+  displayName: "Schedule Task",
   description: `Schedule a prompt to run at a future time — either recurring on a cron schedule, or once at a specific time.
 
 Uses standard 5-field cron in local timezone: minute hour day-of-month month day-of-week.
@@ -299,21 +313,34 @@ Examples:
 For one-shot "remind me at X" requests, set recurring: false.`,
 
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      cron: { type: 'string', description: 'Standard 5-field cron expression: "M H DoM Mon DoW"' },
-      prompt: { type: 'string', description: 'The prompt to execute at each fire time' },
-      recurring: { type: 'boolean', description: 'true = recurring (default), false = fire once then delete' },
+      cron: {
+        type: "string",
+        description: 'Standard 5-field cron expression: "M H DoM Mon DoW"',
+      },
+      prompt: {
+        type: "string",
+        description: "The prompt to execute at each fire time",
+      },
+      recurring: {
+        type: "boolean",
+        description:
+          "true = recurring (default), false = fire once then delete",
+      },
     },
-    required: ['cron', 'prompt'],
+    required: ["cron", "prompt"],
   },
 
   isReadOnly: false,
   isConcurrencySafe: true,
-  category: 'scheduling',
-  searchHint: 'schedule cron recurring timer reminder kairos',
+  category: "scheduling",
+  searchHint: "schedule cron recurring timer reminder kairos",
 
-  async execute(input: CronCreateInput, _context: ToolUseContext): Promise<ToolResult<CronJob>> {
+  async execute(
+    input: CronCreateInput,
+    _context: ToolUseContext,
+  ): Promise<ToolResult<CronJob>> {
     const { cron, prompt, recurring = true } = input;
 
     // Basic cron validation (5 fields)
@@ -321,7 +348,15 @@ For one-shot "remind me at X" requests, set recurring: false.`,
     if (fields.length !== 5) {
       return {
         success: false,
-        data: { id: '', cron, prompt, recurring, createdAt: 0, runCount: 0, status: 'active' },
+        data: {
+          id: "",
+          cron,
+          prompt,
+          recurring,
+          createdAt: 0,
+          runCount: 0,
+          status: "active",
+        },
         error: `Invalid cron expression "${cron}". Expected 5 fields: minute hour day-of-month month day-of-week.`,
       };
     }
@@ -329,8 +364,16 @@ For one-shot "remind me at X" requests, set recurring: false.`,
     if (cronJobs.size >= 50) {
       return {
         success: false,
-        data: { id: '', cron, prompt, recurring, createdAt: 0, runCount: 0, status: 'active' },
-        error: 'Too many scheduled jobs (max 50). Cancel one first.',
+        data: {
+          id: "",
+          cron,
+          prompt,
+          recurring,
+          createdAt: 0,
+          runCount: 0,
+          status: "active",
+        },
+        error: "Too many scheduled jobs (max 50). Cancel one first.",
       };
     }
 
@@ -338,7 +381,15 @@ For one-shot "remind me at X" requests, set recurring: false.`,
     if (!nextRun) {
       return {
         success: false,
-        data: { id: '', cron, prompt, recurring, createdAt: 0, runCount: 0, status: 'active' },
+        data: {
+          id: "",
+          cron,
+          prompt,
+          recurring,
+          createdAt: 0,
+          runCount: 0,
+          status: "active",
+        },
         error: `Unable to compute next run for cron expression "${cron}".`,
       };
     }
@@ -350,7 +401,7 @@ For one-shot "remind me at X" requests, set recurring: false.`,
       recurring,
       createdAt: Date.now(),
       runCount: 0,
-      status: 'active',
+      status: "active",
       nextRun,
       running: false,
     };
@@ -370,28 +421,38 @@ export interface CronDeleteInput {
   job_id: string;
 }
 
-export const CronDeleteTool: Tool<CronDeleteInput, { deleted: boolean; jobId: string }> = {
-  name: 'cron_delete',
-  displayName: 'Cancel Scheduled Task',
-  description: 'Cancel a scheduled cron job by ID.',
+export const CronDeleteTool: Tool<
+  CronDeleteInput,
+  { deleted: boolean; jobId: string }
+> = {
+  name: "cron_delete",
+  displayName: "Cancel Scheduled Task",
+  description: "Cancel a scheduled cron job by ID.",
 
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {
-      job_id: { type: 'string', description: 'The cron job ID to cancel' },
+      job_id: { type: "string", description: "The cron job ID to cancel" },
     },
-    required: ['job_id'],
+    required: ["job_id"],
   },
 
   isReadOnly: false,
   isConcurrencySafe: true,
-  category: 'scheduling',
-  searchHint: 'cancel delete cron schedule',
+  category: "scheduling",
+  searchHint: "cancel delete cron schedule",
 
-  async execute(input: CronDeleteInput, _context: ToolUseContext): Promise<ToolResult<{ deleted: boolean; jobId: string }>> {
+  async execute(
+    input: CronDeleteInput,
+    _context: ToolUseContext,
+  ): Promise<ToolResult<{ deleted: boolean; jobId: string }>> {
     const deleted = cronJobs.delete(input.job_id);
     if (!deleted) {
-      return { success: false, data: { deleted: false, jobId: input.job_id }, error: `Cron job '${input.job_id}' not found` };
+      return {
+        success: false,
+        data: { deleted: false, jobId: input.job_id },
+        error: `Cron job '${input.job_id}' not found`,
+      };
     }
     return { success: true, data: { deleted: true, jobId: input.job_id } };
   },
@@ -399,22 +460,28 @@ export const CronDeleteTool: Tool<CronDeleteInput, { deleted: boolean; jobId: st
 
 // ─── CronList ────────────────────────────────────────────────────────
 
-export const CronListTool: Tool<Record<string, never>, { jobs: CronJob[]; count: number }> = {
-  name: 'cron_list',
-  displayName: 'List Scheduled Tasks',
-  description: 'List all scheduled cron jobs.',
+export const CronListTool: Tool<
+  Record<string, never>,
+  { jobs: CronJob[]; count: number }
+> = {
+  name: "cron_list",
+  displayName: "List Scheduled Tasks",
+  description: "List all scheduled cron jobs.",
 
   inputSchema: {
-    type: 'object',
+    type: "object",
     properties: {},
   },
 
   isReadOnly: true,
   isConcurrencySafe: true,
-  category: 'scheduling',
-  searchHint: 'list cron schedule jobs',
+  category: "scheduling",
+  searchHint: "list cron schedule jobs",
 
-  async execute(_input: Record<string, never>, _context: ToolUseContext): Promise<ToolResult<{ jobs: CronJob[]; count: number }>> {
+  async execute(
+    _input: Record<string, never>,
+    _context: ToolUseContext,
+  ): Promise<ToolResult<{ jobs: CronJob[]; count: number }>> {
     const jobs = Array.from(cronJobs.values());
     return { success: true, data: { jobs, count: jobs.length } };
   },

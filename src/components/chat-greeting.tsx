@@ -223,27 +223,37 @@ export const ChatGreeting = ({
                 transition={{ delay: 0.7 + i * 0.08, duration: 0.35 }}
                 onClick={() => onSuggestionClick?.(card.prompt)}
                 className={`
-                  group/card flex-shrink-0 snap-start rounded-xl
-                  bg-gradient-to-br ${card.gradient}
-                  border border-border/30 hover:border-primary/30
-                  backdrop-blur-sm cursor-pointer
+                  group/card flex-shrink-0 snap-start
+                  bg-white/5 dark:bg-white/8
+                  border border-white/15 hover:border-white/25
+                  backdrop-blur-xl backdrop-saturate-150
+                  cursor-pointer
                   transition-all duration-300 ease-out
-                  hover:scale-[1.03] hover:shadow-lg hover:shadow-primary/5
-                  text-left
+                  hover:scale-[1.03] hover:shadow-2xl hover:shadow-white/10
+                  hover:bg-white/10 dark:hover:bg-white/12
+                  text-left overflow-hidden
+                  relative before:absolute before:inset-0 before:bg-gradient-to-br before:from-white/0 before:to-white/0 before:opacity-0 hover:before:opacity-100 before:transition-opacity before:duration-300
                 `}
-                style={{ width: "210px", aspectRatio: "3 / 1" }}
+                style={{
+                  width: "210px",
+                  aspectRatio: "3 / 1",
+                  borderRadius: "25px",
+                }}
               >
-                <div className="flex items-center gap-3 h-full px-4">
+                {/* Liquid glass shine effect */}
+                <div className="absolute inset-0 bg-gradient-to-br from-white/20 via-white/0 to-transparent opacity-0 group-hover/card:opacity-50 transition-opacity duration-300 rounded-[25px]" />
+
+                <div className="flex items-center gap-3 h-full px-4 relative z-10">
                   <div
-                    className={`size-9 rounded-lg bg-background/40 flex items-center justify-center shrink-0 ${card.iconColor}`}
+                    className={`size-9 rounded-lg bg-white/10 dark:bg-white/15 flex items-center justify-center shrink-0 ${card.iconColor} backdrop-blur-md border border-white/20 hover:border-white/30 transition-all`}
                   >
                     <Icon className="size-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-foreground/90 group-hover/card:text-foreground transition-colors truncate">
+                    <p className="text-sm font-medium text-foreground/95 group-hover/card:text-foreground transition-colors truncate">
                       {card.title}
                     </p>
-                    <p className="text-[10px] text-muted-foreground/70 leading-snug line-clamp-2">
+                    <p className="text-[10px] text-muted-foreground/75 leading-snug line-clamp-2">
                       {card.description}
                     </p>
                   </div>
