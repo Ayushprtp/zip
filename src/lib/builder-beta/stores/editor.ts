@@ -3,8 +3,14 @@
  * Ported from builderbeta — adapted for Next.js.
  */
 
-import { atom, computed, map, type MapStore, type WritableAtom } from 'nanostores';
-import type { FileMap, FilesStore } from './files';
+import {
+  atom,
+  computed,
+  map,
+  type MapStore,
+  type WritableAtom,
+} from "nanostores";
+import type { FileMap, FilesStore } from "./files";
 
 export interface EditorDocument {
   value: string;
@@ -23,21 +29,23 @@ export type EditorDocuments = Record<string, EditorDocument>;
 type SelectedFile = WritableAtom<string | undefined>;
 
 export class EditorStore {
-  #filesStore: FilesStore;
-
   selectedFile: SelectedFile = atom<string | undefined>();
   documents: MapStore<EditorDocuments> = map({});
 
-  currentDocument = computed([this.documents, this.selectedFile], (documents, selectedFile) => {
-    if (!selectedFile) {
-      return undefined;
-    }
+  currentDocument = computed(
+    [this.documents, this.selectedFile],
+    (documents, selectedFile) => {
+      if (!selectedFile) {
+        return undefined;
+      }
 
-    return documents[selectedFile];
-  });
+      return documents[selectedFile];
+    },
+  );
 
-  constructor(filesStore: FilesStore) {
-    this.#filesStore = filesStore;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  constructor(_filesStore: FilesStore) {
+    // filesStore reserved for future use
   }
 
   setDocuments(files: FileMap) {
@@ -47,7 +55,7 @@ export class EditorStore {
       Object.fromEntries<EditorDocument>(
         Object.entries(files)
           .map(([filePath, dirent]) => {
-            if (dirent === undefined || dirent.type === 'folder') {
+            if (dirent === undefined || dirent.type === "folder") {
               return undefined;
             }
 

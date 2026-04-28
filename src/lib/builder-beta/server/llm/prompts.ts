@@ -3,23 +3,25 @@
  * Ported from builderbeta with import paths adapted for Next.js.
  */
 
-import { MODIFICATIONS_TAG_NAME, WORK_DIR } from '@/lib/builder-beta/utils/constants';
-import { allowedHTMLElements } from '@/lib/builder-beta/utils/markdown';
-import { stripIndents } from '@/lib/builder-beta/utils/stripIndent';
+import { WORK_DIR } from "@/lib/builder-beta/utils/constants";
+import { allowedHTMLElements } from "@/lib/builder-beta/utils/markdown";
+import { stripIndents } from "@/lib/builder-beta/utils/stripIndent";
 
 // Note: In Next.js we can't use Vite's ?raw import. We'll load this at build time.
 // For now, we inline the key parts and load the full prompt from file system at runtime.
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
 
-let SYSTEM_PROMPT_MD = '';
+let SYSTEM_PROMPT_MD = "";
 try {
   SYSTEM_PROMPT_MD = fs.readFileSync(
-    path.join(process.cwd(), 'src/lib/builder-beta/server/llm/systemprompt.md'),
-    'utf-8'
+    path.join(process.cwd(), "src/lib/builder-beta/server/llm/systemprompt.md"),
+    "utf-8",
   );
 } catch {
-  console.warn('[Builder Beta] Could not load systemprompt.md, using empty fallback');
+  console.warn(
+    "[Builder Beta] Could not load systemprompt.md, using empty fallback",
+  );
 }
 
 export interface PromptRuntimeContext {
@@ -30,33 +32,45 @@ export interface PromptRuntimeContext {
   browserExtensionName?: string;
 }
 
-function buildBrowserRuntimeDirective(runtimeContext?: PromptRuntimeContext): string {
+function buildBrowserRuntimeDirective(
+  runtimeContext?: PromptRuntimeContext,
+): string {
   const previewBaseUrls = Array.isArray(runtimeContext?.previewBaseUrls)
-    ? runtimeContext!.previewBaseUrls!
-        .map((url) => (typeof url === 'string' ? url.trim() : ''))
+    ? runtimeContext!
+        .previewBaseUrls!.map((url) =>
+          typeof url === "string" ? url.trim() : "",
+        )
         .filter((url): url is string => url.length > 0)
     : [];
 
   const hasBrowserServer = Boolean(runtimeContext?.browserServerUrl);
-  const hasExtensionBridge = Boolean(runtimeContext?.browserExtensionBridgeSessionId);
-  const extensionName = runtimeContext?.browserExtensionName?.trim() || 'Flare Browser agent';
+  const hasExtensionBridge = Boolean(
+    runtimeContext?.browserExtensionBridgeSessionId,
+  );
+  const extensionName =
+    runtimeContext?.browserExtensionName?.trim() || "Flare Browser agent";
 
-  if (!hasBrowserServer && !hasExtensionBridge && previewBaseUrls.length === 0) {
-    return '';
+  if (
+    !hasBrowserServer &&
+    !hasExtensionBridge &&
+    previewBaseUrls.length === 0
+  ) {
+    return "";
   }
 
-  const previewScopeList = previewBaseUrls.length > 0
-    ? previewBaseUrls.map((url) => `  - ${url}`).join('\n')
-    : '  - (none discovered yet)';
+  const previewScopeList =
+    previewBaseUrls.length > 0
+      ? previewBaseUrls.map((url) => `  - ${url}`).join("\n")
+      : "  - (none discovered yet)";
 
   return `
 <browser_runtime_context>
   Browser execution is available via extension bridge and/or backend browser server.
   Prefer the agentic 'browser' tool for real browser interactions instead of shell/browser simulation when user intent involves browsing, previews, navigation, or page interactions.
 
-  Browser extension bridge configured: ${hasExtensionBridge ? 'yes' : 'no'}
+  Browser extension bridge configured: ${hasExtensionBridge ? "yes" : "no"}
   Browser extension name: ${extensionName}
-  Browser server configured: ${hasBrowserServer ? 'yes' : 'no'}
+  Browser server configured: ${hasBrowserServer ? "yes" : "no"}
   Preview base URLs in scope:
 ${previewScopeList}
 
@@ -90,10 +104,14 @@ export const getSystemPrompt = (
   mode?: string,
   runtimeContext?: PromptRuntimeContext,
 ) => {
-  const isPlanning = mode === 'planning';
+  const isPlanning = mode === "planning";
 
-  const prefBlock = preferences ? `<user_preferences>\n${preferences}\n</user_preferences>` : '';
-  const htmlElements = allowedHTMLElements.map((tagName) => `<${tagName}>`).join(', ');
+  const prefBlock = preferences
+    ? `<user_preferences>\n${preferences}\n</user_preferences>`
+    : "";
+  const htmlElements = allowedHTMLElements
+    .map((tagName) => `<${tagName}>`)
+    .join(", ");
   const browserRuntimeDirective = buildBrowserRuntimeDirective(runtimeContext);
 
   const codebaseContextProtocol = `
