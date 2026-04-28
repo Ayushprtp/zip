@@ -730,7 +730,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     }
   }, [currentThread, state.files]);
 
-  const handleDeploy = useCallback(async () => {
+  const handleDeploy = useCallback(
+    async (target: "production" | "preview" = "production") => {
     if (!currentThread) return;
     // Open the deploy panel if not already open
     setShowDeployPanel(true);
@@ -770,6 +771,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
           }
         },
         isTempWorkspace, // Pass temp workspace flag for VERCEL_TEMP_TOKEN fallback
+        target,
       );
       setDeploymentUrl(result.url);
       toast.success("Deployment successful!");
@@ -812,7 +814,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       }
       toast.error(errorMessage);
     }
-  }, [currentThread, state.files, isTempWorkspace, repoConfig]);
+  },
+    [currentThread, state.files, isTempWorkspace, repoConfig],
+  );
 
   // ─── Transformed Messages ─────────────────────────────────────────────
   const transformedMessages = useMemo(

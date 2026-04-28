@@ -35,6 +35,7 @@ export class DeploymentService {
     template: string,
     onStatusUpdate?: (status: DeploymentStatus) => void,
     isTemporary?: boolean,
+    target: "production" | "preview" = "production",
   ): Promise<DeploymentResult> {
     try {
       if (!config.repoOwner || !config.repoName) {
@@ -62,6 +63,7 @@ export class DeploymentService {
           buildCommand: config.buildCommand,
           outputDirectory: config.outputDirectory || undefined,
           isTemporary,
+          target,
         }),
       });
 

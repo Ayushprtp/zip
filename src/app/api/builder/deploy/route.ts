@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
       framework,
       buildCommand,
       outputDirectory,
+      target,
     } = body as {
       repoOwner: string;
       repoName: string;
@@ -117,6 +118,7 @@ export async function POST(request: NextRequest) {
       buildCommand?: string;
       outputDirectory?: string;
       isTemporary?: boolean;
+      target?: "production" | "preview";
     };
 
     if (!repoOwner || !repoName) {
@@ -139,6 +141,7 @@ export async function POST(request: NextRequest) {
       framework,
       buildCommand,
       outputDirectory,
+      target: target || "production",
     });
 
     return NextResponse.json(result);
@@ -204,6 +207,7 @@ interface GitDeployOpts {
   framework?: string;
   buildCommand?: string;
   outputDirectory?: string;
+  target: "production" | "preview";
 }
 
 /**
@@ -220,6 +224,7 @@ async function deployViaGit(
 ): Promise<{
   deploymentId: string;
   status: string;
+  target: string;
   url: string | null;
   projectUrl: string;
 }> {
@@ -330,6 +335,7 @@ async function deployViaGit(
 
   const deployBody: Record<string, unknown> = {
     name: sanitizedName,
+    target: opts.target,
     gitSource: {
       type: "github",
       org: opts.repoOwner,
@@ -337,6 +343,8 @@ async function deployViaGit(
       ref: opts.branch,
     },
   };
+
+  console.log(`[Deploy] Target: ${opts.target}`);
 
   const deployResp = await fetch(`${VERCEL_API_URL}/v13/deployments`, {
     method: "POST",
@@ -378,6 +386,7 @@ async function deployViaGit(
   return {
     deploymentId,
     status: "building",
+    target: opts.target,
     url: predictedUrl,
     projectUrl: `https://vercel.com/${project.name}`,
   };

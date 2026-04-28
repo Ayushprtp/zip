@@ -40,6 +40,7 @@ import {
   Terminal,
   AlertTriangle,
   Link2,
+  ArrowUpCircle,
 } from "lucide-react";
 import type { DeploymentStatus } from "@/lib/builder/deployment-service";
 import { toast } from "sonner";
@@ -73,7 +74,7 @@ interface DeploymentPanelProps {
   projectName: string;
   isTemporary?: boolean;
   onClose: () => void;
-  onDeploy: () => void;
+  onDeploy: (target?: "production" | "preview") => void;
   deploymentStatus: DeploymentStatus | null;
   deploymentUrl?: string; // Production URL or current deploy URL
   deploymentError?: string;
@@ -109,6 +110,14 @@ export function DeploymentPanel({
 
   // Install App Prompt
   const [showInstallApp, setShowInstallApp] = useState(false);
+
+  // Deploy target
+  const [deployTarget, setDeployTarget] = useState<"production" | "preview">(
+    "production",
+  );
+
+  // Promote state
+  const [promotingId, setPromotingId] = useState<string | null>(null);
 
   // Environment Variables Manager
   const { state, actions } = useProject();
@@ -284,6 +293,40 @@ export function DeploymentPanel({
     }
   };
 
+  // ── Promote to Production ────────────────────────────────────────────
+
+  const handlePromote = async (deploymentId: string) => {
+    setPromotingId(deploymentId);
+    try {
+      const resp = await fetch("/api/builder/deploy/promote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          deploymentId,
+          projectName,
+          isTemporary,
+        }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to promote deployment");
+      }
+
+      const result = await resp.json();
+      toast.success("Promoted to production!", {
+        description: result.url,
+      });
+      await fetchHistory();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to promote",
+      );
+    } finally {
+      setPromotingId(null);
+    }
+  };
+
   // ── Domain Management ──────────────────────────────────────────────
 
   const handleAddDomain = async () => {
@@ -374,20 +417,35 @@ export function DeploymentPanel({
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
-        <Button
-          size="sm"
-          variant="default"
-          onClick={onDeploy}
-          disabled={isDeploying || isBuildActive}
-          className="h-7 gap-1.5 px-3"
-        >
-          {isBuildActive ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Rocket className="h-3.5 w-3.5" />
-          )}
-          {isBuildActive ? "Deploying..." : "Deploy"}
-        </Button>
+
+        {/* Deploy target selector + deploy button */}
+        <div className="flex items-center gap-0 border rounded-md overflow-hidden">
+          <select
+            value={deployTarget}
+            onChange={(e) =>
+              setDeployTarget(e.target.value as "production" | "preview")
+            }
+            className="h-7 text-xs bg-background border-none outline-none px-2 cursor-pointer"
+            disabled={isDeploying || isBuildActive}
+          >
+            <option value="production">Production</option>
+            <option value="preview">Preview</option>
+          </select>
+          <Button
+            size="sm"
+            variant="default"
+            onClick={() => onDeploy(deployTarget)}
+            disabled={isDeploying || isBuildActive}
+            className="h-7 gap-1.5 px-3 rounded-none border-l"
+          >
+            {isBuildActive ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Rocket className="h-3.5 w-3.5" />
+            )}
+            {isBuildActive ? "Deploying..." : "Deploy"}
+          </Button>
+        </div>
       </div>
 
       {/* Scrollable content */}
@@ -714,6 +772,8 @@ export function DeploymentPanel({
                     copied={copied}
                     onCopy={copyUrl}
                     onDelete={() => setDeleteConfirmId(d.id)}
+                    onPromote={handlePromote}
+                    isPromoting={promotingId === d.id}
                   />
                 ))}
               </div>
@@ -765,17 +825,22 @@ function DeploymentRow({
   copied,
   onCopy,
   onDelete,
+  onPromote,
+  isPromoting,
 }: {
   deployment: DeploymentRecord;
   copied: string | null;
   onCopy: (url: string) => void;
   onDelete: () => void;
+  onPromote?: (id: string) => void;
+  isPromoting?: boolean;
 }) {
   const isReady = deployment.state === "READY";
   const isError = deployment.state === "ERROR";
   const isBuilding =
     deployment.state === "BUILDING" || deployment.state === "QUEUED";
   const isProduction = deployment.target === "production";
+  const isPreview = !isProduction;
 
   const timeAgo = getTimeAgo(deployment.createdAt);
 
@@ -813,6 +878,14 @@ function DeploymentRow({
             className="h-4 text-[9px] px-1 text-green-500 border-green-500/30"
           >
             Production
+          </Badge>
+        )}
+        {isPreview && isReady && (
+          <Badge
+            variant="outline"
+            className="h-4 text-[9px] px-1 text-blue-400 border-blue-400/30"
+          >
+            Preview
           </Badge>
         )}
 
@@ -885,6 +958,24 @@ function DeploymentRow({
                 <ExternalLink className="h-2.5 w-2.5" />
               </Button>
             </>
+          )}
+
+          {/* Promote to Production button for ready preview deployments */}
+          {isReady && isPreview && onPromote && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-5 text-[10px] px-1.5 gap-1 text-blue-400 border-blue-400/30 hover:bg-blue-500/10"
+              onClick={() => onPromote(deployment.id)}
+              disabled={isPromoting}
+            >
+              {isPromoting ? (
+                <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              ) : (
+                <ArrowUpCircle className="h-2.5 w-2.5" />
+              )}
+              Promote
+            </Button>
           )}
 
           <Button
