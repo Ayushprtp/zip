@@ -373,7 +373,7 @@ export class GitHubAppService {
       parents: [latestSha],
       author: {
         name: "Flare Builder AI",
-        email: "ai@flare.sh",
+        email: "flare-sh@outlook.com",
         date: new Date().toISOString(),
       },
     });
@@ -457,7 +457,7 @@ export class GitHubAppService {
       parents: [ref.object.sha],
       author: {
         name: "Flare Builder AI",
-        email: "ai@flare.sh",
+        email: "flare-sh@outlook.com",
         date: new Date().toISOString(),
       },
     });

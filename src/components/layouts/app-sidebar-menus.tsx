@@ -24,6 +24,7 @@ import {
   PlusIcon,
   Waypoints,
   Code2,
+  FlaskConical,
 } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Skeleton } from "ui/skeleton";
@@ -109,6 +110,18 @@ export function AppSidebarMenus({ user }: { user?: BasicUser }) {
                 <SidebarMenuButton className="font-semibold">
                   <Code2 className="size-4" />
                   AI Builder
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          </Tooltip>
+        </SidebarMenu>
+        <SidebarMenu>
+          <Tooltip>
+            <SidebarMenuItem>
+              <Link href="/builder-beta">
+                <SidebarMenuButton className="font-semibold">
+                  <FlaskConical className="size-4" />
+                  Builder Beta
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>
