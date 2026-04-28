@@ -296,6 +296,11 @@ export class GitHubAppService {
     };
   }
 
+  // ─── Constants ───────────────────────────────────────────────────────
+
+  static readonly DEFAULT_AUTHOR_EMAIL = "flare-sh@outlook.com";
+  static readonly DEFAULT_AUTHOR_NAME = "Flare Builder AI";
+
   // ─── Git Operations (Commit & Push) ──────────────────────────────────
 
   /**
@@ -303,7 +308,8 @@ export class GitHubAppService {
    * This is the core operation used after AI generates code.
    *
    * Uses the Git Data API (tree + commit + ref update) for atomic commits.
-   * All commits are attributed to "Flare Builder AI" as the author.
+   * When authorEmail is provided (user-connected projects), commits are
+   * attributed to the user. Otherwise falls back to the Flare-SH default.
    */
   async commitFiles(
     installationId: number,
@@ -312,6 +318,7 @@ export class GitHubAppService {
     branch: string,
     files: CommitFileEntry[],
     message: string,
+    authorEmail?: string,
   ): Promise<CommitResult> {
     const octokit = await this.getInstallationOctokit(installationId);
 
@@ -372,8 +379,8 @@ export class GitHubAppService {
       tree: tree.sha,
       parents: [latestSha],
       author: {
-        name: "Flare Builder AI",
-        email: "flare-sh@outlook.com",
+        name: GitHubAppService.DEFAULT_AUTHOR_NAME,
+        email: authorEmail || GitHubAppService.DEFAULT_AUTHOR_EMAIL,
         date: new Date().toISOString(),
       },
     });
@@ -404,6 +411,7 @@ export class GitHubAppService {
     branch: string,
     filePaths: string[],
     message: string,
+    authorEmail?: string,
   ): Promise<CommitResult> {
     const octokit = await this.getInstallationOctokit(installationId);
 
@@ -456,8 +464,8 @@ export class GitHubAppService {
       tree: newTree.sha,
       parents: [ref.object.sha],
       author: {
-        name: "Flare Builder AI",
-        email: "flare-sh@outlook.com",
+        name: GitHubAppService.DEFAULT_AUTHOR_NAME,
+        email: authorEmail || GitHubAppService.DEFAULT_AUTHOR_EMAIL,
         date: new Date().toISOString(),
       },
     });

@@ -1,23 +1,49 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useStore } from "@nanostores/react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { generateUUID } from "lib/utils";
+import { motion } from "framer-motion";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import {
+  Sparkles,
+  Send,
+  Square,
+  Wand2,
+  FlaskConical,
+  CheckSquare,
+  Newspaper,
+  Gamepad2,
+  LayoutDashboard,
+} from "lucide-react";
+
+import { workbenchStore } from "@/lib/builder-beta/stores/workbench";
+import { selectedModelStore } from "@/lib/builder-beta/stores/model";
+import { activeMode, MODES, type NativeMode } from "@/lib/builder-beta/stores/modes";
+import { Messages } from "@/components/builder-beta/chat/Messages";
+import { Workbench } from "@/components/builder-beta/workbench/Workbench";
 
 /**
  * Builder Beta — Main Page
  *
- * This is the entry point for the Builder Beta system.
- * It provides an IDE-like chat interface with a workbench (editor, terminal, preview).
+ * Full IDE-like experience: Chat + Workbench (editor, terminal, preview).
+ * Uses Nanostores for workbench state, AI SDK v6 for chat.
  */
+
+const EXAMPLE_PROMPTS = [
+  { text: "Build a todo app in React using Tailwind", icon: CheckSquare },
+  { text: "Build a simple blog using Astro", icon: Newspaper },
+  { text: "Make a space invaders game", icon: Gamepad2 },
+  { text: "Create a dashboard with charts", icon: LayoutDashboard },
+];
 
 export default function BuilderBetaPage() {
   const [chatStarted, setChatStarted] = useState(false);
-  const [selectedModel, setSelectedModel] = useState(
-    "claude-sonnet-4-20250514",
-  );
-  const [currentMode, setCurrentMode] = useState<"auto" | "planning">("auto");
+  const selectedModel = useStore(selectedModelStore);
+  const currentMode = useStore(activeMode);
+  const showWorkbench = useStore(workbenchStore.showWorkbench);
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -36,26 +62,48 @@ export default function BuilderBetaPage() {
     },
   });
 
-  const isLoading = useMemo(
+  const isStreaming = useMemo(
     () => status === "streaming" || status === "submitted",
     [status],
   );
 
-  const handleSendMessage = useCallback(async () => {
-    if (input.trim().length === 0 || isLoading) return;
+  /** Extract text from UIMessage parts */
+  function getMessageText(msg: UIMessage): string {
+    return (msg.parts || [])
+      .filter((p) => p.type === "text")
+      .map((p) => (p as { type: "text"; text: string }).text)
+      .join("");
+  }
 
-    if (!chatStarted) {
-      setChatStarted(true);
-    }
+  /** Convert UIMessages to simple { role, content } for Messages component */
+  const simpleMessages = useMemo(
+    () =>
+      messages.map((m) => ({
+        role: m.role,
+        content: getMessageText(m),
+      })),
+    [messages],
+  );
 
-    sendMessage({
-      role: "user",
-      parts: [{ type: "text", text: input }],
-    });
+  const handleSendMessage = useCallback(
+    async (_event?: React.UIEvent, messageInput?: string) => {
+      const text = messageInput || input.trim();
+      if (text.length === 0 || isStreaming) return;
 
-    setInput("");
-    textareaRef.current?.blur();
-  }, [input, isLoading, chatStarted, sendMessage]);
+      if (!chatStarted) {
+        setChatStarted(true);
+      }
+
+      sendMessage({
+        role: "user",
+        parts: [{ type: "text", text }],
+      });
+
+      setInput("");
+      textareaRef.current?.blur();
+    },
+    [input, isStreaming, chatStarted, sendMessage],
+  );
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -73,72 +121,58 @@ export default function BuilderBetaPage() {
     if (textarea) {
       textarea.style.height = "auto";
       const scrollHeight = textarea.scrollHeight;
-      textarea.style.height = `${Math.min(scrollHeight, 400)}px`;
-      textarea.style.overflowY = scrollHeight > 400 ? "auto" : "hidden";
+      const maxH = chatStarted ? 400 : 200;
+      textarea.style.height = `${Math.min(scrollHeight, maxH)}px`;
+      textarea.style.overflowY = scrollHeight > maxH ? "auto" : "hidden";
     }
-  }, [input]);
+  }, [input, chatStarted]);
 
-  // Auto-scroll to bottom
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  /** Extract text from a UIMessage's parts */
-  function getMessageText(message: UIMessage): string {
-    return (message.parts || [])
-      .filter((p) => p.type === "text")
-      .map((p) => (p as { type: "text"; text: string }).text)
-      .join("");
-  }
-
   return (
-    <div className="flex flex-col h-full w-full bg-zinc-950">
-      {/* Header Bar */}
-      <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
+    <div className="flex flex-col h-full w-full bg-zinc-950 relative">
+      {/* Header */}
+      <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800 bg-zinc-900/80 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">β</span>
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-fuchsia-500 flex items-center justify-center shadow-lg shadow-violet-500/20">
+              <FlaskConical className="w-4 h-4 text-white" />
             </div>
             <h1 className="text-sm font-semibold text-zinc-100">
               Builder Beta
             </h1>
           </div>
-          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-medium">
+          <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 font-medium">
             Preview
           </span>
         </div>
 
         <div className="flex items-center gap-3">
           {/* Mode Toggle */}
-          <div className="flex items-center gap-1 bg-zinc-800 rounded-lg p-0.5">
-            <button
-              onClick={() => setCurrentMode("auto")}
-              className={`px-3 py-1 text-xs rounded-md transition-all ${
-                currentMode === "auto"
-                  ? "bg-violet-600 text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              Auto
-            </button>
-            <button
-              onClick={() => setCurrentMode("planning")}
-              className={`px-3 py-1 text-xs rounded-md transition-all ${
-                currentMode === "planning"
-                  ? "bg-violet-600 text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              Plan
-            </button>
+          <div className="flex items-center gap-0.5 bg-zinc-800 rounded-full p-0.5 border border-zinc-700/50">
+            {Object.entries(MODES).map(([key, m]) => (
+              <button
+                key={key}
+                onClick={() => activeMode.set(key as NativeMode)}
+                className={`px-3 py-1 text-[11px] rounded-full transition-all font-medium ${
+                  currentMode === key
+                    ? "bg-violet-500/20 text-violet-300 ring-1 ring-violet-500/40"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                {m.label.replace(" Mode", "")}
+              </button>
+            ))}
           </div>
 
           {/* Model Selector */}
           <select
             value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="bg-zinc-800 text-zinc-300 text-xs rounded-lg px-2 py-1.5 border border-zinc-700 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            onChange={(e) => selectedModelStore.set(e.target.value)}
+            className="bg-zinc-800 text-zinc-300 text-xs rounded-lg px-2.5 py-1.5 border border-zinc-700 focus:outline-none focus:ring-1 focus:ring-violet-500 cursor-pointer"
           >
             <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
             <option value="claude-3-5-sonnet-20240620">
@@ -148,168 +182,188 @@ export default function BuilderBetaPage() {
             <option value="gpt-4o-mini">GPT-4o Mini</option>
             <option value="deepseek-chat">DeepSeek Chat</option>
           </select>
+
+          {/* Workbench Toggle */}
+          {chatStarted && (
+            <button
+              onClick={() =>
+                workbenchStore.showWorkbench.set(!showWorkbench)
+              }
+              className={`px-3 py-1.5 text-xs rounded-lg transition-all font-medium ${
+                showWorkbench
+                  ? "bg-violet-600 text-white"
+                  : "bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700"
+              }`}
+            >
+              {showWorkbench ? "Hide" : "Show"} Workbench
+            </button>
+          )}
         </div>
       </header>
 
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Chat Panel */}
-        <div className="flex flex-col w-full max-w-4xl mx-auto">
-          {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div
+          className={`flex flex-col h-full transition-all duration-300 ${
+            showWorkbench ? "w-[40%]" : "w-full"
+          }`}
+        >
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto">
             {!chatStarted && messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full gap-6">
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-                  <span className="text-white text-2xl font-bold">β</span>
-                </div>
-                <div className="text-center">
-                  <h2 className="text-2xl font-semibold text-zinc-100 mb-2">
-                    Builder Beta
-                  </h2>
-                  <p className="text-zinc-400 text-sm max-w-md">
-                    An advanced AI coding environment with agentic capabilities,
-                    real-time code editing, terminal access, and browser preview.
-                  </p>
-                </div>
-
-                {/* Quick Start Examples */}
-                <div className="grid grid-cols-2 gap-3 max-w-lg w-full mt-4">
-                  {[
-                    "Build a full-stack Next.js app with auth",
-                    "Create a real-time chat application",
-                    "Design a dashboard with charts",
-                    "Build a REST API with Express",
-                  ].map((example) => (
-                    <button
-                      key={example}
-                      onClick={() => {
-                        setInput(example);
-                        textareaRef.current?.focus();
-                      }}
-                      className="p-3 text-left text-xs text-zinc-400 bg-zinc-800/50 hover:bg-zinc-800 rounded-xl border border-zinc-700/50 hover:border-violet-500/30 transition-all"
-                    >
-                      {example}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
+              <motion.div
+                className="flex flex-col items-center justify-center h-full"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
               >
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 text-sm ${
-                    message.role === "user"
-                      ? "bg-violet-600 text-white"
-                      : "bg-zinc-800 text-zinc-200 border border-zinc-700/50"
-                  }`}
+                <motion.div
+                  className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-600 flex items-center justify-center shadow-xl shadow-violet-500/25 mb-6"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ duration: 0.5, delay: 0.2 }}
                 >
-                  <pre className="whitespace-pre-wrap font-sans">
-                    {getMessageText(message)}
-                  </pre>
-                </div>
-              </div>
-            ))}
-
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-zinc-800 text-zinc-400 rounded-xl px-4 py-3 text-sm border border-zinc-700/50">
-                  <div className="flex items-center gap-2">
-                    <div className="flex gap-1">
-                      <span
-                        className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "0ms" }}
-                      />
-                      <span
-                        className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "150ms" }}
-                      />
-                      <span
-                        className="w-1.5 h-1.5 bg-violet-400 rounded-full animate-bounce"
-                        style={{ animationDelay: "300ms" }}
-                      />
-                    </div>
-                    <span>Generating...</span>
-                  </div>
-                </div>
-              </div>
+                  <FlaskConical className="w-8 h-8 text-white" />
+                </motion.div>
+                <motion.h2
+                  className="text-4xl font-bold text-white mb-2 tracking-tight"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                >
+                  Ignite your vision.
+                </motion.h2>
+                <motion.p
+                  className="text-zinc-500 text-base font-medium mb-8"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: 0.6 }}
+                >
+                  The state-of-the-art AI workspace for creators and
+                  developers.
+                </motion.p>
+              </motion.div>
             )}
 
+            {chatStarted && (
+              <Messages
+                className="max-w-4xl mx-auto px-4 py-6"
+                messages={simpleMessages}
+                isStreaming={isStreaming}
+              />
+            )}
             <div ref={messagesEndRef} />
           </div>
 
           {/* Input Area */}
-          <div className="p-4 border-t border-zinc-800">
-            <div className="relative flex items-end gap-2 bg-zinc-800/50 rounded-xl border border-zinc-700/50 focus-within:border-violet-500/50 transition-colors">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Describe what you want to build..."
-                rows={1}
-                className="flex-1 bg-transparent text-zinc-100 text-sm px-4 py-3 resize-none focus:outline-none placeholder:text-zinc-500"
-              />
-              <div className="flex items-center gap-1 px-2 pb-2">
-                {isLoading ? (
-                  <button
-                    onClick={() => stop()}
-                    className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                    title="Stop generating"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
+          <div className="px-4 pb-4">
+            <div
+              className={`relative max-w-4xl mx-auto ${
+                showWorkbench ? "max-w-full" : ""
+              }`}
+            >
+              <motion.div
+                className="rounded-2xl overflow-hidden border border-zinc-700/50 bg-zinc-800/30 backdrop-blur-sm shadow-2xl focus-within:border-violet-500/40 focus-within:ring-1 focus-within:ring-violet-500/20 transition-all"
+                initial={!chatStarted ? { opacity: 0, y: 20 } : false}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.8 }}
+              >
+                <textarea
+                  ref={textareaRef}
+                  className="w-full pl-4 pt-4 pr-16 focus:outline-none resize-none text-sm text-white placeholder-zinc-500 bg-transparent"
+                  onKeyDown={handleKeyDown}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  style={{ minHeight: 76, maxHeight: chatStarted ? 400 : 200 }}
+                  placeholder="How can Builder Beta help you today?"
+                  translate="no"
+                />
+                <div className="flex justify-between items-center text-sm p-3 pt-1">
+                  <div className="flex items-center gap-2">
+                    <button
+                      disabled={input.length === 0}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg text-zinc-500 hover:text-violet-300 hover:bg-violet-500/10 disabled:opacity-30 transition-all text-xs"
+                      title="Enhance prompt"
                     >
-                      <rect x="6" y="6" width="12" height="12" rx="1" />
-                    </svg>
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={input.trim().length === 0}
-                    className="p-2 rounded-lg bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    title="Send message"
-                  >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 19V5m0 0l-7 7m7-7l7 7"
-                      />
-                    </svg>
-                  </button>
-                )}
+                      <Wand2 className="w-3.5 h-3.5" />
+                      <span>Enhance</span>
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isStreaming ? (
+                      <button
+                        onClick={() => stop()}
+                        className="p-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                        title="Stop generating"
+                      >
+                        <Square className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => handleSendMessage()}
+                        disabled={input.trim().length === 0}
+                        className="p-2 rounded-lg bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors shadow-lg shadow-violet-500/20"
+                        title="Send message"
+                      >
+                        <Send className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Example Prompts */}
+              {!chatStarted && (
+                <motion.div
+                  className="flex flex-col items-center mt-6 gap-2"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.6, delay: 1.0 }}
+                >
+                  {EXAMPLE_PROMPTS.map((prompt, index) => {
+                    const Icon = prompt.icon;
+                    return (
+                      <motion.button
+                        key={index}
+                        onClick={() => handleSendMessage(undefined, prompt.text)}
+                        className="group flex items-center gap-3 text-zinc-500 hover:text-zinc-200 transition-all duration-200 text-sm"
+                        initial={{ opacity: 0, x: -10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{
+                          duration: 0.3,
+                          delay: 1.0 + index * 0.08,
+                        }}
+                        whileHover={{ x: 4 }}
+                      >
+                        <Icon className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+                        {prompt.text}
+                      </motion.button>
+                    );
+                  })}
+                </motion.div>
+              )}
+
+              <div className="flex items-center justify-between mt-2 px-1">
+                <p className="text-[10px] text-zinc-600">
+                  Press{" "}
+                  <kbd className="px-1 py-0.5 bg-zinc-800 rounded text-zinc-500 text-[10px]">
+                    Enter
+                  </kbd>{" "}
+                  to send,{" "}
+                  <kbd className="px-1 py-0.5 bg-zinc-800 rounded text-zinc-500 text-[10px]">
+                    Shift+Enter
+                  </kbd>{" "}
+                  for new line
+                </p>
+                <p className="text-[10px] text-zinc-700">Builder Beta v0.1</p>
               </div>
-            </div>
-            <div className="flex items-center justify-between mt-2 px-1">
-              <p className="text-xs text-zinc-500">
-                Press{" "}
-                <kbd className="px-1 py-0.5 bg-zinc-800 rounded text-zinc-400">
-                  Enter
-                </kbd>{" "}
-                to send,{" "}
-                <kbd className="px-1 py-0.5 bg-zinc-800 rounded text-zinc-400">
-                  Shift+Enter
-                </kbd>{" "}
-                for new line
-              </p>
-              <p className="text-xs text-zinc-600">Builder Beta v0.1</p>
             </div>
           </div>
         </div>
+
+        {/* Workbench */}
+        <Workbench chatStarted={chatStarted} isStreaming={isStreaming} />
       </div>
     </div>
   );
