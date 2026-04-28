@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Flare.new Help Center
+    url: https://support.flare.tech
+    about: Official central repository for tips, tricks, tutorials, known issues, and best practices for flare.tech usage.
+  - name: Billing Issues
+    url: https://support.flare.tech/Billing-13fd971055d680ebb393cb80973710b6
+    about: Instructions for billing and subscription related support
+  - name: Discord Chat
+    url: https://discord.gg/stackblitz
+    about: Build, share, and learn with other Flare-SHers in real time.

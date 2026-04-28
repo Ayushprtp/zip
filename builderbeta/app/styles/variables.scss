@@ -1,0 +1,251 @@
+/* Color Tokens Light Theme */
+:root,
+:root[data-theme='light'] {
+  --flare-elements-borderColor: theme('colors.alpha.gray.10');
+  --flare-elements-borderColorActive: theme('colors.accent.600');
+
+  --flare-elements-bg-depth-1: theme('colors.white');
+  --flare-elements-bg-depth-2: theme('colors.gray.50');
+  --flare-elements-bg-depth-3: theme('colors.gray.200');
+  --flare-elements-bg-depth-4: theme('colors.alpha.gray.5');
+
+  --flare-elements-textPrimary: theme('colors.gray.950');
+  --flare-elements-textSecondary: theme('colors.gray.600');
+  --flare-elements-textTertiary: theme('colors.gray.500');
+
+  --flare-elements-code-background: theme('colors.gray.100');
+  --flare-elements-code-text: theme('colors.gray.950');
+
+  --flare-elements-button-primary-background: theme('colors.alpha.accent.10');
+  --flare-elements-button-primary-backgroundHover: theme('colors.alpha.accent.20');
+  --flare-elements-button-primary-text: theme('colors.accent.500');
+
+  --flare-elements-button-secondary-background: theme('colors.alpha.gray.5');
+  --flare-elements-button-secondary-backgroundHover: theme('colors.alpha.gray.10');
+  --flare-elements-button-secondary-text: theme('colors.gray.950');
+
+  --flare-elements-button-danger-background: theme('colors.alpha.red.10');
+  --flare-elements-button-danger-backgroundHover: theme('colors.alpha.red.20');
+  --flare-elements-button-danger-text: theme('colors.red.500');
+
+  --flare-elements-item-contentDefault: theme('colors.alpha.gray.50');
+  --flare-elements-item-contentActive: theme('colors.gray.950');
+  --flare-elements-item-contentAccent: theme('colors.accent.700');
+  --flare-elements-item-contentDanger: theme('colors.red.500');
+  --flare-elements-item-backgroundDefault: rgba(0, 0, 0, 0);
+  --flare-elements-item-backgroundActive: theme('colors.alpha.gray.5');
+  --flare-elements-item-backgroundAccent: theme('colors.alpha.accent.10');
+  --flare-elements-item-backgroundDanger: theme('colors.alpha.red.10');
+
+  --flare-elements-loader-background: theme('colors.alpha.gray.10');
+  --flare-elements-loader-progress: theme('colors.accent.500');
+
+  --flare-elements-artifacts-background: theme('colors.white');
+  --flare-elements-artifacts-backgroundHover: theme('colors.alpha.gray.2');
+  --flare-elements-artifacts-borderColor: var(--flare-elements-borderColor);
+  --flare-elements-artifacts-inlineCode-background: theme('colors.gray.100');
+  --flare-elements-artifacts-inlineCode-text: var(--flare-elements-textPrimary);
+
+  --flare-elements-actions-background: theme('colors.white');
+  --flare-elements-actions-code-background: theme('colors.gray.800');
+
+  --flare-elements-messages-background: theme('colors.gray.100');
+  --flare-elements-messages-linkColor: theme('colors.accent.500');
+  --flare-elements-messages-code-background: theme('colors.gray.800');
+  --flare-elements-messages-inlineCode-background: theme('colors.gray.200');
+  --flare-elements-messages-inlineCode-text: theme('colors.gray.800');
+
+  --flare-elements-icon-success: theme('colors.green.500');
+  --flare-elements-icon-error: theme('colors.red.500');
+  --flare-elements-icon-primary: theme('colors.gray.950');
+  --flare-elements-icon-secondary: theme('colors.gray.600');
+  --flare-elements-icon-tertiary: theme('colors.gray.500');
+
+  --flare-elements-dividerColor: theme('colors.gray.100');
+
+  --flare-elements-prompt-background: theme('colors.alpha.white.80');
+
+  --flare-elements-sidebar-dropdownShadow: theme('colors.alpha.gray.10');
+  --flare-elements-sidebar-buttonBackgroundDefault: theme('colors.alpha.accent.10');
+  --flare-elements-sidebar-buttonBackgroundHover: theme('colors.alpha.accent.20');
+  --flare-elements-sidebar-buttonText: theme('colors.accent.700');
+
+  --flare-elements-preview-addressBar-background: theme('colors.gray.100');
+  --flare-elements-preview-addressBar-backgroundHover: theme('colors.alpha.gray.5');
+  --flare-elements-preview-addressBar-backgroundActive: theme('colors.white');
+  --flare-elements-preview-addressBar-text: var(--flare-elements-textSecondary);
+  --flare-elements-preview-addressBar-textActive: var(--flare-elements-textPrimary);
+
+  --flare-elements-terminals-background: theme('colors.white');
+  --flare-elements-terminals-buttonBackground: var(--flare-elements-bg-depth-4);
+
+  --flare-elements-cta-background: theme('colors.gray.100');
+  --flare-elements-cta-text: theme('colors.gray.950');
+
+  /* Terminal Colors */
+  --flare-terminal-background: var(--flare-elements-terminals-background);
+  --flare-terminal-foreground: #333333;
+  --flare-terminal-selection-background: #00000040;
+  --flare-terminal-black: #000000;
+  --flare-terminal-red: #cd3131;
+  --flare-terminal-green: #00bc00;
+  --flare-terminal-yellow: #949800;
+  --flare-terminal-blue: #0451a5;
+  --flare-terminal-magenta: #bc05bc;
+  --flare-terminal-cyan: #0598bc;
+  --flare-terminal-white: #555555;
+  --flare-terminal-brightBlack: #686868;
+  --flare-terminal-brightRed: #cd3131;
+  --flare-terminal-brightGreen: #00bc00;
+  --flare-terminal-brightYellow: #949800;
+  --flare-terminal-brightBlue: #0451a5;
+  --flare-terminal-brightMagenta: #bc05bc;
+  --flare-terminal-brightCyan: #0598bc;
+  --flare-terminal-brightWhite: #a5a5a5;
+}
+
+/* Color Tokens Dark Theme */
+:root,
+:root[data-theme='dark'] {
+  --flare-elements-borderColor: rgba(113, 113, 122, 0.2);
+  --flare-elements-borderColorActive: #ffffff;
+
+  --flare-elements-bg-depth-1: #000000;
+  --flare-elements-bg-depth-2: #09090b;
+  --flare-elements-bg-depth-3: #18181b;
+  --flare-elements-bg-depth-4: rgba(255, 255, 255, 0.02);
+
+  --flare-elements-textPrimary: #fafafa;
+  --flare-elements-textSecondary: #71717a;
+  --flare-elements-textTertiary: #52525b;
+
+  --flare-elements-code-background: #09090b;
+  --flare-elements-code-text: #fafafa;
+
+  --flare-elements-button-primary-background: #ffffff;
+  --flare-elements-button-primary-backgroundHover: #e4e4e7;
+  --flare-elements-button-primary-text: #000000;
+
+  --flare-elements-button-secondary-background: rgba(113, 113, 122, 0.1);
+  --flare-elements-button-secondary-backgroundHover: rgba(113, 113, 122, 0.2);
+  --flare-elements-button-secondary-text: #fafafa;
+
+  --flare-elements-button-danger-background: rgba(239, 68, 68, 0.1);
+  --flare-elements-button-danger-backgroundHover: rgba(239, 68, 68, 0.2);
+  --flare-elements-button-danger-text: #ef4444;
+
+  --flare-elements-item-contentDefault: rgba(250, 250, 250, 0.7);
+  --flare-elements-item-contentActive: #ffffff;
+  --flare-elements-item-contentAccent: #ffffff;
+  --flare-elements-item-contentDanger: #ef4444;
+  --flare-elements-item-backgroundDefault: transparent;
+  --flare-elements-item-backgroundActive: rgba(255, 255, 255, 0.04);
+  --flare-elements-item-backgroundAccent: rgba(255, 255, 255, 0.06);
+  --flare-elements-item-backgroundDanger: rgba(239, 68, 68, 0.1);
+
+  --flare-elements-loader-background: rgba(255, 255, 255, 0.02);
+  --flare-elements-loader-progress: #ffffff;
+
+  --flare-elements-artifacts-background: #09090b;
+  --flare-elements-artifacts-backgroundHover: #18181b;
+  --flare-elements-artifacts-borderColor: rgba(113, 113, 122, 0.3);
+  --flare-elements-artifacts-inlineCode-background: #18181b;
+  --flare-elements-artifacts-inlineCode-text: #fafafa;
+
+  --flare-elements-actions-background: #000000;
+  --flare-elements-actions-code-background: #09090b;
+
+  --flare-elements-messages-background: #09090b;
+  --flare-elements-messages-linkColor: #ffffff;
+  --flare-elements-messages-code-background: #000000;
+  --flare-elements-messages-inlineCode-background: #27272a;
+  --flare-elements-messages-inlineCode-text: #fafafa;
+
+  --flare-elements-icon-success: theme('colors.green.400');
+  --flare-elements-icon-error: theme('colors.red.400');
+  --flare-elements-icon-primary: theme('colors.gray.950');
+  --flare-elements-icon-secondary: theme('colors.gray.600');
+  --flare-elements-icon-tertiary: theme('colors.gray.500');
+
+  --flare-elements-dividerColor: theme('colors.gray.100');
+
+  --flare-elements-prompt-background: theme('colors.alpha.gray.80');
+
+  --flare-elements-sidebar-dropdownShadow: theme('colors.alpha.gray.30');
+  --flare-elements-sidebar-buttonBackgroundDefault: theme('colors.alpha.accent.10');
+  --flare-elements-sidebar-buttonBackgroundHover: theme('colors.alpha.accent.20');
+  --flare-elements-sidebar-buttonText: theme('colors.accent.500');
+
+  --flare-elements-preview-addressBar-background: var(--flare-elements-bg-depth-1);
+  --flare-elements-preview-addressBar-backgroundHover: theme('colors.alpha.white.5');
+  --flare-elements-preview-addressBar-backgroundActive: var(--flare-elements-bg-depth-1);
+  --flare-elements-preview-addressBar-text: var(--flare-elements-textSecondary);
+  --flare-elements-preview-addressBar-textActive: var(--flare-elements-textPrimary);
+
+  --flare-elements-terminals-background: var(--flare-elements-bg-depth-1);
+  --flare-elements-terminals-buttonBackground: var(--flare-elements-bg-depth-3);
+
+  --flare-elements-cta-background: theme('colors.alpha.white.10');
+  --flare-elements-cta-text: theme('colors.white');
+
+  /* Terminal Colors */
+  --flare-terminal-background: var(--flare-elements-terminals-background);
+  --flare-terminal-foreground: #eff0eb;
+  --flare-terminal-selection-background: #97979b33;
+  --flare-terminal-black: #000000;
+  --flare-terminal-red: #ff5c57;
+  --flare-terminal-green: #5af78e;
+  --flare-terminal-yellow: #f3f99d;
+  --flare-terminal-blue: #57c7ff;
+  --flare-terminal-magenta: #ff6ac1;
+  --flare-terminal-cyan: #9aedfe;
+  --flare-terminal-white: #f1f1f0;
+  --flare-terminal-brightBlack: #686868;
+  --flare-terminal-brightRed: #ff5c57;
+  --flare-terminal-brightGreen: #5af78e;
+  --flare-terminal-brightYellow: #f3f99d;
+  --flare-terminal-brightBlue: #57c7ff;
+  --flare-terminal-brightMagenta: #ff6ac1;
+  --flare-terminal-brightCyan: #9aedfe;
+  --flare-terminal-brightWhite: #f1f1f0;
+}
+
+/*
+ * Element Tokens
+ *
+ * Hierarchy: Element Token -> (Element Token | Color Tokens) -> Primitives
+ */
+:root {
+  --header-height: 54px;
+  --chat-max-width: 37rem;
+  --chat-min-width: 640px;
+  --workbench-width: min(calc(100% - var(--chat-min-width)), 1536px);
+  --workbench-inner-width: var(--workbench-width);
+  --workbench-left: calc(100% - var(--workbench-width));
+
+  /* Toasts */
+  --toastify-color-progress-success: var(--flare-elements-icon-success);
+  --toastify-color-progress-error: var(--flare-elements-icon-error);
+
+  /* Terminal */
+  --flare-elements-terminal-backgroundColor: var(--flare-terminal-background);
+  --flare-elements-terminal-textColor: var(--flare-terminal-foreground);
+  --flare-elements-terminal-cursorColor: var(--flare-terminal-foreground);
+  --flare-elements-terminal-selection-backgroundColor: var(--flare-terminal-selection-background);
+  --flare-elements-terminal-color-black: var(--flare-terminal-black);
+  --flare-elements-terminal-color-red: var(--flare-terminal-red);
+  --flare-elements-terminal-color-green: var(--flare-terminal-green);
+  --flare-elements-terminal-color-yellow: var(--flare-terminal-yellow);
+  --flare-elements-terminal-color-blue: var(--flare-terminal-blue);
+  --flare-elements-terminal-color-magenta: var(--flare-terminal-magenta);
+  --flare-elements-terminal-color-cyan: var(--flare-terminal-cyan);
+  --flare-elements-terminal-color-white: var(--flare-terminal-white);
+  --flare-elements-terminal-color-brightBlack: var(--flare-terminal-brightBlack);
+  --flare-elements-terminal-color-brightRed: var(--flare-terminal-brightRed);
+  --flare-elements-terminal-color-brightGreen: var(--flare-terminal-brightGreen);
+  --flare-elements-terminal-color-brightYellow: var(--flare-terminal-brightYellow);
+  --flare-elements-terminal-color-brightBlue: var(--flare-terminal-brightBlue);
+  --flare-elements-terminal-color-brightMagenta: var(--flare-terminal-brightMagenta);
+  --flare-elements-terminal-color-brightCyan: var(--flare-terminal-brightCyan);
+  --flare-elements-terminal-color-brightWhite: var(--flare-terminal-brightWhite);
+}

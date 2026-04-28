@@ -1,0 +1,224 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const {
+  mockSpawnRuntimeAgent,
+  mockResumeRuntimeAgent,
+  mockAbortRuntimeExecution,
+  mockGetRuntimeAgentState,
+  mockHasRuntimeAgentContinuation,
+  mockGetRuntimeAgentContinuation,
+  mockListRegisteredAgents,
+  mockListRuntimeAgentStates,
+  mockListRuntimeEventsSnapshot,
+} = vi.hoisted(() => ({
+  mockSpawnRuntimeAgent: vi.fn(),
+  mockResumeRuntimeAgent: vi.fn(),
+  mockAbortRuntimeExecution: vi.fn(),
+  mockGetRuntimeAgentState: vi.fn(),
+  mockHasRuntimeAgentContinuation: vi.fn(),
+  mockGetRuntimeAgentContinuation: vi.fn(),
+  mockListRegisteredAgents: vi.fn(),
+  mockListRuntimeAgentStates: vi.fn(),
+  mockListRuntimeEventsSnapshot: vi.fn(),
+}));
+
+vi.mock('@remix-run/cloudflare', () => ({
+  json: (data: unknown, init?: number | ResponseInit) =>
+    new Response(JSON.stringify(data), {
+      status: typeof init === 'number' ? init : init?.status || 200,
+      headers: { 'content-type': 'application/json' },
+    }),
+}));
+
+vi.mock('~/lib/.server/agent-runtime/orchestrator', () => ({
+  abortRuntimeExecution: mockAbortRuntimeExecution,
+  getRuntimeAgentContinuation: mockGetRuntimeAgentContinuation,
+  getRuntimeAgentState: mockGetRuntimeAgentState,
+  hasRuntimeAgentContinuation: mockHasRuntimeAgentContinuation,
+  listRegisteredAgents: mockListRegisteredAgents,
+  listRuntimeAgentStates: mockListRuntimeAgentStates,
+  listRuntimeEventsSnapshot: mockListRuntimeEventsSnapshot,
+  spawnRuntimeAgent: mockSpawnRuntimeAgent,
+  resumeRuntimeAgent: mockResumeRuntimeAgent,
+}));
+
+import { action, loader } from '~/routes/api.agents';
+
+function createLoaderArgs(url: string) {
+  return {
+    request: new Request(url),
+    context: {},
+    params: {},
+  } as any;
+}
+
+function createActionArgs(body: unknown, method = 'POST', env: Record<string, unknown> = {}) {
+  return {
+    request: new Request('http://localhost/api/agents', {
+      method,
+      headers: { 'content-type': 'application/json' },
+      body: method === 'POST' ? JSON.stringify(body) : undefined,
+    }),
+    context: {
+      cloudflare: {
+        env,
+      },
+    },
+    params: {},
+  } as any;
+}
+
+async function parseJson(response: Response): Promise<any> {
+  return response.json();
+}
+
+describe('api.agents route', () => {
+  beforeEach(() => {
+    mockSpawnRuntimeAgent.mockReset();
+    mockResumeRuntimeAgent.mockReset();
+    mockAbortRuntimeExecution.mockReset();
+    mockGetRuntimeAgentState.mockReset();
+    mockHasRuntimeAgentContinuation.mockReset();
+    mockGetRuntimeAgentContinuation.mockReset();
+    mockListRegisteredAgents.mockReset();
+    mockListRuntimeAgentStates.mockReset();
+    mockListRuntimeEventsSnapshot.mockReset();
+  });
+
+  it('spawns browser agent with server runtime overrides', async () => {
+    mockSpawnRuntimeAgent.mockResolvedValue({
+      sessionId: 'sess-agent-1',
+      queued: false,
+      task: {
+        id: 'task-agent-1',
+        sessionId: 'sess-agent-1',
+        kind: 'agent',
+        status: 'completed',
+        output: [],
+      },
+      data: {
+        id: 'agent-browser-1',
+        agentType: 'browser',
+        status: 'completed',
+      },
+    });
+
+    const response = await action(
+      createActionArgs({
+        action: 'spawn',
+        sessionId: 'sess-agent-1',
+        agentType: 'browser',
+        prompt: 'Visit preview and summarize errors',
+        browserServerUrl: 'https://browser.vps.local',
+        browserServerApiKey: 'secret-token',
+        previewBaseUrls: ['https://preview.local/app', 'https://preview.local/docs'],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await parseJson(response);
+    expect(json.success).toBe(true);
+    expect(json.sessionId).toBe('sess-agent-1');
+    expect(json.task.id).toBe('task-agent-1');
+
+    expect(mockSpawnRuntimeAgent).toHaveBeenCalledTimes(1);
+    expect(mockSpawnRuntimeAgent.mock.calls[0][0]).toMatchObject({
+      sessionId: 'sess-agent-1',
+      agentType: 'browser',
+      prompt: 'Visit preview and summarize errors',
+    });
+
+    expect(mockSpawnRuntimeAgent.mock.calls[0][1]).toMatchObject({
+      browserServerUrl: 'https://browser.vps.local',
+      browserServerApiKey: 'secret-token',
+      previewBaseUrls: ['https://preview.local/app', 'https://preview.local/docs'],
+    });
+  });
+
+  it('resumes paused browser agent using env-based browser runtime config', async () => {
+    mockResumeRuntimeAgent.mockResolvedValue({
+      sessionId: 'sess-agent-2',
+      queued: false,
+      task: {
+        id: 'task-agent-2',
+        sessionId: 'sess-agent-2',
+        kind: 'agent',
+        status: 'completed',
+        output: [],
+      },
+      data: {
+        id: 'agent-browser-2',
+        agentType: 'browser',
+        status: 'completed',
+      },
+    });
+
+    const response = await action(
+      createActionArgs(
+        {
+          action: 'resume',
+          sessionId: 'sess-agent-2',
+          agentId: 'agent-browser-2',
+          message: 'Approved origin for this session',
+        },
+        'POST',
+        {
+          BROWSER_SERVER_URL: 'https://browser.env.local',
+          BROWSER_SERVER_API_KEY: 'env-key',
+          BROWSER_PREVIEW_BASE_URLS: 'https://preview.env.local/a, https://preview.env.local/b',
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await parseJson(response);
+    expect(json.success).toBe(true);
+    expect(json.task.id).toBe('task-agent-2');
+
+    expect(mockResumeRuntimeAgent).toHaveBeenCalledTimes(1);
+    expect(mockResumeRuntimeAgent.mock.calls[0][0]).toMatchObject({
+      sessionId: 'sess-agent-2',
+      agentId: 'agent-browser-2',
+      message: 'Approved origin for this session',
+    });
+
+    expect(mockResumeRuntimeAgent.mock.calls[0][1]).toMatchObject({
+      browserServerUrl: 'https://browser.env.local',
+      browserServerApiKey: 'env-key',
+      previewBaseUrls: ['https://preview.env.local/a', 'https://preview.env.local/b'],
+    });
+  });
+
+  it('returns runtime events from loader action=events', async () => {
+    mockListRuntimeEventsSnapshot.mockReturnValue([
+      { id: 'evt-1', type: 'runtime:agent_started' },
+      {
+        id: 'evt-2',
+        type: 'runtime:agent_tool_start',
+        data: { type: 'agent:tool_start', toolCall: { toolName: 'browser' } },
+      },
+      {
+        id: 'evt-3',
+        type: 'runtime:tool_progress',
+        data: { toolName: 'browser', progressType: 'browser_approval_required' },
+      },
+    ]);
+
+    const response = await loader(
+      createLoaderArgs('http://localhost/api/agents?action=events&sessionId=sess-agent-3&limit=20'),
+    );
+
+    expect(response.status).toBe(200);
+    const json = await parseJson(response);
+    expect(json.success).toBe(true);
+    expect(json.sessionId).toBe('sess-agent-3');
+    expect(json.count).toBe(3);
+    expect(json.events[2].type).toBe('runtime:tool_progress');
+
+    expect(mockListRuntimeEventsSnapshot).toHaveBeenCalledWith({
+      sessionId: 'sess-agent-3',
+      afterEventId: undefined,
+      limit: 20,
+    });
+  });
+});

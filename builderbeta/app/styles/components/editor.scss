@@ -1,0 +1,135 @@
+:root {
+  --cm-backgroundColor: var(--flare-elements-editor-backgroundColor, var(--flare-elements-bg-depth-1));
+  --cm-textColor: var(--flare-elements-editor-textColor, var(--flare-elements-textPrimary));
+
+  /* Gutter */
+
+  --cm-gutter-backgroundColor: var(--flare-elements-editor-gutter-backgroundColor, var(--cm-backgroundColor));
+  --cm-gutter-textColor: var(--flare-elements-editor-gutter-textColor, var(--flare-elements-textSecondary));
+  --cm-gutter-activeLineTextColor: var(--flare-elements-editor-gutter-activeLineTextColor, var(--cm-gutter-textColor));
+
+  /* Fold Gutter */
+
+  --cm-foldGutter-textColor: var(--flare-elements-editor-foldGutter-textColor, var(--cm-gutter-textColor));
+  --cm-foldGutter-textColorHover: var(--flare-elements-editor-foldGutter-textColorHover, var(--cm-gutter-textColor));
+
+  /* Active Line */
+
+  --cm-activeLineBackgroundColor: var(--flare-elements-editor-activeLineBackgroundColor, rgb(224 231 235 / 30%));
+
+  /* Cursor */
+
+  --cm-cursor-width: 2px;
+  --cm-cursor-backgroundColor: var(--flare-elements-editor-cursorColor, var(--flare-elements-textSecondary));
+
+  /* Matching Brackets */
+
+  --cm-matching-bracket: var(--flare-elements-editor-matchingBracketBackgroundColor, rgb(50 140 130 / 0.3));
+
+  /* Selection */
+
+  --cm-selection-backgroundColorFocused: var(--flare-elements-editor-selection-backgroundColor, #42b4ff);
+  --cm-selection-backgroundOpacityFocused: var(--flare-elements-editor-selection-backgroundOpacity, 0.3);
+  --cm-selection-backgroundColorBlured: var(--flare-elements-editor-selection-inactiveBackgroundColor, #c9e9ff);
+  --cm-selection-backgroundOpacityBlured: var(--flare-elements-editor-selection-inactiveBackgroundOpacity, 0.3);
+
+  /* Panels */
+
+  --cm-panels-borderColor: var(--flare-elements-editor-panels-borderColor, var(--flare-elements-borderColor));
+
+  /* Search */
+
+  --cm-search-backgroundColor: var(--flare-elements-editor-search-backgroundColor, var(--cm-backgroundColor));
+  --cm-search-textColor: var(--flare-elements-editor-search-textColor, var(--flare-elements-textSecondary));
+  --cm-search-closeButton-backgroundColor: var(--flare-elements-editor-search-closeButton-backgroundColor, transparent);
+
+  --cm-search-closeButton-backgroundColorHover: var(
+    --flare-elements-editor-search-closeButton-backgroundColorHover,
+    var(--flare-elements-item-backgroundActive)
+  );
+
+  --cm-search-closeButton-textColor: var(
+    --flare-elements-editor-search-closeButton-textColor,
+    var(--flare-elements-item-contentDefault)
+  );
+
+  --cm-search-closeButton-textColorHover: var(
+    --flare-elements-editor-search-closeButton-textColorHover,
+    var(--flare-elements-item-contentActive)
+  );
+
+  --cm-search-button-backgroundColor: var(
+    --flare-elements-editor-search-button-backgroundColor,
+    var(--flare-elements-item-backgroundDefault)
+  );
+
+  --cm-search-button-backgroundColorHover: var(
+    --flare-elements-editor-search-button-backgroundColorHover,
+    var(--flare-elements-item-backgroundActive)
+  );
+
+  --cm-search-button-textColor: var(--flare-elements-editor-search-button-textColor, var(--flare-elements-textSecondary));
+
+  --cm-search-button-textColorHover: var(
+    --flare-elements-editor-search-button-textColorHover,
+    var(--flare-elements-textPrimary)
+  );
+
+  --cm-search-button-borderColor: var(--flare-elements-editor-search-button-borderColor, transparent);
+  --cm-search-button-borderColorHover: var(--flare-elements-editor-search-button-borderColorHover, transparent);
+
+  --cm-search-button-borderColorFocused: var(
+    --flare-elements-editor-search-button-borderColorFocused,
+    var(--flare-elements-borderColorActive)
+  );
+
+  --cm-search-input-backgroundColor: var(--flare-elements-editor-search-input-backgroundColor, transparent);
+  --cm-search-input-textColor: var(--flare-elements-editor-search-input-textColor, var(--flare-elements-textPrimary));
+  --cm-search-input-borderColor: var(--flare-elements-editor-search-input-borderColor, var(--flare-elements-borderColor));
+
+  --cm-search-input-borderColorFocused: var(
+    --flare-elements-editor-search-input-borderColorFocused,
+    var(--flare-elements-borderColorActive)
+  );
+
+  /* Tooltip */
+
+  --cm-tooltip-backgroundColor: var(--flare-elements-editor-tooltip-backgroundColor, var(--cm-backgroundColor));
+  --cm-tooltip-textColor: var(--flare-elements-editor-tooltip-textColor, var(--flare-elements-textPrimary));
+
+  --cm-tooltip-backgroundColorSelected: var(
+    --flare-elements-editor-tooltip-backgroundColorSelected,
+    theme('colors.alpha.accent.30')
+  );
+
+  --cm-tooltip-textColorSelected: var(
+    --flare-elements-editor-tooltip-textColorSelected,
+    var(--flare-elements-textPrimary)
+  );
+
+  --cm-tooltip-borderColor: var(--flare-elements-editor-tooltip-borderColor, var(--flare-elements-borderColor));
+
+  --cm-searchMatch-backgroundColor: var(--flare-elements-editor-searchMatch-backgroundColor, rgba(234, 92, 0, 0.33));
+}
+
+html[data-theme='light'] {
+  --flare-elements-editor-gutter-textColor: #237893;
+  --flare-elements-editor-gutter-activeLineTextColor: var(--flare-elements-textPrimary);
+  --flare-elements-editor-foldGutter-textColorHover: var(--flare-elements-textPrimary);
+  --flare-elements-editor-activeLineBackgroundColor: rgb(50 53 63 / 5%);
+  --flare-elements-editor-tooltip-backgroundColorSelected: theme('colors.alpha.accent.20');
+  --flare-elements-editor-search-button-backgroundColor: theme('colors.gray.100');
+  --flare-elements-editor-search-button-backgroundColorHover: theme('colors.alpha.gray.10');
+}
+
+html[data-theme='dark'] {
+  --cm-backgroundColor: var(--flare-elements-bg-depth-2);
+  --flare-elements-editor-gutter-textColor: var(--flare-elements-textTertiary);
+  --flare-elements-editor-gutter-activeLineTextColor: var(--flare-elements-textSecondary);
+  --flare-elements-editor-selection-inactiveBackgroundOpacity: 0.3;
+  --flare-elements-editor-activeLineBackgroundColor: rgb(50 53 63 / 50%);
+  --flare-elements-editor-foldGutter-textColorHover: var(--flare-elements-textPrimary);
+  --flare-elements-editor-matchingBracketBackgroundColor: rgba(66, 180, 255, 0.3);
+  --flare-elements-editor-search-button-backgroundColor: theme('colors.gray.800');
+  --flare-elements-editor-search-button-backgroundColorHover: theme('colors.alpha.white.10');
+}

@@ -1,0 +1,132 @@
+.animated {
+  animation-fill-mode: both;
+  animation-duration: var(--animate-duration, 0.2s);
+  animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+
+  &.fadeInRight {
+    animation-name: fadeInRight;
+  }
+
+  &.fadeOutRight {
+    animation-name: fadeOutRight;
+  }
+
+  &.fadeInUp {
+    animation-name: fadeInUp;
+  }
+
+  &.scaleIn {
+    animation-name: scaleIn;
+  }
+}
+
+@keyframes fadeInRight {
+  from {
+    opacity: 0;
+    transform: translate3d(100%, 0, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fadeOutRight {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale3d(0.9, 0.9, 1);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale3d(1, 1, 1);
+  }
+}
+
+.dropdown-animation {
+  opacity: 0;
+  animation: fadeMoveDown 0.15s forwards;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeMoveDown {
+  to {
+    opacity: 1;
+    transform: translateY(6px);
+  }
+}
+
+// Pulse glow for active elements
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 25px rgba(255, 255, 255, 0.1);
+  }
+}
+
+.pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+
+// Shimmer effect for loading states
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+// Breathing glow for orbs
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+.breathe {
+  animation: breathe 4s ease-in-out infinite;
+}

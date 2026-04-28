@@ -1,0 +1,261 @@
+@import './variables.scss';
+@import './z-index.scss';
+@import './animations.scss';
+@import './components/terminal.scss';
+@import './components/resize-handle.scss';
+@import './components/code.scss';
+@import './components/editor.scss';
+@import './components/toast.scss';
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  font-family: 'Outfit', 'Inter', sans-serif;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0f0f1e 100%);
+  color: #fafafa;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  position: relative;
+  overflow-x: hidden;
+  overflow-y: auto;
+
+  &::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: 
+      radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.05) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(255, 0, 128, 0.04) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+// Premium 3D Global Styles
+body, html, #root {
+  perspective: 1000px;
+}
+
+// Global UI Softening with 3D Enhancement
+button, 
+input, 
+textarea, 
+select, 
+div[class*='rounded-'],
+.artifact,
+.actions {
+  border-radius: 14px !important;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+// Enhanced Glassmorphism with Depth
+.glass-effect {
+  backdrop-filter: blur(25px) saturate(200%);
+  background: linear-gradient(135deg, rgba(9, 9, 11, 0.6), rgba(15, 23, 42, 0.4));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 0 20px rgba(255, 255, 255, 0.02),
+    0 0 20px rgba(0, 255, 255, 0.05);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.02), transparent, rgba(255, 0, 128, 0.02));
+    border-radius: inherit;
+    pointer-events: none;
+  }
+}
+
+// 3D Premium Scrollbar with Glow
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(0, 255, 200, 0.4), rgba(100, 200, 255, 0.2));
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+  
+  &:hover {
+    background: linear-gradient(180deg, rgba(0, 255, 200, 0.6), rgba(100, 200, 255, 0.4));
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.4);
+  }
+}
+
+// Enhanced Input Glow
+input:focus,
+textarea:focus {
+  box-shadow: 
+    0 0 40px rgba(0, 255, 255, 0.2), 
+    inset 0 0 20px rgba(0, 255, 255, 0.05),
+    0 0 20px rgba(255, 0, 128, 0.1);
+  border-color: rgba(0, 255, 255, 0.4);
+}
+
+// 3D Canvas container styling
+canvas {
+  outline: none !important;
+  filter: drop-shadow(0 0 20px rgba(0, 255, 255, 0.1));
+}
+
+// Premium Ambient Glow Effect
+.ambient-glow {
+  position: relative;
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: -30%;
+    background: 
+      radial-gradient(circle at 50% 50%, rgba(0, 255, 255, 0.1) 0%, transparent 60%),
+      radial-gradient(circle at 50% 50%, rgba(255, 0, 128, 0.05) 0%, transparent 80%);
+    pointer-events: none;
+    z-index: -1;
+    filter: blur(20px);
+    animation: glowPulse 4s ease-in-out infinite;
+  }
+}
+
+// Enhanced Hover Card Effect with 3D
+.hover-lift {
+  transition: 
+    transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.3s ease,
+    border-color 0.3s ease;
+
+  &:hover {
+    transform: translateY(-6px) translateZ(20px);
+    box-shadow: 
+      0 20px 40px rgba(0, 255, 255, 0.2),
+      0 0 50px rgba(0, 255, 255, 0.1),
+      inset 0 0 20px rgba(0, 255, 255, 0.05);
+    border-color: rgba(0, 255, 255, 0.3);
+  }
+}
+
+// Focus Glow with 3D Depth
+.focus-glow:focus-within {
+  box-shadow: 
+    0 0 0 2px rgba(0, 255, 255, 0.3),
+    0 0 40px rgba(0, 255, 255, 0.15),
+    inset 0 0 20px rgba(0, 255, 255, 0.05);
+  transform: translateZ(10px);
+}
+
+// Premium 3D Text Effects
+.premium-text {
+  background: linear-gradient(135deg, #00ffff 0%, #ff00ff 50%, #00ff88 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-shadow: 0 0 30px rgba(0, 255, 255, 0.3);
+  animation: textGlow 3s ease-in-out infinite;
+}
+
+// Glow Pulse Animation
+@keyframes glowPulse {
+  0%, 100% {
+    opacity: 0.5;
+    filter: blur(20px);
+  }
+  50% {
+    opacity: 1;
+    filter: blur(15px);
+  }
+}
+
+// Text Glow Animation
+@keyframes textGlow {
+  0%, 100% {
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+  }
+  50% {
+    text-shadow: 0 0 30px rgba(0, 255, 255, 0.8);
+  }
+}
+
+// Shimmer Effect for premium components
+@keyframes shimmerEffect {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 255, 255, 0) 0%,
+    rgba(0, 255, 255, 0.3) 50%,
+    rgba(0, 255, 255, 0) 100%
+  );
+  background-size: 1000px 200px;
+  animation: shimmerEffect 2s infinite;
+}
+
+// 3D Message Container Effects
+.message-container-3d {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+
+  &:hover {
+    transform: rotateX(2deg) rotateY(-2deg) translateZ(10px);
+  }
+}
+
+// Premium Card with 3D Border Glow
+.card-3d {
+  position: relative;
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.6), rgba(9, 20, 36, 0.4));
+  backdrop-filter: blur(20px);
+  box-shadow: 
+    0 0 20px rgba(0, 255, 255, 0.1),
+    inset 0 0 30px rgba(0, 255, 255, 0.03);
+
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(0, 255, 255, 0.1), transparent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+  }
+
+  &:hover::before {
+    opacity: 1;
+  }
+}
+
+// Noise texture overlay for depth
+.noise-overlay {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.015;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 1;
+    border-radius: inherit;
+  }
+}
