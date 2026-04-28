@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from 'auth/server';
 import { streamText, type Messages, type LLMRuntimeContext } from '@/lib/builder-beta/server/llm/stream-text';
 
 interface ChatRequestBody {
@@ -68,6 +69,12 @@ function sanitizeRuntimeContext(runtimeContext: LLMRuntimeContext | undefined): 
 }
 
 export async function POST(request: NextRequest) {
+  // Auth check
+  const session = await getSession();
+  if (!session?.user?.id) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   let body: ChatRequestBody;
 
   try {

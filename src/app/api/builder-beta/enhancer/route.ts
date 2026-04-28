@@ -7,6 +7,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from 'auth/server';
 import { streamText } from '@/lib/builder-beta/server/llm/stream-text';
 import { stripIndents } from '@/lib/builder-beta/utils/stripIndent';
 
@@ -14,6 +15,11 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 export async function POST(request: NextRequest) {
+  const session = await getSession();
+  if (!session?.user?.id) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
   let body: any;
 
   try {

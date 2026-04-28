@@ -12,8 +12,8 @@ export const DEFAULT_THEME = 'dark';
 
 export const themeStore = atom<Theme>(initStore());
 
-function initStore() {
-  if (!import.meta.env.SSR) {
+function initStore(): Theme {
+  if (typeof window !== 'undefined') {
     const persistedTheme = localStorage.getItem(kTheme) as Theme | undefined;
     const themeAttribute = document.querySelector('html')?.getAttribute('data-theme');
 
@@ -29,7 +29,8 @@ export function toggleTheme() {
 
   themeStore.set(newTheme);
 
-  localStorage.setItem(kTheme, newTheme);
-
-  document.querySelector('html')?.setAttribute('data-theme', newTheme);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(kTheme, newTheme);
+    document.querySelector('html')?.setAttribute('data-theme', newTheme);
+  }
 }
