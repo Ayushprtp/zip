@@ -103,15 +103,16 @@ export const Markdown = memo(
     }, []);
 
     return (
-      <ReactMarkdown
-        allowedElements={allowedHTMLElements}
-        className="prose prose-invert prose-sm max-w-none [&_p]:leading-relaxed [&_code]:text-violet-300 [&_code]:bg-zinc-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-xs [&_a]:text-violet-400 [&_a]:underline [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4"
-        components={components}
-        remarkPlugins={remarkPlugins(limitedMarkdown)}
-        rehypePlugins={rehypePlugins(html)}
-      >
-        {children}
-      </ReactMarkdown>
+      <div className="prose prose-invert prose-sm max-w-none [&_p]:leading-relaxed [&_code]:text-violet-300 [&_code]:bg-zinc-800 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded-md [&_code]:text-xs [&_a]:text-violet-400 [&_a]:underline [&_ul]:list-disc [&_ol]:list-decimal [&_li]:ml-4">
+        <ReactMarkdown
+          allowedElements={allowedHTMLElements}
+          components={components}
+          remarkPlugins={remarkPlugins(limitedMarkdown)}
+          rehypePlugins={rehypePlugins(html)}
+        >
+          {children}
+        </ReactMarkdown>
+      </div>
     );
   },
 );

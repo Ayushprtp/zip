@@ -6,9 +6,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { generateUUID } from "lib/utils";
 import { motion } from "framer-motion";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import {
-  Sparkles,
   Send,
   Square,
   Wand2,
@@ -21,7 +19,11 @@ import {
 
 import { workbenchStore } from "@/lib/builder-beta/stores/workbench";
 import { selectedModelStore } from "@/lib/builder-beta/stores/model";
-import { activeMode, MODES, type NativeMode } from "@/lib/builder-beta/stores/modes";
+import {
+  activeMode,
+  MODES,
+  type NativeMode,
+} from "@/lib/builder-beta/stores/modes";
 import { Messages } from "@/components/builder-beta/chat/Messages";
 import { Workbench } from "@/components/builder-beta/workbench/Workbench";
 
@@ -186,9 +188,7 @@ export default function BuilderBetaPage() {
           {/* Workbench Toggle */}
           {chatStarted && (
             <button
-              onClick={() =>
-                workbenchStore.showWorkbench.set(!showWorkbench)
-              }
+              onClick={() => workbenchStore.showWorkbench.set(!showWorkbench)}
               className={`px-3 py-1.5 text-xs rounded-lg transition-all font-medium ${
                 showWorkbench
                   ? "bg-violet-600 text-white"
@@ -240,8 +240,7 @@ export default function BuilderBetaPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.6 }}
                 >
-                  The state-of-the-art AI workspace for creators and
-                  developers.
+                  The state-of-the-art AI workspace for creators and developers.
                 </motion.p>
               </motion.div>
             )}
@@ -326,7 +325,9 @@ export default function BuilderBetaPage() {
                     return (
                       <motion.button
                         key={index}
-                        onClick={() => handleSendMessage(undefined, prompt.text)}
+                        onClick={() =>
+                          handleSendMessage(undefined, prompt.text)
+                        }
                         className="group flex items-center gap-3 text-zinc-500 hover:text-zinc-200 transition-all duration-200 text-sm"
                         initial={{ opacity: 0, x: -10 }}
                         animate={{ opacity: 1, x: 0 }}

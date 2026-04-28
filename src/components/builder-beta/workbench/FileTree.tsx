@@ -1,13 +1,8 @@
 "use client";
 
 import { memo, useMemo } from "react";
-import { useStore } from "@nanostores/react";
-import {
-  ChevronRight,
-  File,
-  Folder,
-  FolderOpen,
-} from "lucide-react";
+
+import { ChevronRight, File, Folder, FolderOpen } from "lucide-react";
 import type { FileMap } from "@/lib/builder-beta/stores/files";
 
 interface FileTreeProps {
