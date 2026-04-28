@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { GitHubAppService } from "@/lib/builder/github-app-service";
+import { persistGitHubAuth } from "@/lib/builder/github-app-singleton";
 
 const GITHUB_APP_ID = process.env.GITHUB_APP_ID!;
 const GITHUB_APP_PRIVATE_KEY = process.env.GITHUB_APP_PRIVATE_KEY!;
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
+      maxAge: 60 * 60 * 24 * 365, // 1 year (DB is the real persistence)
     });
 
     if (refreshToken) {
@@ -79,8 +80,29 @@ export async function GET(request: NextRequest) {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
-        maxAge: 60 * 60 * 24 * 30, // 30 days
+        maxAge: 60 * 60 * 24 * 365, // 1 year
       });
+    }
+
+    // Persist to user's DB preferences (survives cookie expiry)
+    if (finalInstallationId) {
+      try {
+        const githubApp2 = new GitHubAppService({
+          appId: GITHUB_APP_ID,
+          privateKey: GITHUB_APP_PRIVATE_KEY,
+          clientId: GITHUB_APP_CLIENT_ID,
+          clientSecret: GITHUB_APP_CLIENT_SECRET,
+        });
+        const user = await githubApp2.getAuthenticatedUser(token);
+        await persistGitHubAuth(
+          token,
+          parseInt(finalInstallationId, 10),
+          user.login,
+        );
+      } catch (dbErr) {
+        console.warn("[GitHub Callback] Failed to persist to DB:", dbErr);
+        // Non-fatal — cookies still work
+      }
     }
 
     // Instead of redirecting, return an HTML page that closes the popup

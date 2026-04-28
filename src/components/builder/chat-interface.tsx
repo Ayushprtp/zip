@@ -311,7 +311,8 @@ interface MessageBubbleProps {
 }
 
 function hasCodeBlocks(content: string): boolean {
-  return /```[\w./-]*\n/.test(content);
+  // Match both ```lang\n and ```lang filepath:/path\n patterns
+  return /```[\w.*+-]*(?:\s+filepath:[^\n]*)?\n/.test(content);
 }
 
 // ─── Parse file changes from AI response ────────────────────────────────────

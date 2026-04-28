@@ -12,6 +12,11 @@ export type UserPreferences = {
   botName?: string; // Name of the bot
   openAIKey?: string; // User's personal OpenAI API Key
   googleGeminiKey?: string; // User's personal Google Gemini API Key
+  // Persistent service connections (survive cookie expiry)
+  vercelToken?: string; // Vercel personal access token
+  githubToken?: string; // GitHub OAuth user token
+  githubInstallationId?: number; // GitHub App installation ID
+  githubUsername?: string; // GitHub username for display
 };
 
 // User without password
@@ -102,4 +107,9 @@ export const UserPreferencesZodSchema = z.object({
   botName: z.string().optional(),
   openAIKey: z.string().optional(),
   googleGeminiKey: z.string().optional(),
+  // Persistent service connections
+  vercelToken: z.string().optional(),
+  githubToken: z.string().optional(),
+  githubInstallationId: z.number().optional(),
+  githubUsername: z.string().optional(),
 });

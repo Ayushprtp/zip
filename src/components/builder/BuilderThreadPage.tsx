@@ -343,6 +343,7 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
   const files = useBuilderStore((s) => s.files);
   const loadThread = useBuilderStore((s) => s.loadThread);
   const addMessage = useBuilderStore((s) => s.addMessage);
+  const saveFile = useBuilderStore((s) => s.saveFile);
 
   const { state, actions } = useProject();
 
@@ -538,6 +539,52 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
       /* Config not available */
     }
   }, [threadId]);
+
+  // ─── Pull latest files from GitHub on project load ────────────────────
+  const gitPullDoneRef = useRef(false);
+  useEffect(() => {
+    if (!repoConfig || gitPullDoneRef.current || !filesReady) return;
+    gitPullDoneRef.current = true;
+
+    const pullFromGitHub = async () => {
+      try {
+        console.log(
+          "[GitPull] Pulling latest files from GitHub:",
+          `${repoConfig.owner}/${repoConfig.repo}@${repoConfig.branch}`,
+        );
+        const res = await fetch(
+          `/api/github/app/files?owner=${encodeURIComponent(repoConfig.owner)}&repo=${encodeURIComponent(repoConfig.repo)}&branch=${encodeURIComponent(repoConfig.branch)}`,
+        );
+        if (!res.ok) {
+          console.warn("[GitPull] Failed to pull files:", res.status);
+          return;
+        }
+        const data = await res.json();
+        if (data.files && Object.keys(data.files).length > 0) {
+          // Merge GitHub files into project context (GitHub takes precedence)
+          let updatedCount = 0;
+          Object.entries(data.files as Record<string, string>).forEach(
+            ([path, content]) => {
+              // Skip .flare-sh internal files
+              if (path.startsWith("/.flare-sh/")) return;
+              actions.updateFile(path, content);
+              updatedCount++;
+            },
+          );
+          if (updatedCount > 0) {
+            toast.success(`Synced ${updatedCount} files from GitHub`, {
+              description: `${repoConfig.owner}/${repoConfig.repo}@${repoConfig.branch}`,
+              duration: 3000,
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("[GitPull] Error pulling from GitHub:", err);
+      }
+    };
+
+    pullFromGitHub();
+  }, [repoConfig, filesReady, actions]);
 
   // Initial commit for new repos — wait for Sandpack template sync
   const initRepoRef = useRef(false);
@@ -1192,6 +1239,15 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                   path: safePath.replace(/^\//, ""),
                   content: op.content,
                 });
+
+                // ── Immediately persist to DB ──────────────────────────
+                // Don't rely solely on debounced auto-save; save right away
+                // so the file survives page refresh even without GitHub
+                if (threadId) {
+                  saveFile(threadId, safePath, op.content).catch((err) =>
+                    console.warn("[DB Save] Failed:", safePath, err),
+                  );
+                }
               }
             });
 

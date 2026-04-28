@@ -3,12 +3,15 @@
  *
  * Returns a pre-configured GitHubAppService instance.
  * Also provides a helper to extract the installation_id from cookies.
+ * Falls back to persisted tokens in user DB preferences when cookies expire.
  *
  * All API routes should use this instead of constructing the service directly.
  */
 
 import { cookies } from "next/headers";
 import { GitHubAppService } from "@/lib/builder/github-app-service";
+import { getSession } from "auth/server";
+import { userRepository } from "lib/db/repository";
 
 let _appService: GitHubAppService | null = null;
 
@@ -44,20 +47,95 @@ export function getGitHubApp(): GitHubAppService {
 }
 
 /**
- * Get the GitHub user OAuth token from cookies.
+ * Get the GitHub user OAuth token — tries cookie first, then DB.
  */
 export async function getGitHubToken(): Promise<string | null> {
   const cookieStore = await cookies();
-  return cookieStore.get("github_token")?.value || null;
+  const cookieToken = cookieStore.get("github_token")?.value;
+  if (cookieToken) return cookieToken;
+
+  // Fall back to DB-persisted token
+  try {
+    const session = await getSession();
+    if (session?.user?.id) {
+      const prefs = await userRepository.getPreferences(session.user.id);
+      if (prefs?.githubToken) {
+        // Restore cookie from DB
+        cookieStore.set("github_token", prefs.githubToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 60 * 60 * 24 * 365,
+        });
+        return prefs.githubToken;
+      }
+    }
+  } catch {
+    // Session/DB not available — that's fine
+  }
+
+  return null;
 }
 
 /**
- * Get the GitHub App installation ID from cookies.
+ * Get the GitHub App installation ID — tries cookie first, then DB.
  */
 export async function getInstallationId(): Promise<number | null> {
   const cookieStore = await cookies();
-  const id = cookieStore.get("github_installation_id")?.value;
-  return id ? parseInt(id, 10) : null;
+  const cookieId = cookieStore.get("github_installation_id")?.value;
+  if (cookieId) return parseInt(cookieId, 10);
+
+  // Fall back to DB-persisted installation ID
+  try {
+    const session = await getSession();
+    if (session?.user?.id) {
+      const prefs = await userRepository.getPreferences(session.user.id);
+      if (prefs?.githubInstallationId) {
+        // Restore cookie from DB
+        cookieStore.set(
+          "github_installation_id",
+          String(prefs.githubInstallationId),
+          {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 60 * 60 * 24 * 365,
+          },
+        );
+        return prefs.githubInstallationId;
+      }
+    }
+  } catch {
+    // Session/DB not available
+  }
+
+  return null;
+}
+
+/**
+ * Persist GitHub tokens to the user's DB preferences.
+ * Called after GitHub OAuth callback or app installation.
+ */
+export async function persistGitHubAuth(
+  token: string,
+  installationId: number,
+  username?: string,
+): Promise<void> {
+  try {
+    const session = await getSession();
+    if (!session?.user?.id) return;
+
+    const currentPrefs =
+      (await userRepository.getPreferences(session.user.id)) || {};
+    await userRepository.updatePreferences(session.user.id, {
+      ...currentPrefs,
+      githubToken: token,
+      githubInstallationId: installationId,
+      ...(username ? { githubUsername: username } : {}),
+    });
+  } catch (err) {
+    console.warn("[GitHub] Failed to persist auth to DB:", err);
+  }
 }
 
 /**
@@ -109,7 +187,7 @@ export async function requireGitHubAuthOrTemp(
   owner?: string,
   repo?: string,
 ): Promise<{ token: string; installationId: number }> {
-  // Try normal user auth first
+  // Try normal user auth first (checks cookie → DB)
   const token = await getGitHubToken();
   const installationId = await getInstallationId();
   if (token && installationId) {

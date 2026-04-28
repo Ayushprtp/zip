@@ -3,13 +3,8 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { VercelService } from "@/lib/builder/vercel-service";
-
-async function getVercelToken(): Promise<string | null> {
-  const cookieStore = await cookies();
-  return cookieStore.get("vercel_token")?.value || null;
-}
+import { getVercelToken } from "@/lib/builder/vercel-token";
 
 export async function GET() {
   try {
