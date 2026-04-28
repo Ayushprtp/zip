@@ -4,6 +4,7 @@ import { BasicUserWithLastLogin } from "app-types/user";
 import { UserDetailFormCard } from "./user-detail-form-card";
 import { UserAccessCard } from "./user-access-card";
 import { UserApiKeysCard } from "./user-api-keys-card";
+import { UserConnectionsCard } from "./user-connections-card";
 import { UserPlanCard } from "./user-plan-card";
 import { useProfileTranslations } from "@/hooks/use-profile-translations";
 import { useSidebar } from "ui/sidebar";
@@ -133,6 +134,15 @@ export function UserDetail({
             preferences={user?.preferences || null}
             onUpdate={() => mutate(userDetailRoute)}
           />
+        </div>
+
+        {/* Connections Section */}
+        <div
+          className={cn("col-span-1 md:col-span-2", {
+            "col-span-1 md:col-span-1 lg:col-span-2": sidebarOpen,
+          })}
+        >
+          <UserConnectionsCard />
         </div>
 
         <div
