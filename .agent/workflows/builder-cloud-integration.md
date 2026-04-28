@@ -46,7 +46,7 @@ description: Cloud Integration Hub — Builder page GitHub + Vercel + AI chat re
 - [x] `deployment-service.ts` passes `isTemporary` flag through the chain
 
 ### Phase 5 — AI Agent Features ✅
-- [x] **Default model: GLM 4.7** (`glm-4.1v-9b-thinking`) — configurable via model selector toggle
+- [x] **Default model: Qwen 3.6 Plus** (`qwen3.6-plus`) — configurable via model selector toggle
 - [x] **Auto-commit after AI chat completions** — automatically commits changed files after agent mode responses (already implemented in BuilderThreadPage lines 1032-1057)
 - [x] **AI direct file modification** — Agent mode parses code blocks and applies file updates directly
 - [x] **Deploy gate for temp workspaces** — temp projects use server-side Vercel token; non-temp users see Vercel Connect popup

@@ -410,8 +410,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
     provider: string;
     model: string;
   }>({
-    provider: "glm",
-    model: "glm-4.1v-9b-thinking",
+    provider: "qwen",
+    model: "qwen3.6-plus",
   });
 
   // Git
@@ -1108,26 +1108,60 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
           signal: abortController.signal,
         });
 
-        if (!response.ok)
-          throw new Error(`API request failed: ${response.statusText}`);
-        if (!response.body) throw new Error("No response body");
+        // Read response body — server now always returns 200 with error text
+        // for display in chat, so we always try to read the body
+        if (!response.body) {
+          if (!response.ok) {
+            throw new Error(`API request failed: ${response.statusText}`);
+          }
+          throw new Error("No response body");
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullText = "";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          fullText += chunk;
-          setStreamingContent(fullText);
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            fullText += chunk;
+            setStreamingContent(fullText);
+          }
+        } catch (streamReadErr: any) {
+          console.error("Stream read error:", streamReadErr);
+          if (!fullText) {
+            fullText =
+              "⚠️ Connection error while receiving AI response. Please try again.";
+          }
+        }
+
+        // Handle completely empty response
+        if (!fullText.trim()) {
+          fullText =
+            "⚠️ The AI returned an empty response. The model may be overloaded — please try again or switch models.";
         }
 
         setIsStreaming(false);
         setStreamingContent("");
 
-        // Save AI response
+        // Check if the response is an error message from the API
+        const isErrorResponse = fullText.startsWith("⚠️");
+
+        // Try to detect JSON error responses that slipped through
+        if (!isErrorResponse && fullText.trim().startsWith("{")) {
+          try {
+            const parsed = JSON.parse(fullText.trim());
+            if (parsed.error) {
+              fullText = `⚠️ API Error: ${typeof parsed.error === "string" ? parsed.error : parsed.error.message || JSON.stringify(parsed.error)}`;
+            }
+          } catch {
+            // Not JSON, that's fine — it's normal AI text
+          }
+        }
+
+        // Save AI response (including error messages so user can see them)
         const aiMsg = storageRef.current.addMessage(
           activeChatId,
           "assistant",
@@ -1136,8 +1170,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
         if (aiMsg) setLocalMessages((prev) => [...prev, aiMsg]);
         await addMessage(threadId, "assistant", fullText, []).catch(() => {});
 
-        // Apply generated code changes
-        if (chatMode === "agent") {
+        // Apply generated code changes (only if NOT an error response)
+        const finalIsError = fullText.startsWith("⚠️");
+        if (chatMode === "agent" && !finalIsError) {
           const operations = parseAIResponse(fullText);
           if (operations.length > 0) {
             const changedNames: string[] = [];
@@ -1175,7 +1210,9 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
               });
 
               // ── Auto Git Commit & Push ──────────────────────────────
-              if (gitConfigured && changedFiles.length > 0) {
+              // Always attempt commit when files are changed, regardless
+              // of gitConfigured — commitAndPush will no-op if not set up
+              if (changedFiles.length > 0 && commitAndPush) {
                 const commitMsg = `feat(ai): update ${changedNames.join(", ")}`;
                 try {
                   const checkpoint = await commitAndPush(
@@ -1188,6 +1225,8 @@ function BuilderThreadPageContent({ threadId }: BuilderThreadPageProps) {
                       description: `${changedFiles.length} ${changedFiles.length === 1 ? "file" : "files"} → ${checkpoint.sha.slice(0, 7)}`,
                       duration: 4000,
                     });
+                  } else {
+                    setHasUncommittedChanges(true);
                   }
                 } catch (gitErr: any) {
                   console.error("[AutoCommit] Failed:", gitErr);

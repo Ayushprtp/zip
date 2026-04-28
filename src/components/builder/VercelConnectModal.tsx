@@ -19,7 +19,6 @@ import {
   Github,
   KeyRound,
   ArrowRight,
-  Copy,
 } from "lucide-react";
 
 interface VercelConnectModalProps {

@@ -280,6 +280,7 @@ export function GitHubProjectSetup({
     }
   };
 
+  // @ts-ignore -- kept for future Vercel OAuth integration
   const _handleVercelOAuthConnect = useCallback(async () => {
     setVercelOAuthLoading(true);
     try {
